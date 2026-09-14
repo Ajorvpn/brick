@@ -8,13 +8,36 @@ build/
 # Melos generated files (auto-generated, should NOT be committed)
 pubspec_overrides.yaml
 
-# IDE
+# Local MCP memory cache (persisted across sessions, should NOT be committed)
+.mcp-memory/
+
+# IDE / editor tooling
 .vscode/
 .idea/
 *.iml
+.freebuff/
+# unrecognized external tooling metadata; excluded defensively
 
 # OS
 .DS_Store
+
+# Android / signing / build artifacts
+android/local.properties
+**/local.properties
+key.properties
+*.jks
+*.keystore
+*.aar
+*.jar
+android/app/build/
+android/build/
+android/.gradle/
+android/**/build/
+
+# iOS / macOS generated outputs
+ios/Pods/
+ios/.symlinks/
+macos/Flutter/ephemeral/
 
 # Native build outputs
 android/app/build/

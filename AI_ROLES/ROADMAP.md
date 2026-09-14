@@ -90,7 +90,7 @@ development before any real feature code is written.
 
 ### P0-T1 — Finalize Git repository and baseline scaffold commit
 
-**Status:** Not Started
+**Status:** In Progress 🟡 — the scaffold commits already exist, but the repo is not in a clean baseline state (`git status` is dirty and `.freebuff/` is untracked), so the task’s clean-baseline verification is incomplete.
 **Depends On:** —
 
 **Objective:** Ensure the existing monorepo scaffold (`apps/mobile`, `packages/`, `native/`,
@@ -154,10 +154,10 @@ per-file license headers are used across the monorepo.
 
 ### P0-T3 — Commit and cross-verify all AI_ROLES governance files
 
-**Status:** Not Started
+**Status:** Completed ✅
 **Depends On:** P0-T1
 
-**Objective:** Ensure all seven `AI_ROLES/` files (`AGENTS.md`, `ARCHITECTURE.md`, `ROADMAP.md`,
+**Objective:** Ensure all eight `AI_ROLES/` files (`AGENTS.md`, `ARCHITECTURE.md`, `ROADMAP.md`,
 `PROJECT_STATE.md`, `CODING_STANDARDS.md`, `SECURITY.md`, `DEFINITION_OF_DONE.md`,
 `MCP_MEMORY_GUIDE.md`) are present, committed, and internally consistent — no contradictory
 statements, no broken cross-references, no leftover placeholder text.
@@ -171,11 +171,11 @@ statements, no broken cross-references, no leftover placeholder text.
   unilaterally.
 
 **Acceptance Criteria:**
-- [ ] All 7 files exist under `AI_ROLES/` and are committed.
-- [ ] Status vocabulary (`Not Started`/`In Progress`/`Blocked`/`Ready for Human Review`/
+- [x] All 8 files exist under `AI_ROLES/` and are committed.
+- [x] Status vocabulary (`Not Started`/`In Progress`/`Blocked`/`Ready for Human Review`/
       `Completed`) is used identically across `ROADMAP.md` and `DEFINITION_OF_DONE.md`.
-- [ ] All internal relative links (if any) resolve correctly.
-- [ ] A short report is produced listing: files checked, any mechanical fixes made, any
+- [x] All internal relative links (if any) resolve correctly.
+- [x] A short report is produced listing: files checked, any mechanical fixes made, any
       substantive inconsistencies found (even if not fixed).
 
 **Notes for Agent:**
@@ -186,7 +186,7 @@ statements, no broken cross-references, no leftover placeholder text.
 
 ### P0-T4 — GitHub repository setup: branch protection, Dependabot, secret scanning
 
-**Status:** Not Started
+**Status:** Blocked 🔴 — this environment lacks GitHub admin/API access, so branch protection, secret scanning, push protection, and Dependabot configuration cannot be verified or applied here. Unblock when GitHub admin access or a human-performed UI setup is available.
 **Depends On:** P0-T1
 
 **Objective:** Configure the GitHub repository's built-in security and workflow features so the
@@ -219,7 +219,7 @@ project has baseline supply-chain hygiene from day one, per `SECURITY.md`.
 
 ### P0-T5 — Baseline CI workflow (format, analyze, test)
 
-**Status:** Not Started
+**Status:** Blocked 🔴 — fresh verification shows `melos.yaml` already defines `format`, `analyze`, and `test`, but `melos run format/analyze/test` currently fails with `NoScriptException: This workspace has no scripts defined in its 'pubspec.yaml' file.`. This indicates a real workspace/script-discovery mismatch in the current environment, not a missing `scripts:` section in `melos.yaml`. Unblock when the repo's Melos workspace configuration is corrected so `melos run format`, `melos run analyze`, and `melos run test` all execute successfully.
 **Depends On:** P0-T3
 
 **Objective:** Add a GitHub Actions workflow that runs on every push and pull request, executing
@@ -254,7 +254,7 @@ against the monorepo, using pinned tool versions.
 
 ### P0-T6 — Melos workspace hygiene verification and package skeletons
 
-**Status:** Not Started
+**Status:** Blocked 🔴 — `melos list` currently shows only `mobile`, and the five `packages/*` skeleton directories are missing, so the required workspace expansion cannot be verified. Unblock when the five package skeletons and root workspace configuration are added and `melos bootstrap` runs cleanly.
 **Depends On:** P0-T1
 
 **Objective:** Create empty, correctly-wired Dart package skeletons for the five planned
@@ -362,7 +362,7 @@ re-testing, never a silent/incidental bump.
 
 ### P0-T9 — Memory MCP verification task
 
-**Status:** Not Started
+**Status:** In Progress 🟡 — the reference `@modelcontextprotocol/server-memory` package is available and starts on stdio, but a fresh-session store/retrieve verification has not yet been completed, so the task is only partially proven.
 **Depends On:** —
 
 **Objective:** Verify, per `MCP_MEMORY_GUIDE.md`, whether the Memory MCP server
@@ -396,7 +396,7 @@ whether to rely on it.
 
 ### P0-T10 — Base dependency wiring for `apps/mobile`
 
-**Status:** Not Started
+**Status:** Blocked 🔴 — `apps/mobile/pubspec.yaml` has not yet been updated with the approved dependencies, and the workspace still lacks the root `scripts:`/multi-package setup needed to verify dependency wiring end-to-end. Unblock when P0-T5 and P0-T6 are completed and `melos bootstrap` can run successfully.
 **Depends On:** P0-T6
 
 **Objective:** Add the already-approved core dependencies to `apps/mobile/pubspec.yaml`
@@ -461,7 +461,7 @@ where to find the governance docs — without overselling features that don't ex
 
 ### P0-T12 — Phase 0 closeout and Definition-of-Done pass
 
-**Status:** Not Started
+**Status:** Blocked 🔴 — Phase 0 closeout cannot be verified until P0-T1 through P0-T11 are materially completed and the current `melos`/package/workspace blockers are resolved. Unblock when the repository reaches a clean, fully verifiable Phase 0 baseline.
 **Depends On:** P0-T1 through P0-T11
 
 **Objective:** Perform a full closeout review of Phase 0: confirm every task above is genuinely
@@ -1369,6 +1369,520 @@ is finished and Phase 3 (the highest-risk phase) is about to begin.
 
 ---
 
+## Phase 3 — Android VPN Engine
+
+**Phase Goal:** a Kotlin `VpnService` implementation, driving sing-box's `libbox` Go core, proven
+correct and resilient under real lifecycle stress — **before** it is ever wired to Flutter. This
+is the highest-risk phase in the project and directly targets the root cause of the legacy
+project's failure (native bridge/lifecycle engineering, not the core concept).
+
+**Structure:** this phase is split into two sequential gates, per the finalized `ARCHITECTURE.md`
+decision:
+
+- **Gate A (this chunk):** a native-only lifecycle harness — a minimal Kotlin Android module and
+  debug activity/instrumented test suite, with **zero Flutter involvement** — used to prove the
+  `VpnService` + `libbox` state machine is correct in isolation.
+- **Gate B (next chunk):** wiring the proven native engine to Flutter via Pigeon-generated
+  Platform Channels, then re-running equivalent lifecycle stress tests through the full stack.
+
+**Non-negotiable rule for this entire phase:** Gate B may not begin until every acceptance
+criterion in Gate A is met and the Gate A closeout task is `Completed`. This ordering exists
+specifically to isolate native lifecycle bugs from Dart/platform-channel bugs, per peer-review
+findings — do not shortcut it even if it looks slower.
+
+---
+
+### Gate A — Native-Only Android VPN Lifecycle Harness
+
+---
+
+### P3-T1 — Research pass: sing-box/libbox current integration state
+
+**Status:** Not Started
+**Depends On:** P2-T12
+
+**Objective:** Before writing any code, produce a written research report (not yet committed as
+project documentation — a working note for the human and next tasks) verifying, as of the actual
+current date, the following facts against live/current sources (sing-box repo, its release notes,
+official docs, and Hiddify's public Android source if license-compatible to reference):
+
+1. The current stable sing-box release/tag recommended for mobile integration, and its exact
+   mobile platform-interface shape (confirm whether the `adapter.PlatformInterface` migration
+   noted in peer review is present in the version being targeted, or has moved further since).
+2. The current recommended `gomobile`/`golang.org/x/mobile` version and fork (verify whether
+   sing-box's own pinned fork, as referenced in peer review, is still the right one to use).
+3. The current recommended Go version to pin in CI, explicitly re-confirming the
+   go.mod-auto-resolution QUIC-breakage footgun is still relevant and what Go version avoids it.
+4. Current Android NDK version compatible with that Go/gomobile combination.
+5. Whether 16KB page-size-aligned `.so` output requires any special gomobile/NDK build flags with
+   the versions selected, and how to verify alignment on a built `.so` file.
+6. Confirmation of whether Hiddify's Android `VpnService` source is publicly available and under
+   a license compatible with reference study (and, separately, whether any direct code reuse —
+   as opposed to reading for understanding — would be desirable and license-compatible; default
+   assumption is read-only reference, not reuse, unless the human decides otherwise).
+
+**Scope:**
+- Included: a research report only — no code, no files under `native/android/` yet beyond
+  updating `AI_ROLES/TOOLCHAIN_VERSIONS.md`'s `TBD` rows (P0-T8) with the now-confirmed values.
+- Excluded: any actual AAR build attempt (next task); any Kotlin code.
+
+**Acceptance Criteria:**
+- [ ] `TOOLCHAIN_VERSIONS.md`'s previously-`TBD` rows (Go, gomobile, NDK, sing-box commit/tag) are
+      filled in with specific, verified values and a one-line justification each.
+- [ ] The two known footguns (Go auto-resolution/QUIC breakage, sing-box `platform.Interface` →
+      `adapter.PlatformInterface` migration) are explicitly re-confirmed as still-relevant or
+      noted as superseded, with the current situation described accurately.
+- [ ] The 16KB page-size alignment requirement's current build-flag/verification method is
+      documented.
+- [ ] The report explicitly states what could **not** be verified with confidence, if anything,
+      rather than filling gaps with assumptions.
+
+**Notes for Agent:**
+- This is a pure research task by design — resist the urge to jump ahead into implementation.
+  Every fact recorded here becomes load-bearing for the rest of Phase 3, so accuracy matters more
+  than speed.
+- If live web/documentation access isn't available in the coding-agent environment, say so
+  explicitly and report back to the human with specific questions to verify manually, rather than
+  proceeding on unverified assumptions — this is exactly the no-guessing rule in its purest form.
+
+---
+
+### P3-T2 — Native Android module scaffolding (`native/android`)
+
+**Status:** Not Started
+**Depends On:** P3-T1
+
+**Objective:** Set up `native/android/` as a standalone, buildable Android Gradle project
+(application module, not yet a Flutter plugin), pinned to the versions confirmed in P3-T1
+(NDK, AGP, Kotlin, target/compile/min SDK versions — verify current reasonable min-SDK choice
+given `VpnService` requirements and realistic device support goals, don't assume).
+
+**Scope:**
+- Included: `native/android/` populated with a minimal Gradle Android application project
+  (`build.gradle.kts`/`settings.gradle.kts`, standard module layout), Gradle wrapper checked in,
+  Kotlin configured, no VPN logic yet — just a project that builds and installs a blank "Hello"
+  activity on a device/emulator.
+- Excluded: any libbox/AAR integration (next task); any VpnService code.
+
+**Acceptance Criteria:**
+- [ ] `native/android/` builds successfully via Gradle CLI (`./gradlew assembleDebug`) with zero
+      manual IDE-only steps.
+- [ ] The built debug APK installs and launches on the connected physical device/emulator (per
+      `PROJECT_STATE.md`'s noted environment), showing a minimal placeholder screen.
+- [ ] All pinned versions match exactly what P3-T1 recorded in `TOOLCHAIN_VERSIONS.md`.
+- [ ] If the Iran-network Gradle-mirror issue (documented in `PROJECT_STATE.md`'s errors/lessons)
+      recurs, it is resolved the same documented way (`maven.aliyun.com` mirror) and the
+      resolution is re-confirmed still necessary/correct, not blindly copied without checking.
+- [ ] A short `native/android/README.md` replaces the Phase-0 placeholder with real build/run
+      instructions.
+
+**Notes for Agent:**
+- Keep this module fully independent of `apps/mobile` for now — no Flutter embedding, no
+  `flutter create -t plugin` scaffolding yet. That happens in Gate B.
+
+---
+
+### P3-T3 — Build sing-box `libbox` AAR from pinned source
+
+**Status:** Not Started
+**Depends On:** P3-T2
+
+**Objective:** Produce a reproducible build script that compiles the pinned sing-box commit/tag's
+`libbox` package into an Android AAR via `gomobile bind`, using the pinned Go/gomobile/NDK
+versions from P3-T1, and integrate the resulting AAR into `native/android/`'s debug build so a
+trivial libbox API call (e.g. reading the core version string) can be verified from the
+placeholder activity.
+
+**Scope:**
+- Included: a build script (e.g. `native/android/scripts/build_libbox_aar.sh` or equivalent,
+  language/tooling choice justified in the report), the script's output AAR placed in a
+  `.gitignore`d location (per P0-T1's `.gitignore` rule) with a documented manual-download/build
+  step noted in the README (mirroring the legacy project's known "libbox.aar gitignored" reality,
+  but now with a reproducible build script instead of an undocumented manual step), one Kotlin
+  call into libbox proving linkage works (e.g. logging the core version).
+- Excluded: any VpnService/TUN logic — this task only proves the AAR builds and links correctly.
+
+**Acceptance Criteria:**
+- [ ] The build script runs successfully end-to-end from a clean environment (document exact
+      prerequisites: Go version installed, NDK path, etc.) and produces a valid AAR.
+- [ ] The AAR is explicitly pinned to a specific sing-box git commit/tag recorded in the script
+      itself and cross-referenced with `TOOLCHAIN_VERSIONS.md`.
+- [ ] The placeholder Android app successfully calls into libbox and displays/logs the core
+      version string, proving the JNI/gomobile bridge links correctly at runtime (no
+      `UnsatisfiedLinkError`).
+- [ ] The AAR's `.so` output is verified for 16KB page-size alignment per the method documented
+      in P3-T1 (do not skip this — it is a hard Play Store requirement already in effect, not a
+      future concern).
+- [ ] `native/android/README.md` documents exactly how to (re)run the build script, including the
+      Go-version-pinning safeguard (explicitly not relying on `go.mod` auto-resolution).
+- [ ] The build script itself, or CI (if wired up here — optional at this stage, can be deferred
+      to a later task if native Android CI is a separate concern), is noted as a candidate for
+      future CI automation even if not yet automated in this task.
+
+**Notes for Agent:**
+- This task is likely to surface real, unpredictable friction (this is exactly the kind of step
+  that broke down previously due to environment-specific issues). Document every real obstacle
+  hit and how it was resolved, in detail, in the task report — this record is valuable for anyone
+  (human or future agent) who has to rebuild this AAR later after a sing-box version bump.
+- Do not silently work around a build failure by downgrading/upgrading a pinned version without
+  flagging it — if a pinned version combination from P3-T1 turns out not to actually work
+  together, stop and report back rather than silently picking different versions.
+
+---
+
+### P3-T4 — Study reference implementation(s) and record design notes
+
+**Status:** Not Started
+**Depends On:** P3-T1
+
+**Objective:** Study Hiddify's public Android `VpnService`/libbox integration source (if publicly
+available and license-compatible for reference-only study, per P3-T1's findings) and/or any other
+credible open-source sing-box-based Android VPN client, specifically to extract lifecycle design
+patterns — not to copy code — and produce a short design-notes document informing the state
+machine to be built in the next tasks.
+
+**Scope:**
+- Included: a design-notes document (e.g. `native/android/docs/LIFECYCLE_DESIGN_NOTES.md`)
+  summarizing: how the reference implementation handles TUN fd ownership/cleanup, how it
+  structures its state machine, how it handles `onRevoke()`, how it avoids main-thread blocking,
+  and any patterns explicitly worth adopting or explicitly worth avoiding (e.g. if the reference
+  implementation has a known bug class, note it so Brick VPN doesn't inherit it).
+- Excluded: copying any actual source code verbatim into Brick VPN's repository — this task is
+  read-and-summarize only, respecting license obligations.
+
+**Acceptance Criteria:**
+- [ ] The design-notes document exists and is specific (not generic platitudes) — it should read
+      as "here is concretely how a real production implementation solves problem X," for at least
+      the following problems: TUN fd lifecycle, stop/teardown sequencing, revoke handling,
+      threading model, and callback-after-teardown prevention.
+- [ ] Any code excerpts quoted for illustration (if any, kept minimal) are clearly attributed with
+      source and license, per GPL v3/attribution obligations.
+- [ ] The document explicitly informs (with direct references) the state machine design in the
+      next task (P3-T5), rather than existing as a disconnected research artifact.
+
+**Notes for Agent:**
+- If Hiddify's Android source turns out not to be easily accessible or not license-compatible for
+  even read-only study, say so and fall back to whatever credible reference material can be
+  verified (sing-box's own official example/reference Android integration code, if it exists, or
+  documented architecture write-ups) — do not fabricate familiarity with source you have not
+  actually verified access to.
+
+---
+
+### P3-T5 — VPN state machine design and implementation (pure Kotlin, no libbox/TUN yet)
+
+**Status:** Not Started
+**Depends On:** P3-T4
+
+**Objective:** Implement the core state machine — `VpnStateMachine` — as a standalone, unit-
+testable Kotlin class with **no libbox or Android `VpnService` dependency yet**, enforcing every
+lifecycle rule established in `ARCHITECTURE.md` Section 3.5: explicit states (`Idle`, `Preparing`,
+`Starting`, `Running`, `Stopping`, `Stopped`, `Error`, `Revoked`), session tokens on every
+start/stop, idempotent start/stop, a 5-second stop watchdog, and rejection of illegal transitions
+with the correct `accepted`/`rejectedBusy`/etc. semantics mirroring the Dart `VpnCommandResult`
+contract from P1-T4.
+
+**Scope:**
+- Included: `native/android/app/src/main/kotlin/.../vpn/VpnStateMachine.kt` (or the module path
+  appropriate once this becomes a shared library module — decide structure and justify),
+  corresponding JVM unit tests (`native/android/app/src/test/kotlin/.../VpnStateMachineTest.kt`)
+  using a real test framework (JUnit + kotlinx-coroutines-test for any async/timeout behavior),
+  no Android instrumentation dependency yet (pure JVM unit tests, fast, no emulator required).
+- Excluded: any real libbox call, any real TUN/VpnService interaction — this state machine must be
+  fully provable in isolation first, exactly mirroring how `MockVpnEngine` (P1-T5) was proven in
+  isolation on the Dart side.
+
+**Acceptance Criteria:**
+- [ ] States match exactly: `Idle`, `Preparing`, `Starting`, `Running`, `Stopping`, `Stopped`,
+      `Error(reason)`, `Revoked` — implemented as a sealed class/interface, not raw enums with
+      loosely-associated data, so illegal states are structurally harder to represent.
+- [ ] Every `start`/`stop` command carries a session token; a stale-token callback/event fed into
+      the state machine is provably ignored (unit test proves this explicitly).
+- [ ] `start` while `Starting`/`Running` returns `rejectedBusy` without corrupting state.
+- [ ] `stop` while `Stopping` is idempotent (calling it multiple times has no additional effect
+      beyond the first).
+- [ ] `stop` while `Starting` cancels the in-progress start and transitions cleanly, not into an
+      inconsistent hybrid state.
+- [ ] A simulated stop that "hangs" (test double never signals completion) is proven, via a
+      coroutine-based test with virtual/fake time, to trigger the 5-second watchdog and forcibly
+      transition to `Stopped`/`Error` regardless.
+- [ ] Command-acceptance results (`accepted`/`rejectedBusy`/`rejectedInvalidConfig`/
+      `rejectedPermissionDenied`/`failed`) are returned synchronously/immediately from
+      `start`/`stop`, while final-state transitions are only ever emitted via a separate
+      state-flow (`StateFlow`/`SharedFlow` or equivalent) — mirroring the Dart contract's
+      accepted-vs-final-state separation exactly.
+- [ ] All work is unit-testable on the JVM without an Android emulator (verified by actually
+      running `./gradlew test`, not `connectedAndroidTest`).
+- [ ] `melos`/Gradle equivalents pass; specifically `./gradlew :native-android-module:test`
+      (path TBD based on actual module structure) is green.
+
+**Notes for Agent:**
+- This is the single most important file in the native codebase. Treat it with the rigor of
+  something that will be read, audited, and possibly ported (conceptually) to iOS's
+  `PacketTunnelProvider` lifecycle later — keep libbox/TUN/Android-framework specifics entirely
+  out of this class; it should only know about abstract "start/stop the underlying engine"
+  callbacks it invokes on a to-be-defined interface, not concrete libbox types.
+- If any lifecycle rule from `ARCHITECTURE.md` Section 3.5 seems ambiguous or insufficiently
+  specific to implement without guessing (e.g. exact watchdog duration, exact behavior on
+  double-stop), stop and ask rather than picking silently — these are exactly the kind of
+  decisions that caused the legacy project's undebuggable bugs.
+
+---
+
+### P3-T6 — VpnService skeleton wired to the state machine (no libbox yet)
+
+**Status:** Not Started
+**Depends On:** P3-T5, P3-T2
+
+**Objective:** Implement a minimal Android `VpnService` subclass that wires real Android
+lifecycle events (`onStartCommand`, `onDestroy`, `onRevoke`, foreground-service notification,
+`VpnService.Builder`/`establish()`) to the `VpnStateMachine` from P3-T5, **without yet calling
+into libbox at all** — using a fake/no-op "engine" (e.g. one that just waits a fixed delay to
+simulate connecting) so the Android-framework-integration layer can be proven correct in
+isolation from libbox-specific complexity.
+
+**Scope:**
+- Included: `BrickVpnService.kt` (or similarly named) extending `android.net.VpnService`, correct
+  foreground-service notification setup (with whatever notification-permission handling the
+  target Android API levels require, per P3-T1's research), a fake/stub "tunnel engine" interface
+  implementation for this task only, explicit `ACTION_STOP` broadcast/intent handling +
+  `stopSelf()` (never a bare `stopService()`, per the non-negotiable rule), retained
+  `ParcelFileDescriptor` handle management (acquire via `establish()`, guaranteed close via
+  try/finally on every code path).
+- Excluded: any real libbox call (next task); any Flutter/platform-channel code.
+
+**Acceptance Criteria:**
+- [ ] Service correctly starts in the foreground with a valid, correctly-typed notification
+      (confirm the correct foreground-service type declaration for VPN, per current Android
+      requirements verified in P3-T1/at task time).
+- [ ] `onRevoke()` is implemented and correctly triggers a clean stop through the state machine
+      (not a separate, parallel teardown path).
+- [ ] Explicit `ACTION_STOP` intent + `stopSelf()` handshake is implemented; no code path calls
+      the deprecated/unsafe bare `stopService()` pattern documented as a legacy bug.
+- [ ] The `ParcelFileDescriptor` obtained from `establish()` is guaranteed closed exactly once on
+      every exit path (normal stop, error, revoke, service destroyed) — proven via targeted
+      instrumented tests (see next bullet) and/or careful manual code review documented in the
+      report.
+- [ ] No blocking calls occur on the main thread anywhere in this class, including in
+      `onDestroy()` — all state-machine interaction happens via coroutines on an appropriate
+      dispatcher, verified by code review and, where feasible, a StrictMode-based check during
+      manual testing.
+- [ ] Android instrumented tests (`connectedAndroidTest`, requiring the device/emulator) prove:
+      service starts and reaches `Running` (fake engine) state, `ACTION_STOP` cleanly stops it,
+      `onRevoke()` cleanly stops it, and no `ParcelFileDescriptor` leak is observed (verified via
+      `adb shell` fd inspection on the running process, as documented in the legacy project's own
+      debugging notes).
+- [ ] `./gradlew connectedAndroidTest` passes on the real connected device noted in
+      `PROJECT_STATE.md`.
+
+**Notes for Agent:**
+- This task deliberately defers libbox entirely so that any bug found here is unambiguously an
+  Android-framework/lifecycle bug, not a libbox integration bug — preserve this separation
+  strictly; do not "just wire in libbox while I'm here" even if it seems convenient.
+
+---
+
+### P3-T7 — libbox integration: real tunnel engine wired into VpnService
+
+**Status:** Not Started
+**Depends On:** P3-T6, P3-T3
+
+**Objective:** Replace the fake/stub tunnel engine from P3-T6 with a real implementation that
+initializes libbox with a valid sing-box configuration (a hardcoded, known-good test config for
+now — real user-supplied configs come from Phase 2's parser output later in Gate B), implements
+whatever `PlatformInterface`/`adapter.PlatformInterface` (per P3-T1's confirmed current shape)
+libbox requires from the host app, and correctly passes the TUN file descriptor from
+`VpnService.Builder.establish()` into libbox.
+
+**Scope:**
+- Included: `LibboxTunnelEngine.kt` (or similarly named) implementing whatever engine interface
+  `VpnStateMachine`/`VpnService` expects (defined in P3-T5/T6), correct libbox lifecycle calls
+  (start/stop/close) dispatched off the main thread, correct handling of libbox callbacks
+  (ensuring stale-session callbacks are discarded per the state machine's session-token rule),
+  one hardcoded, known-valid sing-box test config (e.g. pointing at a test/self-hosted server the
+  human provides, or a well-known public test endpoint if appropriate — confirm with human) used
+  purely for lifecycle testing purposes.
+- Excluded: any dynamic/user-supplied config loading (Gate B); any UI for config selection.
+
+**Acceptance Criteria:**
+- [ ] libbox successfully establishes a real tunnel using the hardcoded test config, verified by
+      an actual change in the device's effective outbound IP (e.g. via a manual `curl
+      ifconfig.me`-equivalent check before/after connecting, documented in the report) — this is
+      the first point in the entire project where real network traffic actually flows through
+      sing-box, and it must be explicitly, manually verified, not assumed from code review alone.
+- [ ] libbox callbacks (state changes, errors) are correctly routed into `VpnStateMachine`,
+      respecting session tokens (a stale callback from a previous session must be provably
+      ignored, per P3-T5's contract).
+- [ ] No libbox call (start, stop, config apply) blocks the main thread.
+- [ ] The `ParcelFileDescriptor` handling rule from P3-T6 still holds with the real libbox engine
+      in place — re-verified, not assumed to still work unchanged.
+- [ ] The DNS-bootstrap-deadlock class of bug from the legacy project (`Semaphore`/thread-pool
+      blocking in a custom `lookup()` implementation) is either not reintroduced (if the current
+      libbox/adapter interface no longer requires a custom blocking DNS implementation) or, if it
+      is still required, is implemented with explicit, tested interruptibility/timeout handling —
+      confirm which situation applies based on P3-T1's research and document the decision.
+- [ ] Any remote rule-set/geoip/geosite downloads libbox may attempt are either disabled for this
+      test config or explicitly verified not to block startup indefinitely (the legacy project's
+      "blocking Iran-side raw.githubusercontent.com fetch" bug must not be reintroduced silently).
+- [ ] Instrumented tests re-run from P3-T6 (start/stop/revoke) all still pass with the real engine.
+- [ ] `melos`/Gradle test commands pass; manual real-traffic verification is documented with
+      concrete before/after evidence in the task report.
+
+**Notes for Agent:**
+- This task is the direct spiritual successor to the exact bugs that killed the legacy project
+  (stats always zero due to swallowed connection failures, "connected" but no real traffic due to
+  DNS/geoip blocking, catch-path leaks). Re-read the legacy failure analysis in
+  `PROJECT_STATE.md`'s "Errors & Dead Ends" section before starting, and treat every one of those
+  root causes as an explicit test case to actively try to reproduce and prove absent, not just
+  something to passively avoid.
+- Do not silently swallow any libbox error as a mere log warning — every failure path must
+  propagate into `VpnStateMachine.Error` with a specific reason, per the legacy lesson about
+  silently-swallowed `CommandClient` connection failures.
+
+---
+
+### P3-T8 — Traffic stats and log stream wiring (kept structurally separate from connection state)
+
+**Status:** Not Started
+**Depends On:** P3-T7
+
+**Objective:** Implement real traffic statistics polling/streaming from libbox (bytes up/down)
+and a bounded, redacted log ring buffer, exposed from `BrickVpnService` as two structurally
+separate data flows from `VpnStateMachine`'s connection-state flow — directly enforcing the
+architectural rule that connection state and traffic stats must never share a failure domain
+(the legacy project's core stats bug was exactly this coupling).
+
+**Scope:**
+- Included: a `TrafficStatsPublisher` (or similarly named) component polling/subscribing to
+  libbox's stats interface (verify current recommended mechanism — e.g. sing-box's `CommandClient`
+  stats API, per P3-T1/T4 research) independently of connection-state handling, such that a stats-
+  connection failure cannot cause or be caused by a connection-state failure and vice versa; a
+  bounded, redacted `LogRingBuffer` capturing recent native-layer log lines (no secrets — apply
+  the redaction principle from `SECURITY.md` even at this early stage, using placeholder rules if
+  the real redaction scheme isn't finalized yet, per P1-T9's stub).
+- Excluded: any UI display of stats/logs (Gate B minimum, real UI later); log export/diagnostic
+  bundle feature (later phase).
+
+**Acceptance Criteria:**
+- [ ] Traffic stats update at a reasonable interval (e.g. ~1Hz — justify the exact number) while
+      connected, using real byte counts observed to increase during actual data transfer in
+      manual testing (not hardcoded/simulated values).
+- [ ] Traffic stats reporting is proven, via a specific test/manual scenario, to keep working
+      correctly even if artificially forced to hit an internal error once (and recover), without
+      affecting the connection-state flow, and conversely a simulated connection-state error does
+      not silently zero out or corrupt the stats flow — directly reproducing and disproving the
+      legacy bug class.
+- [ ] Log ring buffer is bounded in size (define and justify a concrete max entry count/byte
+      size) and does not grow unbounded during a long-running connection.
+- [ ] No raw config secrets (UUIDs, passwords, keys) appear in any captured log line — verified by
+      manual inspection of captured logs during a test connection using the hardcoded test config
+      from P3-T7.
+- [ ] `melos`/Gradle test commands pass; manual verification documented with evidence (e.g.
+      observed stats values during a real download).
+
+**Notes for Agent:**
+- This task exists specifically because "traffic stats always showed 0 bytes" was one of the
+  three named root failures of the legacy project. Do not consider this task done until you have
+  concretely, manually observed non-zero, increasing byte counts during a real test connection —
+  code review alone is not sufficient evidence here.
+
+---
+
+### P3-T9 — Chaos/stress test suite (the Gate A hard gate)
+
+**Status:** Not Started
+**Depends On:** P3-T8
+
+**Objective:** Implement and execute the full lifecycle chaos-test protocol against the native-
+only harness, covering every scenario identified across the peer-review responses and the legacy
+failure analysis, as both automated instrumented tests (where feasible) and a documented manual
+test script (where true device-level chaos, like force-stop or reboot, can't be fully automated
+without additional tooling).
+
+**Scope:**
+- Included: an automated instrumented test suite covering repeated start/stop cycling, and a
+  manual test protocol document (`native/android/docs/CHAOS_TEST_PROTOCOL.md`) covering the
+  scenarios below, executed by hand on the real connected device, with results recorded.
+- Excluded: any Flutter-side testing (Gate B).
+
+**Acceptance Criteria — all must pass, each with recorded evidence:**
+- [ ] Start/stop cycled 100 times sequentially via automated instrumented test — zero crashes,
+      zero stuck `Stopping` states, zero leaked `ParcelFileDescriptor`s (verified via `adb shell`
+      fd count inspection before/after the run).
+- [ ] Start/stop cycled 20 times with the device screen turned off during each cycle (manual).
+- [ ] Start/stop cycled 20 times with the app/service backgrounded (manual).
+- [ ] Start/stop cycled with Wi-Fi ↔ mobile-data network switching occurring mid-connection
+      (manual) — connection either cleanly recovers or cleanly errors, never silently corrupts
+      state.
+- [ ] Calling `start` while already `Starting` does not corrupt state (`rejectedBusy` returned,
+      original start proceeds normally) — automated.
+- [ ] Calling `stop` while `Starting` cleanly cancels and cleans up — automated.
+- [ ] Calling `stop` repeatedly while already `Stopping` is idempotent — automated.
+- [ ] Force-stopping the app via Android system settings while the VPN is running, then
+      reopening it, results in no zombie service, no leaked TUN interface, and correct state
+      reporting on reopen (manual).
+- [ ] Device reboot while VPN was running results in the VPN correctly stopped (not restarted
+      unexpectedly without explicit always-on configuration) and no persistent broken state
+      (manual).
+- [ ] Simulated/forced libbox teardown hang (e.g. via a debug hook) is proven to trigger the
+      5-second stop watchdog and force-complete cleanup — automated (extends the P3-T5 unit-level
+      proof to the full real-engine integration level).
+- [ ] `onRevoke()` (triggered via Android VPN settings, disabling the VPN externally) results in
+      clean stop, correct state, and no restart loop (manual).
+- [ ] Providing a deliberately invalid config to `start()` results in rejection before any TUN
+      interface is created, with a specific `Error` reason, never a partial/half-started state
+      (automated or manual, whichever is more practical to construct).
+
+**Notes for Agent:**
+- **This task is the actual Gate A pass/fail checkpoint for the entire project's core risk.** If
+  any scenario above fails, fix the root cause in the relevant earlier task's files (P3-T5/T6/T7/
+  T8) and re-run the **entire** suite from scratch — do not consider a partial re-run sufficient,
+  since fixes can introduce regressions in previously-passing scenarios.
+- Record results honestly, including intermittent/flaky failures — a scenario that "usually
+  passes" is not a passing scenario for a VPN lifecycle; investigate and fix flakiness rather than
+  reporting it as a pass.
+
+---
+
+### P3-T10 — Gate A closeout and Definition-of-Done pass
+
+**Status:** Not Started
+**Depends On:** P3-T1 through P3-T9
+
+**Objective:** Formally close out Gate A: confirm every task above is genuinely `Completed`,
+confirm the full chaos-test suite (P3-T9) passes with no outstanding known issues, and update
+`PROJECT_STATE.md` to reflect that the native Android VPN lifecycle is proven and Gate B
+(Flutter/Platform-Channel integration) is ready to begin.
+
+**Scope:**
+- Included: full verification pass of `native/android/` from a clean checkout (fresh AAR build
+  via P3-T3's script, fresh Gradle build, full test suite run), a written Gate A summary report,
+  `PROJECT_STATE.md` update.
+- Excluded: any Gate B work.
+
+**Acceptance Criteria:**
+- [ ] Fresh checkout + fresh libbox AAR build + `./gradlew build` + full unit/instrumented test
+      suite all succeed with zero manual workarounds beyond what's documented in
+      `native/android/README.md`.
+- [ ] The full P3-T9 chaos-test suite passes in a final, clean run (not relying on results from
+      earlier iterative debugging runs).
+- [ ] A Gate A summary report explicitly maps each of the legacy project's named root-cause bugs
+      (traffic stats always zero, connected-but-no-traffic, VPN wouldn't stop reliably, and their
+      sub-causes listed in `PROJECT_STATE.md`) to the specific test/scenario in this phase that
+      now proves it does not reproduce — a direct, explicit traceability list, not a vague
+      assurance.
+- [ ] `PROJECT_STATE.md` is fully rewritten to reflect end-of-Gate-A state, explicitly stating
+      Gate B is next and must not skip re-testing equivalent scenarios through the full Flutter
+      stack.
+- [ ] Closeout report follows the exact `DEFINITION_OF_DONE.md` template.
+
+**Notes for Agent:**
+- Do not proceed to Gate B tasks under any circumstances until this closeout is genuinely
+  `Completed` and reviewed by the human — this is the single most important sequencing gate in
+  the entire roadmap.
+
+---
+
 ### Gate B — Flutter / Platform-Channel Integration
 
 **Precondition for this entire gate:** P3-T10 (Gate A closeout) must be `Completed`. Every task
@@ -1972,6 +2486,7 @@ Phase 5 (Core MVP Features) is ready to begin.
 
 ---
 
+
 ## Phase 5 — Core MVP Features
 
 **Phase Goal:** Replace all Phase 3/4 hardcoded/test data with real, user-supplied server configurations. By the end of this phase, a user can add a server (by pasting a link or scanning a QR code), optionally import a subscription, see their servers in a real list, pick one as active, and actually connect/disconnect through it — the first true end-to-end usable feature slice of Brick VPN.
@@ -2257,290 +2772,222 @@ As with every phase closeout, do not mark this `Completed` yourself — propose 
 
 ---
 
-## Phase 5 — Core MVP Features
+## Phase 6 — Traffic Stats & Live Logs
 
-**Phase Goal:** Replace all Phase 3/4 hardcoded/test data with real, user-supplied server configurations. By the end of this phase, a user can add a server (by pasting a link or scanning a QR code), optionally import a subscription, see their servers in a real list, pick one as active, and actually connect/disconnect through it — the first true end-to-end usable feature slice of Brick VPN.
+**Phase Goal:** Give the user real, trustworthy visibility into what the VPN connection is actually doing — live upload/download traffic statistics and a live log viewer — sourced directly from the native engine, not derived from guesses or client-side estimation. This phase is deliberately separated from Phase 3 (per the legacy-prototype lesson where traffic stats silently always showed 0 bytes due to a swallowed connection failure) so that stats/logs plumbing gets focused, dedicated verification rather than being bolted onto the already-high-risk VPN lifecycle work.
 
-**Granularity Note (reaffirmed):** Per the Granularity Note in the document header, Phase 5 tasks are written at a coarser grain than Phases 0–3. Each task below is still fully templated and independently actionable, but some tasks intentionally bundle related sub-steps that a future re-pass may choose to split further once this phase is actually reached. Do not treat the current task count as final — expand if the assigned coding agent or the human reviewer finds a task too large to complete and review as one atomic unit.
+**Granularity Note (reaffirmed):** Written at the same coarser-but-fully-templated grain as Phase 5, expandable later.
 
 ---
 
-### P5-T1 — Local Persistent Storage for Server Profiles
+### P6-T1 — Traffic Stats Data Plumbing (Native → Domain)
 
 **Status:** Not Started
-**Depends On:** P1-T3, P4-T8
+**Depends On:** P3-T17, P5-T8
 
 **Objective:**
-Implement a real, persistent storage backend for `ServerProfile` records (and any subscription metadata) behind the repository interface defined in `packages/core_domain` (P1-T3), replacing the in-memory/hardcoded test data used throughout Phases 3–4.
+Implement reliable, real-time traffic statistics reporting from the native Android VPN engine, through the Pigeon-generated typed channels established in Phase 3, into the Dart domain layer — with explicit, deliberate attention to avoiding the exact root cause of the legacy prototype's "traffic always 0 bytes" failure.
 
 **Scope:**
 - Included:
-  - Research and select a local storage solution appropriate for Flutter (candidates to evaluate on their actual current merits — do not assume based on popularity alone: Isar, Hive, Drift/sqlite3, or a simpler JSON-file-based store). Document the comparison and the decision with rationale in a short ADR-style note (can live in `ARCHITECTURE.md` Decision Log or a dedicated note referenced from it).
-  - Confirm/finalize the open design question from P1-T3 regarding whether per-protocol config payloads are stored as a generic `Map<String, dynamic>` or as a fully-typed sealed class hierarchy, and make sure the chosen storage layer can (de)serialize whichever representation was actually implemented in `core_domain`. If P1-T3 left this ambiguous or was implemented inconsistently, resolve/align it as part of this task and flag the resolution clearly in the completion report.
-  - Implement the concrete repository class(es) fulfilling the repository interface(s) already defined in `core_domain`, backed by the chosen storage engine.
-  - Support CRUD operations: create, read (single + list), update, delete for `ServerProfile` entities.
-  - Support a minimal subscription metadata record (subscription URL, last-refreshed timestamp, associated server profile IDs) sufficient for P5-T4/T6 to build on. The exact schema is this task's responsibility to define, since no prior task has defined it.
-  - Wire the concrete repository into the app's dependency-injection/Riverpod provider graph (per P4-T2's provider architecture), replacing whatever placeholder/in-memory repository was used in Phase 4.
-  - Data migration is out of scope for correctness right now (no real users exist yet), but the schema should be defined with a version field or equivalent so that future migrations (Phase 8+) are not a rewrite.
+  - Re-verify, at time of execution, the current correct mechanism for reading traffic statistics from the sing-box/libbox version actually pinned in this project (candidates to check: a `CommandClient`/status-query API, the Clash API's traffic endpoint if exposed on Android too, or a direct stats accessor on the libbox session object). Do not assume the legacy prototype's approach (`CommandClient` polling) is still the correct or best mechanism — verify current guidance and pick deliberately.
+  - If a `CommandClient`-style connection is used, implement explicit, non-swallowed error handling for connection failures — the legacy prototype's root-cause bug was silently downgrading connection failures to warnings and only polling when JS-side state was already `'connected'`. This exact failure pattern must be explicitly designed against and called out in the completion report as verified absent.
+  - Native-side collection of traffic stats (bytes uploaded, bytes downloaded, and current instantaneous speed if directly available; otherwise compute speed client-side from a byte-count delta over a known time interval — document which approach was used and why).
+  - A typed EventChannel-equivalent stream (per Section 3.5's Pigeon/typed-channel rule) delivering stats updates to Dart at a reasonable, bounded frequency (define and document the interval — e.g., 1 second — balancing responsiveness against overhead).
+  - A domain-layer `TrafficStats` model (bytes up, bytes down, timestamp, optionally instantaneous speed) in `packages/core_domain`, and the corresponding provider(s) in the app layer to expose it reactively.
+  - Explicit verification that the stats stream's failure domain is independent of the connection-state stream's failure domain — i.e., a stats-subscription hiccup must not corrupt or freeze the connection-state display, and vice versa (this directly generalizes P3-T8's original test to real, non-test usage).
 - Excluded:
-  - Encryption-at-rest of sensitive fields (passwords, UUIDs, private keys) — deferred to Phase 8 (Security Hardening). This task must still avoid trivially defeating future encryption efforts (e.g., don't bake in assumptions that make encrypting a single field impossible later), but no encryption work is required now.
-  - Cloud sync / backup of any kind — explicitly out of scope, not currently planned for this project at all.
-  - UI for any of this — pure data-layer work.
+  - Any UI rendering of stats (P6-T2).
+  - Historical/persisted stats across sessions or app restarts.
+  - Per-app or per-destination traffic breakdown — out of scope entirely for this project's current ambitions.
 
 **Acceptance Criteria:**
-- [ ] Storage engine selection is documented with rationale (performance/reactivity/maintenance-burden trade-offs actually considered, not assumed).
-- [ ] Concrete repository implementation exists, fulfills the `core_domain` interface, and compiles with no type-checking errors.
-- [ ] CRUD operations are covered by automated tests using a real (not mocked) instance of the storage engine, run against temporary/in-memory storage locations so tests don't pollute developer machines.
-- [ ] Subscription metadata schema is defined and documented (even briefly) in code comments or a short markdown note.
-- [ ] Provider graph is updated so the rest of the app now reads/writes through the real repository, and the Phase 4 in-memory/hardcoded implementation is deleted (not left dangling as dead code).
+- [ ] The current-correct native stats-reporting mechanism is identified, verified against actual current sing-box/libbox documentation or source (not assumed from prior knowledge), and documented in the report.
+- [ ] Connection failures in whatever stats-fetch mechanism is used are explicitly surfaced (logged as errors, not silently downgraded to warnings) and reported up through a well-defined error path — explicitly confirmed to not reproduce the legacy prototype's swallowed-failure bug.
+- [ ] During a real connected session with real traffic (reusing a working config), non-zero, correctly increasing byte counts are observed end-to-end through the Dart-side stream, and this observation is described in the report with enough detail (actual numbers, method of verification) to be trusted.
+- [ ] Stats stream and connection-state stream are demonstrated to be failure-domain-independent (e.g., by a deliberate fault-injection test analogous to P3-T8's, adapted for this real pipeline).
+- [ ] Automated tests cover the domain-layer `TrafficStats` model and the Dart-side stream-handling logic, with the platform-channel boundary faked/mocked.
 - [ ] Report follows the `DEFINITION_OF_DONE.md` template.
 
 **Notes for Agent:**
-Check the actual state of `core_domain`'s `ServerProfile` model before starting — its exact shape was left open in P1-T3 and may have been resolved in a way not anticipated by this roadmap text. If you find the model under-specified or inconsistent with what subscription-derived servers (Phase 2's parser output) actually produce, stop and ask rather than force-fitting one representation onto the other. Do not silently pick a storage engine because it's what you've seen most often in unrelated projects — verify current (as of when you actually do this task) community consensus, maintenance status, and Flutter-null-safety/latest-Dart-SDK compatibility of whichever engine you propose.
+This task exists specifically because of a real, previously-shipped bug — re-read the "Errors & Dead Ends" context on the legacy prototype's traffic-stats failure before starting. Do not treat this as routine plumbing; the exact failure mode (stats mechanism silently failing to connect, error downgraded to a warning, fallback logic gated on a state condition that masked the whole problem) must be a named, explicitly-checked-for risk in your own verification approach, not something you assume can't happen again because "the architecture is better now."
 
 ---
 
-### P5-T2 — Add Server: Manual URI/Link Paste
+### P6-T2 — Traffic Stats UI Display
 
 **Status:** Not Started
-**Depends On:** P5-T1, P2-T3 through P2-T8 (protocol parsers), P2-T11 (parser facade/validation output)
+**Depends On:** P6-T1
 
 **Objective:**
-Implement the first real "Add Server" entry path: a screen/flow where the user pastes a single server configuration link (e.g., `vmess://`, `vless://`, `trojan://`, `ss://`, etc., per whatever protocols Phase 2 actually implemented) and the app parses it via the Phase 2 config parser engine, shows a confirmation/preview, and persists it via P5-T1's repository.
+Display the real-time traffic statistics produced by P6-T1 in a minimal, functional UI element visible while connected.
 
 **Scope:**
 - Included:
-  - A minimal input screen (plain text field + paste-from-clipboard convenience button + submit action). Visual design remains deliberately minimal per the Phase 11 deferral — functional clarity only.
-  - Wiring the pasted string through the Phase 2 parser facade, handling success and failure paths.
-  - On successful parse: show a brief, plain preview of key fields (protocol type, address, remark/name if present) and let the user confirm before saving, or save directly if that's the simpler correct UX call — the agent should make and document this small UX call, not treat it as an open design question requiring a human round-trip.
-  - On parse failure: surface the specific error reason returned by the Phase 2 parser (not a generic "invalid link" message), consistent with Phase 2's error-handling design.
-  - Duplicate detection is a nice-to-have, not required, for this task — if trivial to add given the repository's query capabilities, include it; otherwise leave a `// TODO` and do not block completion on it.
+  - Display of current upload/download speed and session-cumulative upload/download totals, updating live while connected.
+  - Reset of session-cumulative totals at the start of each new connection (not carried over from a previous session).
+  - Sensible human-readable formatting (B/KB/MB/GB, /s for speed) — implement or use a well-vetted formatting utility rather than ad-hoc string math prone to off-by-factor-of-1024-vs-1000 bugs.
+  - Deliberately minimal visual design per the Phase 11 UI/UX deferral — plain text/labels are entirely sufficient, no charts or graphics required.
 - Excluded:
-  - QR scanning (P5-T3).
-  - Subscription URLs (P5-T4) — a subscription URL pasted into this single-server field should be detected and rejected with a clear message pointing the user at the subscription import flow, not silently mis-parsed as a single server.
-  - Editing an existing server (P5-T6).
+  - Any charting, graphing, or historical visualization — explicitly deferred to be considered (if ever) as part of Phase 11's design pass, not guaranteed to be built at all.
+  - Per-app or per-connection breakdown displays.
 
 **Acceptance Criteria:**
-- [ ] User can paste a valid link for at least one protocol supported by Phase 2 and see it appear, persisted, in the repository.
-- [ ] Invalid/malformed input produces a clear, specific, non-crashing error message surfaced from the parser's actual failure reason.
-- [ ] A subscription-URL-shaped input is detected and rejected with guidance rather than mis-handled.
-- [ ] Manual test performed and described for at least two different protocol types actually implemented in Phase 2.
+- [ ] Speed and cumulative totals update visibly and correctly during a real connected session.
+- [ ] Totals reset correctly on each new connection.
+- [ ] Byte-formatting utility is correct and covered by a unit test (including boundary values like exactly 1024 bytes, 1 MB, etc.).
+- [ ] UI update frequency does not cause visible jank or excessive widget rebuilds — verified by the agent checking that only the relevant stats widget(s) rebuild on each stream tick, not the entire screen (use Riverpod's fine-grained `select`/watch patterns as established in P4-T2's provider architecture).
 - [ ] Report follows the `DEFINITION_OF_DONE.md` template.
 
 **Notes for Agent:**
-This is the first place where Phase 2's parser output meets a real UI and real persistence — treat any mismatch you discover between what the parser produces and what `core_domain`/the repository expects as a signal to stop and reconcile, not to paper over with ad-hoc conversion glue scattered through UI code. All input here is untrusted (pasted by the user, possibly copied from an untrusted source) — treat it per `SECURITY.md` handling expectations already established in Phase 2, even though this task itself is UI-layer.
+Because the stats stream may tick frequently, pay explicit attention to rebuild scope — this is a good, low-risk place to demonstrate correct fine-grained Riverpod usage per the architecture already established in Phase 4, rather than naively watching the whole stats object from a high-level widget.
 
 ---
 
-### P5-T3 — Add Server: QR Code Scan
+### P6-T3 — Live Log Capture From Native Engine
 
 **Status:** Not Started
-**Depends On:** P5-T2
+**Depends On:** P3-T17
 
 **Objective:**
-Add a QR-code-scanning entry path that feeds the same parse-and-save pipeline built in P5-T2, including the Android camera permission flow.
+Capture the native sing-box/libbox engine's internal log output and stream it to the Dart layer in near-real time via a typed channel, with a bounded in-memory buffer, for use by the log viewer (P6-T4).
 
 **Scope:**
 - Included:
-  - Research and select a current, maintained QR-scanning Flutter package (verify actual maintenance status and current Android/Flutter-version compatibility — do not assume a package that was popular during training-data cutoff is still the right choice).
-  - Camera permission request flow (grant/deny/permanently-denied states all handled distinctly, with clear user-facing messaging for each — reuse or extend whatever permission-handling pattern already exists from P3-T12's VPN-permission `prepare()` work if applicable, for consistency).
-  - Scanning a QR code containing a single server link and routing the decoded string through the exact same parser pipeline used in P5-T2 (no duplicated parsing logic).
-  - Basic scan-screen affordances (camera preview, cancel button) — minimal styling only.
+  - Verify the current correct API for hooking into libbox's logging output (a `Logger` interface, log-file tailing, or a dedicated log-streaming API — check what the pinned sing-box/libbox version actually exposes rather than assuming).
+  - Forward each log entry to Dart with at minimum: timestamp, level/severity, and message text, via a typed EventChannel-equivalent stream per Section 3.5's rules.
+  - Implement a bounded in-memory ring buffer (native or Dart side — agent's choice, document which) so that long-running connections do not cause unbounded memory growth; define and document the buffer size/eviction policy.
+  - Rate-limit or batch log delivery if the native engine can produce logs faster than the UI can reasonably consume them, to avoid flooding the platform channel or the UI thread.
 - Excluded:
-  - Scanning a QR code that encodes a full subscription (if such a format exists/matters, defer to P5-T4's judgment or a future task — do not scope-creep this task).
-  - Batch/multi-QR scanning.
+  - Full log redaction (sensitive-data scrubbing) — this is explicitly deferred to Phase 8 (Security Hardening) per the project's established phase plan. However, this task must not make Phase 8's job harder: keep log entries as structured data (not pre-flattened into opaque strings) wherever feasible, so that a future redaction pass in Phase 8 can inspect and filter fields rather than needing to regex arbitrary text.
+  - Persisting logs to disk across app restarts — in-memory only for this phase.
 
 **Acceptance Criteria:**
-- [ ] Camera permission is correctly requested, and all three states (granted, denied, permanently denied → redirected to system settings) are handled without crashing.
-- [ ] A real QR code encoding a valid server link, scanned on a physical Android device or emulator with a virtual camera feed, results in a correctly parsed and saved server.
-- [ ] An invalid/unsupported QR code produces the same clear error path as P5-T2's invalid-link case, not a separate inconsistent error UX.
+- [ ] Native log output is verified to be actually captured and correctly forwarded to Dart during a real connected session (spot-checked against known expected log lines, e.g., a connection-start or DNS-resolution log entry).
+- [ ] In-memory ring buffer correctly bounds memory growth during an extended test run (e.g., an artificially high-log-volume scenario), verified and described in the report.
+- [ ] Log entries arrive as structured data (level, timestamp, message as distinct fields), not a single opaque blob string, confirmed in the report.
+- [ ] Report explicitly flags, as a known limitation, that log entries may currently contain sensitive information (server addresses, possibly credentials depending on log verbosity) and that full redaction is deferred to Phase 8 — this flag must also be carried into the Phase 6 closeout's `PROJECT_STATE.md` update (P6-T7).
 - [ ] Report follows the `DEFINITION_OF_DONE.md` template.
 
 **Notes for Agent:**
-Verify current camera-permission best practice for the Android API levels this project targets (per P0-T8/P3-T3's pinned target/minSdk) — permission handling has shifted across Android versions and across Flutter permission packages; don't assume older guidance still applies without checking.
+Do not attempt to build a full redaction system now — that is explicitly Phase 8's job and doing it prematurely/inconsistently here risks conflicting with Phase 8's eventual design. Your only obligation regarding sensitive data in this task is to (a) not make the problem structurally harder to fix later, and (b) clearly document the gap so it isn't forgotten. If you notice the native engine logging something egregiously sensitive in cleartext (e.g., a raw password) at a log level that would be visible even in default/non-verbose mode, flag this prominently in your report as a candidate for the human to consider suppressing at the source (e.g., lowering that specific log's verbosity) even before Phase 8 — but do not silently implement ad-hoc filtering yourself without flagging it.
 
 ---
 
-### P5-T4 — Add Server: Subscription URL Import
+### P6-T4 — Live Log Viewer Screen
 
 **Status:** Not Started
-**Depends On:** P5-T1, P2-T9, P2-T10 (subscription fetch/parse from Phase 2)
+**Depends On:** P6-T3
 
 **Objective:**
-Implement a flow for importing multiple servers at once from a subscription URL, using the fetch-and-parse logic already built in Phase 2, and persisting the resulting set of servers along with subscription metadata for later refresh.
+Build a minimal, functional screen displaying the live log stream from P6-T3, with basic usability affordances (auto-scroll, level-based visual distinction, clear buffer).
 
 **Scope:**
 - Included:
-  - An input flow for the user to paste/enter a subscription URL (mirrors P5-T2's input pattern where reasonable, for UX consistency).
-  - Invoking Phase 2's subscription fetch logic (P2-T9/T10), which already treats the fetched content as untrusted per `SECURITY.md`.
-  - On successful fetch+parse: persist the subscription metadata record (from P5-T1) and all resulting `ServerProfile` entries, tagging each with the subscription it came from so P5-T6's refresh/removal logic can manage them as a group.
-  - Clear handling of partial failure (subscription reachable but contains some malformed entries among valid ones) — decide and document whether partial success (import the valid ones, report the invalid ones) or all-or-nothing is the correct behavior; partial success is the recommended default unless the agent finds a concrete reason otherwise.
-  - Network-failure and timeout handling with clear user-facing messaging (distinct from parse-failure messaging).
+  - A scrollable list view rendering log entries as they arrive, newest at the bottom (or top — agent's choice, but must be consistent and documented).
+  - Auto-scroll-to-latest behavior that automatically pauses when the user manually scrolls up to read older entries, and a clear affordance to resume auto-scroll (e.g., a "jump to latest" button).
+  - Minimal visual distinction between log levels (e.g., a colored left-border, tag, or icon per level) — deliberately simple, no elaborate theming, per Phase 11 deferral.
+  - A "clear buffer" action that empties the currently displayed/stored log buffer.
 - Excluded:
-  - Automatic/background periodic refresh of subscriptions — manual refresh only, wired in P5-T6.
-  - Subscription format auto-detection beyond whatever Phase 2 already implemented (e.g., if Phase 2 only handles Base64 and/or a specific YAML dialect, do not expand format support here without flagging it as a scope question first).
+  - Text search or filtering by level/keyword — nice-to-have, not required; add only if trivial, otherwise document as a future improvement.
+  - Export/copy functionality (P6-T5).
+  - Persistence of logs across app restarts (consistent with P6-T3's in-memory-only scope).
 
 **Acceptance Criteria:**
-- [ ] A valid subscription URL (real or realistic test fixture) results in correctly imported, persisted servers correctly tagged with their source subscription.
-- [ ] Partial-failure behavior is implemented and documented per whichever policy (partial-success vs. all-or-nothing) was decided.
-- [ ] Network failure, timeout, and empty-subscription cases are all handled without crashing, with distinct, clear messaging.
+- [ ] Log entries render live and correctly as they arrive during a real connected session.
+- [ ] Auto-scroll and its pause/resume behavior work correctly and are manually verified.
+- [ ] Log level visual distinction is present and correct for at least the levels the native engine actually emits.
+- [ ] Clear-buffer action works correctly and is reflected both in the UI and in the underlying buffer from P6-T3.
+- [ ] Rendering performance remains acceptable with a large buffer (test with the buffer near its configured maximum size) — use a virtualized/lazy list widget, not a naively rebuilt full list, if buffer sizes make this a concern.
 - [ ] Report follows the `DEFINITION_OF_DONE.md` template.
 
 **Notes for Agent:**
-This task is a thin orchestration/UI layer over already-built Phase 2 logic — if you find yourself needing to add real parsing logic here rather than in `packages/config_parser`, stop and reconsider whether this belongs in Phase 2 instead, to avoid splitting parsing logic across layers.
+Keep this screen genuinely minimal — it is a debugging/transparency tool for this phase, not a polished feature; Phase 11 may later redesign its visual presentation entirely, but the functional behavior (correctness of what's displayed) established here should carry forward.
 
 ---
 
-### P5-T5 — Server List Screen (Real Data)
+### P6-T5 — Log Export / Copy
 
 **Status:** Not Started
-**Depends On:** P5-T1, P4-T8
+**Depends On:** P6-T4
 
 **Objective:**
-Replace the Phase 3/4 hardcoded test `ServerProfile` and its placeholder list UI with a real server list screen backed by the repository from P5-T1, reactively updating as servers are added, edited, or removed.
+Allow the user to copy or export the currently buffered logs, for troubleshooting and bug-report purposes, with an explicit, honest warning about potential sensitive content given that full redaction is not yet implemented (Phase 8).
 
 **Scope:**
 - Included:
-  - A list screen showing all persisted servers (name/remark, protocol type, and whichever minimal identifying fields are useful — visual design remains minimal per Phase 11 deferral).
-  - Reactive updates via the Riverpod provider graph (per P4-T2) — adding a server elsewhere in the app must cause this list to update without manual refresh.
-  - An empty state (no servers yet) with a clear call-to-action pointing at the add-server flows (P5-T2/T3/T4).
-  - Visual/structural distinction (even if minimal, e.g. a small subtitle or grouping) between standalone servers and subscription-sourced servers, since P5-T6 will need per-subscription actions.
-  - Explicit removal of the Phase 3/4 hardcoded test `ServerProfile` from all code paths reachable in normal app operation (per the forward-pointer already noted in P4-T8) — it may remain only as isolated test fixture data used strictly within automated tests, never in production/runtime code paths.
+  - A "copy to clipboard" action for the currently buffered log contents (or the currently visible portion — agent's choice, document which, "entire buffer" is the recommended default).
+  - Optionally, a "share/export as file" action using the platform's native share sheet, if implementable without disproportionate effort — if it turns out to be non-trivial, it is acceptable to ship copy-to-clipboard only and document the export-as-file action as a documented future improvement.
+  - A mandatory, clear, non-dismissible-by-accident warning shown before export/copy, stating that logs may contain server addresses or other connection details and that the user should review before sharing publicly — this is a cheap, immediate safeguard pending Phase 8's full redaction system, not a replacement for it.
 - Excluded:
-  - Sorting/filtering/search — nice-to-have, not required for MVP; add only if trivial, otherwise leave as a documented future improvement.
-  - Drag-to-reorder or any advanced list interaction.
+  - Any automatic upload, telemetry, or remote log submission of any kind — this would directly violate the project's established no-telemetry policy and is absolutely out of scope, now and always, unless a future explicit, opt-in, user-initiated "send to developer" feature is deliberately designed and approved as its own task.
 
 **Acceptance Criteria:**
-- [ ] Server list reflects real repository state and updates reactively when data changes elsewhere in the app.
-- [ ] Empty state is implemented and reachable (verified by clearing all servers and observing it).
-- [ ] The Phase 3/4 hardcoded test `ServerProfile` no longer appears anywhere in a normal (non-test) run of the app; a grep/search confirms it is confined to test code only.
-- [ ] Subscription-sourced vs. standalone servers are visually distinguishable in some minimal way.
+- [ ] Copy-to-clipboard action works correctly and is manually verified to produce the actual current buffer contents.
+- [ ] The sensitive-content warning is shown before every export/copy action and clearly worded.
+- [ ] If file-export was implemented, it is verified to work via the platform share sheet on a real device/emulator; if not implemented, this is explicitly and honestly stated in the report rather than left ambiguous.
 - [ ] Report follows the `DEFINITION_OF_DONE.md` template.
 
 **Notes for Agent:**
-This is the task that finally retires the Phase 3 test scaffolding from the runtime app — treat its complete removal from production code paths as a hard requirement, not a nice-to-have, since leaving it in risks silent confusion in later phases (e.g., someone accidentally connecting to test data instead of a real server).
+This task is a deliberate, minimal stopgap for a real security gap (unredacted logs) that will not be fully closed until Phase 8. Treat the warning dialog as a genuine, non-optional safeguard, not UI decoration — do not ship this task without it.
 
 ---
 
-### P5-T6 — Server Management: Edit, Delete, Duplicate, Refresh Subscription
+### P6-T6 — Connection Session Info Panel
 
 **Status:** Not Started
-**Depends On:** P5-T5, P5-T4
+**Depends On:** P5-T8, P6-T2
 
 **Objective:**
-Implement the remaining CRUD-adjacent user actions on servers: editing a standalone server's fields, deleting a server (standalone or subscription-sourced), duplicating a server, and manually refreshing a subscription (re-fetch, diff against existing entries, add/update/remove as appropriate).
+Consolidate glanceable session information — connection duration, active server name/protocol, and current engine state — into one minimal info panel, sitting alongside the traffic stats display from P6-T2.
 
 **Scope:**
 - Included:
-  - Edit flow for standalone (non-subscription) servers — reuse P5-T2's input/validation pattern where the edited fields require re-parsing/re-validation (e.g., if editing raw fields rather than just a display name).
-  - Delete flow with a confirmation step (destructive action), for both standalone and subscription-sourced servers, with appropriate warnings if deleting a subscription's "parent" record also removes all its child servers.
-  - Duplicate flow (copy a server's config into a new standalone entry, e.g. useful for a user who wants to tweak a subscription-derived server without losing the original on next refresh).
-  - Manual subscription refresh action: re-run P5-T4's fetch/parse logic for an existing subscription, and implement a clear, documented diffing policy (e.g., replace all previously-associated servers with the newly fetched set; or diff by some stable identifier if one exists — the agent must decide and document which, given what's actually available in the parsed data).
+  - A live-ticking connection-duration timer, starting from the moment the engine's state stream reports a successful connected transition, and stopping/resetting on disconnect.
+  - Display of the currently active server's name/remark and protocol type (sourced from P5-T7's active-server selection).
+  - Display of the current engine state (e.g., connecting/connected/disconnecting/disconnected/error) using the existing state stream as the sole source of truth, consistent with the architecture rule established in Section 3.5 (state stream, never inferred from command return values).
+  - Deliberately minimal layout — this can be a simple panel or card, no custom illustration/branding.
 - Excluded:
-  - Editing a subscription-sourced server's raw connection fields directly (since a refresh would overwrite it) — if editing is desired for such a server, it should go through "duplicate to standalone" first. Document this constraint clearly to the user in the UI copy.
-  - Bulk operations (multi-select delete, etc.).
+  - Any diagnostics beyond what is already available from existing streams (e.g., no new native-side data collection should be needed for this task — if it turns out something is missing, flag it rather than building new native plumbing under this task's scope).
 
 **Acceptance Criteria:**
-- [ ] Editing a standalone server persists changes correctly and re-validates edited fields.
-- [ ] Deleting a server (both kinds) works correctly, including the subscription-parent-deletes-children case, with a confirmation step that cannot be bypassed accidentally.
-- [ ] Duplicating a server produces a correct, independent standalone copy.
-- [ ] Manual subscription refresh correctly updates the associated server set per the documented diffing policy, verified with a test subscription that changes between two fetches.
+- [ ] Duration timer starts and stops correctly and accurately across at least one full connect/disconnect cycle, manually verified.
+- [ ] Active server name/protocol displayed correctly and updates if the active server selection changes between sessions.
+- [ ] Engine state displayed matches the actual state stream at all times, including during error states, verified by deliberately inducing at least one error condition (e.g., an invalid config or airplane-mode network loss) and observing correct display.
 - [ ] Report follows the `DEFINITION_OF_DONE.md` template.
 
 **Notes for Agent:**
-The diffing policy for subscription refresh is an explicit open design point — do not guess silently. Pick the simplest correct policy (full-replace is likely simplest and safest given no stable cross-fetch identifier may exist in most subscription formats), document why, and flag it in your completion report as a decision the human should be aware of, even though it doesn't rise to the level of needing a mid-task pause.
+If you find that displaying accurate state or duration requires new data not currently exposed by the existing state stream, stop and flag this as a gap rather than adding ad-hoc new native plumbing under this task — that would blur this task's scope with P6-T1/P3's established boundaries.
 
 ---
 
-### P5-T7 — Active Server Selection
+### P6-T7 — Phase 6 Closeout and Definition-of-Done Pass
 
 **Status:** Not Started
-**Depends On:** P5-T5
+**Depends On:** P6-T1 through P6-T6
 
 **Objective:**
-Introduce the concept of a single "active" (currently selected, about-to-connect-or-connected) server, distinct from the full list, with persistence across app restarts.
+Perform a full closeout pass on Phase 6: verify the complete stats-and-logs experience works correctly from a fresh clone across a real connected session, produce the standard DoD report, and update `PROJECT_STATE.md` to reflect the new baseline — explicitly carrying forward the known log-redaction gap into Phase 8's eventual scope.
 
 **Scope:**
 - Included:
-  - A way for the user to mark one server as active from the list screen (e.g., tap-to-select, with clear visual indication of which one is currently active).
-  - Persisting the active server selection (its identifier) across app restarts — this may live in the same storage engine as P5-T1 or a simpler key-value store; the agent should choose the simplest correct approach.
-  - Exposing the active server through the Riverpod provider graph so the connect/disconnect flow (P5-T8) and any future status displays (Phase 6) can consume it reactively.
-  - Handling the case where the currently-active server is deleted (P5-T6) — the app must not crash or reference a dangling ID; fall back to "no active server selected" state cleanly.
+  - Fresh-clone build and manual run-through: connect to a real server, observe live traffic stats and live logs simultaneously, verify the session info panel, disconnect, and confirm stats/logs behave correctly across a second connect/disconnect cycle (not just the first).
+  - Full `DEFINITION_OF_DONE.md`-template report covering all of Phase 6's tasks collectively.
+  - Rewriting `PROJECT_STATE.md` to reflect: Phase 6 complete, live stats and logs now exist, the log-redaction gap is an explicitly tracked known limitation pointing at Phase 8, and the next phase is Phase 7 (Stability & Lifecycle Hardening).
 - Excluded:
-  - Any notion of multiple simultaneously "favorited" servers, tags, or grouping beyond the single active-selection concept — explicitly out of scope for MVP.
+  - Any new feature work — verification/closeout only.
 
 **Acceptance Criteria:**
-- [ ] User can select an active server from the list, with clear visual indication.
-- [ ] Active selection persists across a full app restart.
-- [ ] Deleting the active server results in a clean "no active server" state, verified by an explicit test/manual check, with no crash or stale reference.
-- [ ] Report follows the `DEFINITION_OF_DONE.md` template.
-
-**Notes for Agent:**
-Keep this deliberately simple — a single nullable "active server ID" concept is sufficient for MVP. Resist the temptation to build a more general selection/favorites system now; that can be revisited post-MVP if actually needed.
-
----
-
-### P5-T8 — Real Connect/Disconnect Flow
-
-**Status:** Not Started
-**Depends On:** P5-T7, P3-T17 (Gate B complete), P3-T12 (VpnEngine `prepare()` amendment)
-
-**Objective:**
-Wire the app's connect/disconnect UI actions (built against hardcoded test data in Phase 3/4) to the real active server selected in P5-T7, completing the first true end-to-end MVP user journey: add a real server → select it as active → connect → verify real traffic flows → disconnect.
-
-**Scope:**
-- Included:
-  - Removing all remaining references to the Phase 3 hardcoded test `ServerProfile` from the connect/disconnect code path specifically (complementing P5-T5's removal from the list-display path — this task ensures the *engine invocation* path is also clean).
-  - Passing the real active server's config through to `VpnEngine.start()` (per the P1-T4 interface, as amended in P3-T12 to include the `prepare()`-style permission flow) exactly as it was exercised with test data in Phase 3, now with real user-supplied data.
-  - Ensuring the full state-stream-driven UI update pattern established in Phase 3/4 (session tokens, `accepted`/`rejectedBusy`/`rejectedInvalidConfig`/`rejectedPermissionDenied`/`failed` command responses, state stream as sole source of truth for connected/disconnected/error display) is preserved and correctly reflects real-world outcomes, not just the test scenarios it was originally validated against.
-  - Handling `rejectedInvalidConfig` gracefully — if a persisted server's config somehow fails engine-side validation despite passing Phase 2's parser (e.g., a field the parser accepts but the native engine rejects), surface a clear error rather than a silent failure, and treat this discrepancy as worth flagging to the human even if not blocking.
-  - Handling "no active server selected" gracefully in the connect UI (e.g., connect button disabled or redirects to server selection) — this state did not exist in Phase 3/4's hardcoded-server world and must now be designed.
-  - Manual end-to-end verification: add at least one real server (via a real, working config the developer has access to), connect, confirm actual non-zero increasing traffic (reusing the verification method established in P3-T8), and disconnect cleanly.
-- Excluded:
-  - Traffic stats *display* in the UI — that remains Phase 6's responsibility. This task only needs to confirm traffic flows at a verification/debugging level (e.g., via logs or the same method used in P3-T8), not build user-facing stats UI.
-  - Auto-reconnect, kill switch, or any resilience features — Phase 7.
-
-**Acceptance Criteria:**
-- [ ] Connect/disconnect UI actions operate against the real active server, not any hardcoded test data, verified by grep/code-review confirming no production code path still references Phase 3 test fixtures.
-- [ ] "No active server selected" state is handled cleanly in the UI with no crash.
-- [ ] `rejectedInvalidConfig` and other rejection reasons are surfaced to the user distinctly and clearly, not collapsed into one generic error.
-- [ ] A real, working server config, added through the app's normal add-server flow, was used to manually verify actual non-zero increasing traffic during a connected session, and this verification is described in the completion report with enough detail to be trusted (not just "it worked").
-- [ ] Disconnect reliably returns the app to a clean disconnected state after the above test, with no stuck `STOPPING` state (reusing the watchdog guarantee from Section 3.5/P3-T5).
-- [ ] Report follows the `DEFINITION_OF_DONE.md` template.
-
-**Notes for Agent:**
-This is the task where Brick VPN becomes, for the first time, an actually-usable VPN client end to end. Do not treat this as "just wiring" — the legacy prototype's worst failures (traffic always showing 0, VPN appearing connected with no real traffic, VPN not stopping reliably) were exactly this kind of integration seam. Re-read the Errors & Dead Ends context for those failure modes before starting, and design your manual verification specifically to rule each of them out again now that real (not test) configs are involved. If anything about the real-world behavior differs from what Phase 3's test-data verification showed, stop and investigate rather than assuming the Phase 3 work already covers this.
-
----
-
-### P5-T9 — Phase 5 Closeout and Definition-of-Done Pass
-
-**Status:** Not Started
-**Depends On:** P5-T1 through P5-T8
-
-**Objective:**
-Perform a full closeout pass on Phase 5: verify the entire add-server → select-active → connect/disconnect journey works from a fresh clone, produce the standard DoD report, and update `PROJECT_STATE.md` to reflect the new baseline before Phase 6 begins.
-
-**Scope:**
-- Included:
-  - Fresh-clone build and manual run-through of the complete Phase 5 user journey: add a server via manual paste, add a server via QR scan, add a subscription, edit/delete/duplicate a server, refresh a subscription, select an active server, connect, verify real traffic, disconnect.
-  - Confirming no Phase 3/4 test scaffolding remains reachable from any production code path (final check, complementing P5-T5's and P5-T8's individual removals).
-  - Full `DEFINITION_OF_DONE.md`-template report covering all of Phase 5's tasks collectively.
-  - Rewriting `PROJECT_STATE.md` to reflect: Phase 5 complete, real server management and real connect/disconnect now exist, next phase is Phase 6 (Traffic Stats & Live Logs), and any open follow-up items noted during Phase 5 (e.g., the `rejectedInvalidConfig` discrepancy flag from P5-T8, if it occurred).
-- Excluded:
-  - Any new feature work — this is a verification/closeout task only.
-
-**Acceptance Criteria:**
-- [ ] Fresh-clone full journey verified and described step-by-step in the report.
-- [ ] No test scaffolding reachable from production code paths (explicit confirmation, not assumption).
+- [ ] Fresh-clone full journey (connect → observe stats/logs → disconnect → reconnect → observe again) verified and described step-by-step in the report.
 - [ ] DoD report produced using the exact template from `DEFINITION_OF_DONE.md`.
-- [ ] `PROJECT_STATE.md` rewritten and accurate as of end of Phase 5.
-- [ ] Explicit statement of what Phase 6 will need from Phase 5 (i.e., the active-server and connect/disconnect plumbing Phase 6's stats/logs UI will hook into).
+- [ ] `PROJECT_STATE.md` rewritten, accurate as of end of Phase 6, and explicitly carries forward the log-redaction known-limitation flag into Phase 8's scope description.
+- [ ] Explicit statement of what Phase 7 will need from Phase 6 (i.e., that stats/logs/session-info plumbing exists and should continue functioning correctly through the reconnect/kill-switch/chaos scenarios Phase 7 will introduce).
 
 **Notes for Agent:**
-As with every phase closeout, do not mark this `Completed` yourself — propose `Ready for Human Review` and wait. Use this pass to genuinely stress the fresh-clone experience as a new contributor would, not just re-run what you already know works.
+As with every phase closeout, do not mark this `Completed` yourself — propose `Ready for Human Review` and wait. Pay particular attention to verifying the *second* connect/disconnect cycle in this pass, not just the first — several of the legacy prototype's worst bugs (stuck STOPPING state, `initializedOnce` guard breaking subsequent starts) only manifested on repeated use, not first use.
 
 ---
+
 
 ## Phase 7 — Stability & Lifecycle Hardening
 
@@ -4009,6 +4456,14 @@ If Phase 13 is pursued and completed, perform the standard phase closeout: fresh
 Whichever outcome occurs, ensure the project's documentation tells a clear, honest story about iOS — either "we built it, here's how it works and what its limitations are" or "we deliberately chose not to, here's exactly why, and here's what would need to be true for that decision to be revisited." An undocumented, ambiguous non-decision would be a worse outcome than either clear alternative.
 
 ---
+
+## Phase 14 — Premium/Subscription System
+
+**Status: Not yet authored.** Per the Granularity Note, detailed tasks for this phase will be
+written when the project actually approaches it (after Phase 11–13), and are gated behind an
+explicit human go/no-go decision, mirroring Phase 13's structure (a single P14-T1 feasibility/
+architecture-decoupling assessment task, followed by contingent unscoped tasks). This phase must
+never degrade the free-tier client, per the standing project constraint.
 
 ## Document Closing Notes
 
