@@ -1,0 +1,22 @@
+# Dart / Flutter
+.dart_tool/
+.packages
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# Melos generated files (auto-generated, should NOT be committed)
+pubspec_overrides.yaml
+
+# IDE
+.vscode/
+.idea/
+*.iml
+
+# OS
+.DS_Store
+
+# Native build outputs
+android/app/build/
+ios/Pods/
+ios/.symlinks/

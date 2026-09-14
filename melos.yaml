@@ -1,0 +1,24 @@
+name: brick_vpn
+
+packages:
+  - apps/*
+  - packages/*
+
+command:
+  bootstrap:
+    usePubspecOverrides: true
+
+scripts:
+  analyze:
+    description: Run static analysis across all packages
+    run: melos exec -- flutter analyze .
+
+  format:
+    description: Check code formatting across all packages
+    run: melos exec -- dart format --set-exit-if-changed .
+
+  test:
+    description: Run tests in packages that contain a test directory
+    run: melos exec -- flutter test
+    packageFilters:
+      dirExists: test
