@@ -90,7 +90,7 @@ development before any real feature code is written.
 
 ### P0-T1 — Finalize Git repository and baseline scaffold commit
 
-**Status:** In Progress 🟡 — the scaffold commits already exist, but the repo is not in a clean baseline state (`git status` is dirty and `.freebuff/` is untracked), so the task’s clean-baseline verification is incomplete.
+**Status:** Ready for Human Review — the root `.gitignore` was updated to exclude `.freebuff/` and the other required editor/build artifacts, the governance-audit changes were committed in `d056b07`, and the repo is now clean (`git status --short` reports no pending changes). The task is ready for human review/acceptance.
 **Depends On:** —
 
 **Objective:** Ensure the existing monorepo scaffold (`apps/mobile`, `packages/`, `native/`,
@@ -103,14 +103,14 @@ with a correct `.gitignore` for a Flutter + Melos + native (Kotlin/Go) monorepo.
 - Excluded: any new feature code, any changes to `AI_ROLES/*` content, any dependency changes.
 
 **Acceptance Criteria:**
-- [ ] `.gitignore` excludes: `.dart_tool/`, `build/`, `*.iml`, `.idea/` (if not already project-wide),
-      `pubspec_overrides.yaml` (Melos-generated), `.mcp-memory/`, Android `local.properties`,
+- [x] `.gitignore` excludes: `.dart_tool/`, `build/`, `*.iml`, `.idea/` (if not already project-wide),
+      `pubspec_overrides.yaml` (Melos-generated), `.mcp-memory/`, `.freebuff/`, Android `local.properties`,
       Android/Gradle build outputs, any `*.aar`/`*.jar` unless explicitly meant to be checked in,
       and any keystore/signing files (`*.jks`, `*.keystore`, `key.properties`).
-- [ ] `git status` shows a clean working tree after the commit.
-- [ ] `git log` shows a coherent, readable commit history (squash/amend if the prior scaffold
+- [x] `git status` shows a clean working tree after the commit.
+- [x] `git log` shows a coherent, readable commit history (squash/amend if the prior scaffold
       history is messy — confirm with human before rewriting history if already pushed anywhere).
-- [ ] No secrets, credentials, or machine-specific absolute paths are committed.
+- [x] No secrets, credentials, or machine-specific absolute paths are committed.
 
 **Notes for Agent:**
 - This is a housekeeping task. If `git log` already looks clean, verify and report rather than
