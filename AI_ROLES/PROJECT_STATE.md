@@ -131,9 +131,10 @@ yet — it is still the unmodified default Flutter template.
 - Baseline CI workflow exists at `.github/workflows/ci.yml`; its first
   GitHub Actions run passed on 2026-09-16 (run `35094137659`).
 - No `libbox` AAR or sing-box integration exists yet.
-- Memory MCP has **not** been installed, configured, or verified yet
-(see `MCP_MEMORY_GUIDE.md` Section 5 — the verification task is still
-pending and tracked as an upcoming Phase 0 task).
+- Memory MCP was verified on 2026-09-16 with a real write/read round-trip
+  using `@modelcontextprotocol/server-memory` over stdio and
+  `.mcp-memory/memory.json`. It may be used as a convenience cache for
+  low-sensitivity durable facts, but `AI_ROLES/*.md` remains authoritative.
 - No license file, README content, or public-facing documentation has
 been written yet.
 - No UI/UX design work has started (intentionally deferred to Phase 11
@@ -162,16 +163,19 @@ per `ARCHITECTURE.md`).
 
 - Final decision on open-source license file wording/CLA (if any) —
 GPL v3 direction agreed, exact `LICENSE` file not yet added.
-- Whether Memory MCP is actually usable in the specific coding
-agent/tool the maintainer will use for implementation — unverified
-(see Section 4 above).
+- Memory MCP verification passed: a fresh server invocation retrieved the
+  entity written by a previous invocation. Future agents may query/store
+  low-sensitivity facts when the server is available, while gracefully
+  falling back to `PROJECT_STATE.md`, `ARCHITECTURE.md`, and `ROADMAP.md`
+  whenever it is unavailable or fails; governance files remain the source
+  of truth if any conflict occurs.
 - No blocking technical decisions pending at this time.
 
 ## 7. Phase 0 Audit Result Summary
 
 - `P0-T3` was verified by the coding agent in this session and marked as `Completed ✅` in `AI_ROLES/ROADMAP.md`.
 - `P0-T1` was verified as partially complete (`In Progress 🟡`) because the monorepo scaffold exists and the repo history is coherent, but the working tree is not clean (`git status` currently shows modified `.gitignore`, modified `AI_ROLES/ROADMAP.md`, and an untracked `.freebuff/` directory).
-- `P0-T9` was verified as partially complete (`In Progress 🟡`) because the `@modelcontextprotocol/server-memory` reference package is available and starts on stdio, but a fresh-session store/retrieve round-trip has not yet been completed in this tool environment.
+- `P0-T9` was verified with a real cross-process Memory MCP write/read round-trip on 2026-09-16 and marked `Ready for Human Review` in `AI_ROLES/ROADMAP.md`.
 - All other Phase 0 tasks remain `Not Started` in the current repo state, with the main blockers being the missing artifacts (`LICENSE`, `README.md`, `AI_ROLES/TOOLCHAIN_VERSIONS.md`, `.github/workflows/ci.yml`, `.github/dependabot.yml`, native README placeholders, package skeletons, and the missing multi-package `melos` workspace setup).
 - The environment also has a separate verified blocker for future Phase 0/3 work: Android debug build currently fails in `apps/mobile/android/settings.gradle.kts` with `Error resolving plugin [id: 'dev.flutter.flutter-plugin-loader', version: '1.0.0']`, so full build verification beyond the current repo audit remains blocked until that Gradle configuration issue is corrected.
 - `P0-T5` is now verified and marked `Ready for Human Review`: GitHub Actions run `35094137659` passed checkout, Flutter setup, Melos installation, bootstrap, format, analyze, and tests for all six packages.

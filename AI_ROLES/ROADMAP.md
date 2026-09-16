@@ -365,7 +365,7 @@ re-testing, never a silent/incidental bump.
 
 ### P0-T9 — Memory MCP verification task
 
-**Status:** In Progress 🟡 — the reference `@modelcontextprotocol/server-memory` package is available and starts on stdio, but a fresh-session store/retrieve verification has not yet been completed, so the task is only partially proven.
+**Status:** Ready for Human Review — verified on 2026-09-16 with two separate server invocations using `@modelcontextprotocol/server-memory` version `0.6.3`: the first created entity `Brick_VPN_MCP_Verification_2026_09_16` with its observation in `.mcp-memory/memory.json`, and the fresh second invocation retrieved the same entity and observation intact. The memory path is ignored by `.gitignore`; PROJECT_STATE records the result, graceful fallback, and governance-file ownership-of-truth rules.
 **Depends On:** —
 
 **Objective:** Verify, per `MCP_MEMORY_GUIDE.md`, whether the Memory MCP server
@@ -383,13 +383,13 @@ whether to rely on it.
   "None" sensitivity per `SECURITY.md`'s data classification table.
 
 **Acceptance Criteria:**
-- [ ] A clear pass/fail/partial result is recorded in `PROJECT_STATE.md`'s open questions section
+- [x] A clear pass/fail/partial result is recorded in `PROJECT_STATE.md`'s open questions section
       (replacing the current "unverified" note).
-- [ ] If it works: a short "how to use it going forward" note is added, confirming the
+- [x] If it works: a short "how to use it going forward" note is added, confirming the
       graceful-degradation and ownership-of-truth rules from `MCP_MEMORY_GUIDE.md` still apply.
 - [ ] If it doesn't work: this is explicitly not a blocker — record it and move on, per the
       "never block on it" rule.
-- [ ] `.mcp-memory/` is confirmed present in `.gitignore`.
+- [x] `.mcp-memory/` is confirmed present in `.gitignore`.
 
 **Notes for Agent:**
 - This task's entire point is an honest, verified answer — "I couldn't test this because X" is an
