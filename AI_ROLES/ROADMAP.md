@@ -365,7 +365,7 @@ re-testing, never a silent/incidental bump.
 
 ### P0-T9 — Memory MCP verification task
 
-**Status:** Ready for Human Review — verified on 2026-09-16 with two separate server invocations using `@modelcontextprotocol/server-memory` version `0.6.3`: the first created entity `Brick_VPN_MCP_Verification_2026_09_16` with its observation in `.mcp-memory/memory.json`, and the fresh second invocation retrieved the same entity and observation intact. The memory path is ignored by `.gitignore`; PROJECT_STATE records the result, graceful fallback, and governance-file ownership-of-truth rules.
+**Status:** Completed ✅ — verified on 2026-09-16 with two separate server invocations using `@modelcontextprotocol/server-memory` version `0.6.3`: the first created entity `Brick_VPN_MCP_Verification_2026_09_16` with its observation in `.mcp-memory/memory.json`, and the fresh second invocation retrieved the same entity and observation intact. The memory path is ignored by `.gitignore`; PROJECT_STATE records the result, graceful fallback, and governance-file ownership-of-truth rules.
 **Depends On:** —
 
 **Objective:** Verify, per `MCP_MEMORY_GUIDE.md`, whether the Memory MCP server
