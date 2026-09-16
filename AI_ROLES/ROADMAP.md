@@ -295,7 +295,7 @@ list` and `melos bootstrap` correctly recognize all packages.
 
 ### P0-T7 — Native module directory scaffolding (Android, iOS, Desktop placeholders)
 
-**Status:** Not Started
+**Status:** Ready for Human Review — created `native/android/README.md`, `native/ios/README.md`, and `native/desktop/README.md` with scoped purpose, future phase, and architecture references. Fresh verification found all three README files and no native build tooling files.
 **Depends On:** P0-T1
 
 **Objective:** Establish the `native/android/`, `native/ios/`, and `native/desktop/` directory
@@ -310,10 +310,10 @@ Phase 3's job for Android).
 - Excluded: any actual Gradle files, Xcode project files, Go source files, or build scripts.
 
 **Acceptance Criteria:**
-- [ ] All three README files exist with accurate, non-placeholder-sounding content (real
+- [x] All three README files exist with accurate, non-placeholder-sounding content (real
       sentences, not "TODO").
-- [ ] Each README correctly references the relevant `ARCHITECTURE.md` section by name/number.
-- [ ] No native build tooling files are accidentally created.
+- [x] Each README correctly references the relevant `ARCHITECTURE.md` section by name/number.
+- [x] No native build tooling files are accidentally created.
 
 **Notes for Agent:**
 - Keep this deliberately minimal — the goal is a self-documenting empty scaffold, not a head
