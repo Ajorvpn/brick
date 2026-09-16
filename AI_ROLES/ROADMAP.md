@@ -122,7 +122,7 @@ with a correct `.gitignore` for a Flutter + Melos + native (Kotlin/Go) monorepo.
 
 ### P0-T2 — Add GPL v3 LICENSE file and root license headers policy
 
-**Status:** Ready for Human Review — verified in commit `57db473` that root `LICENSE` is byte-identical to the official GNU GPL v3 text downloaded from `https://www.gnu.org/licenses/gpl-3.0.txt` (674 lines, 35149 bytes, SHA-256 `3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986`), that `CODING_STANDARDS.md` explicitly requires SPDX `GPL-3.0-or-later` headers for new source files from Phase 1 onward, and that no unrelated files were changed.
+**Status:** Completed ✅ — verified in commit `57db473` that root `LICENSE` is byte-identical to the official GNU GPL v3 text downloaded from `https://www.gnu.org/licenses/gpl-3.0.txt` (674 lines, 35149 bytes, SHA-256 `3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986`), that `CODING_STANDARDS.md` explicitly requires SPDX `GPL-3.0-or-later` headers for new source files from Phase 1 onward, and that no unrelated files were changed.
 **Depends On:** P0-T1
 
 **Objective:** Add the official GNU GPL v3 license text as `LICENSE` at the repo root, and define
@@ -219,7 +219,7 @@ project has baseline supply-chain hygiene from day one, per `SECURITY.md`.
 
 ### P0-T5 — Baseline CI workflow (format, analyze, test)
 
-**Status:** Not Started
+**Status:** Completed ✅ — verified that commits `bea3eea` and `5fddb07` exist, the current `.github/workflows/ci.yml` pins Flutter 3.47.4 and Melos 8.7.0, uses non-interactive `--no-select` execution, and GitHub Actions runs `35094137659` and `35094469907` both remain `completed` with `success` conclusions.
 **Depends On:** P0-T3
 
 **Objective:** Add a GitHub Actions workflow that runs on every push and pull request, executing
@@ -255,7 +255,7 @@ against the monorepo, using pinned tool versions.
 
 ### P0-T6 — Melos workspace hygiene verification and package skeletons
 
-**Status:** Ready for Human Review — verified on 2026-09-15 that the five package skeletons were created under `packages/`, the root `pubspec.yaml` `workspace:` list was updated to include all six packages, `melos list` now shows `config_parser`, `core_domain`, `core_vpn_engine`, `mobile`, `shared_utils`, and `ui_theme`, `melos bootstrap` reports `6 packages bootstrapped`, and both `melos run analyze` and `melos run test` completed successfully across the workspace. The CI workflow checkbox remains intentionally unchecked because no `.github/workflows/ci.yml` was created in this task; that workflow is out of scope here.
+**Status:** Completed ✅ — fresh verification on 2026-09-16 showed `config_parser`, `core_domain`, `core_vpn_engine`, `mobile`, `shared_utils`, and `ui_theme` in `melos list`; `melos bootstrap` reported `6 packages bootstrapped`; `melos run analyze --no-select` and `melos run test --no-select` both completed successfully across all six packages.
 **Depends On:** P0-T1
 
 **Objective:** Create empty, correctly-wired Dart package skeletons for the five planned
@@ -399,7 +399,7 @@ whether to rely on it.
 
 ### P0-T10 — Base dependency wiring for `apps/mobile`
 
-**Status:** Blocked 🔴 — `apps/mobile/pubspec.yaml` has not yet been updated with the approved dependencies, and the workspace still lacks the root `scripts:`/multi-package setup needed to verify dependency wiring end-to-end. Unblock when P0-T5 and P0-T6 are completed and `melos bootstrap` can run successfully.
+**Status:** Not Started
 **Depends On:** P0-T6
 
 **Objective:** Add the already-approved core dependencies to `apps/mobile/pubspec.yaml`
@@ -464,7 +464,7 @@ where to find the governance docs — without overselling features that don't ex
 
 ### P0-T12 — Phase 0 closeout and Definition-of-Done pass
 
-**Status:** Blocked 🔴 — Phase 0 closeout cannot be verified until P0-T1 through P0-T11 are materially completed and the current `melos`/package/workspace blockers are resolved. Unblock when the repository reaches a clean, fully verifiable Phase 0 baseline.
+**Status:** Not Started
 **Depends On:** P0-T1 through P0-T11
 
 **Objective:** Perform a full closeout review of Phase 0: confirm every task above is genuinely
