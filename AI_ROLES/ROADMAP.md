@@ -122,7 +122,7 @@ with a correct `.gitignore` for a Flutter + Melos + native (Kotlin/Go) monorepo.
 
 ### P0-T2 — Add GPL v3 LICENSE file and root license headers policy
 
-**Status:** In Progress — the official GPL v3 text and explicit future-file SPDX header policy are being added and verified in this task.
+**Status:** Ready for Human Review — verified in commit `57db473` that root `LICENSE` is byte-identical to the official GNU GPL v3 text downloaded from `https://www.gnu.org/licenses/gpl-3.0.txt` (674 lines, 35149 bytes, SHA-256 `3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986`), that `CODING_STANDARDS.md` explicitly requires SPDX `GPL-3.0-or-later` headers for new source files from Phase 1 onward, and that no unrelated files were changed.
 **Depends On:** P0-T1
 
 **Objective:** Add the official GNU GPL v3 license text as `LICENSE` at the repo root, and define
@@ -137,13 +137,13 @@ per-file license headers are used across the monorepo.
   human decides headers are required).
 
 **Acceptance Criteria:**
-- [ ] `/LICENSE` contains the exact, official, unmodified GPL v3.0 text.
-- [ ] A short note exists (in `CODING_STANDARDS.md` or a new `LICENSE_POLICY.md` inside
+- [x] `/LICENSE` contains the exact, official, unmodified GPL v3.0 text.
+- [x] A short note exists (in `CODING_STANDARDS.md` or a new `LICENSE_POLICY.md` inside
       `AI_ROLES/` if the human prefers) stating whether per-file SPDX headers
       (`SPDX-License-Identifier: GPL-3.0-or-later`) are required for new source files going
       forward. Default recommendation: yes, require SPDX header comment in every new source
       file from Phase 1 onward.
-- [ ] Decision is explicit, not left ambiguous.
+- [x] Decision is explicit, not left ambiguous.
 
 **Notes for Agent:**
 - Do not paraphrase or shorten the GPL v3 text — use the canonical text from gnu.org verbatim.
