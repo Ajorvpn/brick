@@ -323,7 +323,7 @@ Phase 3's job for Android).
 
 ### P0-T8 — Toolchain version pinning matrix document
 
-**Status:** Not Started
+**Status:** Ready for Human Review — created `AI_ROLES/TOOLCHAIN_VERSIONS.md` on 2026-09-16 with freshly verified Flutter 3.47.4, Dart 3.13.3, Melos 8.7.0, and Git 2.43.0 values; Go and gomobile were confirmed not installed, while Go/NDK/gomobile/AGP/Kotlin/sing-box pins are explicitly deferred to Phase 3. The required version-upgrade policy and both toolchain footguns are documented, and `PROJECT_STATE.md` references the matrix.
 **Depends On:** —
 
 **Objective:** Create a single authoritative document (`AI_ROLES/TOOLCHAIN_VERSIONS.md`) listing
@@ -347,14 +347,14 @@ re-testing, never a silent/incidental bump.
   at task time before writing them down).
 
 **Acceptance Criteria:**
-- [ ] `AI_ROLES/TOOLCHAIN_VERSIONS.md` exists with a complete table (even if some rows are `TBD`).
-- [ ] The Go-toolchain-auto-resolution footgun and the sing-box-1.13-interface-break footgun are
+- [x] `AI_ROLES/TOOLCHAIN_VERSIONS.md` exists with a complete table (even if some rows are `TBD`).
+- [x] The Go-toolchain-auto-resolution footgun and the sing-box-1.13-interface-break footgun are
       both documented explicitly, in the agent's own words, not copy-pasted verbatim from any
       external source.
-- [ ] A clear policy statement exists: "Upgrading any pinned version listed here requires its own
+- [x] A clear policy statement exists: "Upgrading any pinned version listed here requires its own
       roadmap task with explicit lifecycle re-testing acceptance criteria; it is never bundled
       into an unrelated task."
-- [ ] `PROJECT_STATE.md` is updated to reference this new file's existence.
+- [x] `PROJECT_STATE.md` is updated to reference this new file's existence.
 
 **Notes for Agent:**
 - Verify current installed versions (`flutter --version`, `dart --version`, `melos --version`)

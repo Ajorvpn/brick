@@ -37,6 +37,9 @@ repository scaffolding and governance documentation.
     `melos list` correctly shows all six workspace packages.
   - `.github/workflows/ci.yml` exists and was executed successfully by
     GitHub Actions in run `35094137659` for commit `bea3eea`.
+  - `AI_ROLES/TOOLCHAIN_VERSIONS.md` records the verified Flutter 3.47.4,
+    Dart 3.13.3, Melos 8.7.0, and Git 2.43.0 versions, with Go and native
+    integration pins explicitly deferred to Phase 3.
 - Folder structure created (mostly empty, placeholders only):
 brick-vpn/
 ├── apps/mobile/ # default Flutter scaffold, unmodified
