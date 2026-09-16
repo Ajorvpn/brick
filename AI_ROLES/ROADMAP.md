@@ -122,7 +122,7 @@ with a correct `.gitignore` for a Flutter + Melos + native (Kotlin/Go) monorepo.
 
 ### P0-T2 — Add GPL v3 LICENSE file and root license headers policy
 
-**Status:** Not Started
+**Status:** Ready for Human Review — implemented in commit `bea3eea8af76c0b222da20ea4d6002d43e8a86c3` and pushed to `main`. GitHub Actions run [35094137659](https://github.com/Ajorvpn/brick/actions/runs/35094137659) completed successfully on 2026-09-16. The run used Flutter 3.47.4, installed Melos 8.7.0, bootstrapped all 6 packages, and passed format, analyze, and test.
 **Depends On:** P0-T1
 
 **Objective:** Add the official GNU GPL v3 license text as `LICENSE` at the repo root, and define
@@ -235,13 +235,14 @@ against the monorepo, using pinned tool versions.
   workflow (Phase 10).
 
 **Acceptance Criteria:**
-- [ ] Workflow triggers on `push` to `main` and on all `pull_request` events.
-- [ ] Workflow installs the pinned Flutter version, runs `melos bootstrap`, then `melos run
+- [x] Workflow triggers on `push` to `main` and on all `pull_request` events.
+- [x] Workflow installs the pinned Flutter version, runs `melos bootstrap`, then `melos run
       format`, `melos run analyze`, `melos run test`, failing the job on any non-zero exit.
-- [ ] Workflow uses dependency/build caching to keep run time reasonable.
-- [ ] A test run (triggered by an actual PR or push) is shown to pass or fail correctly — i.e.
-      verified working, not just written and assumed correct.
-- [ ] Pinned versions are recorded in a comment in the workflow file, with a note to update them
+- [x] Workflow uses dependency/build caching to keep run time reasonable.
+- [x] A test run (triggered by an actual PR or push) is shown to pass or fail correctly — i.e.
+  verified working, not just written and assumed correct. GitHub Actions run 35094137659
+  completed successfully for commit `bea3eea8af76c0b222da20ea4d6002d43e8a86c3`.
+- [x] Pinned versions are recorded in a comment in the workflow file, with a note to update them
       only via a dedicated task, not silently.
 
 **Notes for Agent:**

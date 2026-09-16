@@ -7,8 +7,8 @@
 > immediate situational awareness. This file must be updated at the end
 > of every task, per `DEFINITION_OF_DONE.md` Section 7.
 
-**Last updated**: Phase 0, initial repository scaffolding
-**Updated by**: Human maintainer + planning session (no coding agent task executed yet)
+**Last updated**: 2026-09-16, P0-T5 CI workflow verification
+**Updated by**: Coding agent, with GitHub Actions run evidence
 
 ---
 
@@ -32,18 +32,22 @@ repository scaffolding and governance documentation.
     workspace/package discovery or `melos run` scripts.
   - `apps/mobile` — a fresh, untouched `flutter create` default app
     (org: `dev.brickvpn`), confirmed bootstrapped successfully via
-    `melos bootstrap` (`1 packages bootstrapped`).
-  - `melos list` correctly shows `mobile` as a recognized workspace package.
+    `melos bootstrap` as part of the six-package workspace.
+  - Five minimal Dart package skeletons now exist under `packages/`, and
+    `melos list` correctly shows all six workspace packages.
+  - `.github/workflows/ci.yml` exists and was executed successfully by
+    GitHub Actions in run `35094137659` for commit `bea3eea`.
 - Folder structure created (mostly empty, placeholders only):
 brick-vpn/
 ├── apps/mobile/ # default Flutter scaffold, unmodified
-├── packages/ # empty — no packages created yet
+├── packages/ # five minimal Dart package skeletons
 ├── native/
 │ ├── android/ # empty
 │ ├── ios/ # empty
 │ └── desktop/ # empty
 ├── AI_ROLES/
 │ └── logs/ # empty
+├── .github/workflows/ci.yml
 ├── pubspec.yaml
 └── .gitignore
 
@@ -121,7 +125,8 @@ just directories/decisions in `ARCHITECTURE.md`, not real code.
 - No Riverpod, go_router, very_good_analysis, easy_localization, or any
 other planned dependency has been added to `apps/mobile/pubspec.yaml`
 yet — it is still the unmodified default Flutter template.
-- No CI/CD (GitHub Actions) workflow exists yet.
+- Baseline CI workflow exists at `.github/workflows/ci.yml`; its first
+  GitHub Actions run passed on 2026-09-16 (run `35094137659`).
 - No `libbox` AAR or sing-box integration exists yet.
 - Memory MCP has **not** been installed, configured, or verified yet
 (see `MCP_MEMORY_GUIDE.md` Section 5 — the verification task is still
@@ -166,3 +171,4 @@ agent/tool the maintainer will use for implementation — unverified
 - `P0-T9` was verified as partially complete (`In Progress 🟡`) because the `@modelcontextprotocol/server-memory` reference package is available and starts on stdio, but a fresh-session store/retrieve round-trip has not yet been completed in this tool environment.
 - All other Phase 0 tasks remain `Not Started` in the current repo state, with the main blockers being the missing artifacts (`LICENSE`, `README.md`, `AI_ROLES/TOOLCHAIN_VERSIONS.md`, `.github/workflows/ci.yml`, `.github/dependabot.yml`, native README placeholders, package skeletons, and the missing multi-package `melos` workspace setup).
 - The environment also has a separate verified blocker for future Phase 0/3 work: Android debug build currently fails in `apps/mobile/android/settings.gradle.kts` with `Error resolving plugin [id: 'dev.flutter.flutter-plugin-loader', version: '1.0.0']`, so full build verification beyond the current repo audit remains blocked until that Gradle configuration issue is corrected.
+- `P0-T5` is now verified and marked `Ready for Human Review`: GitHub Actions run `35094137659` passed checkout, Flutter setup, Melos installation, bootstrap, format, analyze, and tests for all six packages.
