@@ -219,7 +219,7 @@ project has baseline supply-chain hygiene from day one, per `SECURITY.md`.
 
 ### P0-T5 — Baseline CI workflow (format, analyze, test)
 
-**Status:** Blocked 🔴 — fresh verification shows `melos.yaml` already defines `format`, `analyze`, and `test`, but `melos run format/analyze/test` currently fails with `NoScriptException: This workspace has no scripts defined in its 'pubspec.yaml' file.`. This indicates a real workspace/script-discovery mismatch in the current environment, not a missing `scripts:` section in `melos.yaml`. Unblock when the repo's Melos workspace configuration is corrected so `melos run format`, `melos run analyze`, and `melos run test` all execute successfully.
+**Status:** Not Started
 **Depends On:** P0-T3
 
 **Objective:** Add a GitHub Actions workflow that runs on every push and pull request, executing
@@ -254,7 +254,7 @@ against the monorepo, using pinned tool versions.
 
 ### P0-T6 — Melos workspace hygiene verification and package skeletons
 
-**Status:** Blocked 🔴 — `melos list` currently shows only `mobile`, and the five `packages/*` skeleton directories are missing, so the required workspace expansion cannot be verified. Unblock when the five package skeletons and root workspace configuration are added and `melos bootstrap` runs cleanly.
+**Status:** Ready for Human Review — verified on 2026-09-15 that the five package skeletons were created under `packages/`, the root `pubspec.yaml` `workspace:` list was updated to include all six packages, `melos list` now shows `config_parser`, `core_domain`, `core_vpn_engine`, `mobile`, `shared_utils`, and `ui_theme`, `melos bootstrap` reports `6 packages bootstrapped`, and both `melos run analyze` and `melos run test` completed successfully across the workspace. The CI workflow checkbox remains intentionally unchecked because no `.github/workflows/ci.yml` was created in this task; that workflow is out of scope here.
 **Depends On:** P0-T1
 
 **Objective:** Create empty, correctly-wired Dart package skeletons for the five planned
@@ -273,12 +273,14 @@ list` and `melos bootstrap` correctly recognize all packages.
   Phase 1/2/3. These are empty, buildable, testable skeletons only.
 
 **Acceptance Criteria:**
-- [ ] `melos list` shows all 6 packages (`mobile` + the 5 new ones).
-- [ ] `melos bootstrap` reports all 6 packages bootstrapped successfully, with zero errors.
-- [ ] `melos run analyze` and `melos run test` both pass across the whole workspace.
-- [ ] Each new package's `pubspec.yaml` has `resolution: workspace` placed correctly (right after
+- [x] `melos list` shows all 6 packages (`mobile` + the 5 new ones).
+- [x] `melos bootstrap` reports all 6 packages bootstrapped successfully, with zero errors.
+- [x] `melos run analyze` and `melos run test` both pass across the whole workspace.
+- [x] Each new package's `pubspec.yaml` has `resolution: workspace` placed correctly (right after
       `publish_to: none`, matching the exact pattern already verified for `apps/mobile`).
 - [ ] The CI workflow from P0-T5 is re-run and still passes with the new packages present.
+      (Not created in this task; no `.github/workflows/ci.yml` exists yet, so this remains out of
+      scope for P0-T6.)
 
 **Notes for Agent:**
 - This exact Melos/workspace pitfall has already been hit once during initial scaffolding (see

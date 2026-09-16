@@ -1,0 +1,12 @@
+name: core_domain
+description: "Brick VPN core domain package skeleton"
+publish_to: 'none'
+resolution: workspace
+environment:
+  sdk: ^3.13.3
+dependencies:
+  flutter:
+    sdk: flutter
+dev_dependencies:
+  flutter_test:
+    sdk: flutter

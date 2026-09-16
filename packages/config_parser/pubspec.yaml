@@ -1,0 +1,12 @@
+name: config_parser
+description: "Brick VPN config parser package skeleton"
+publish_to: 'none'
+resolution: workspace
+environment:
+  sdk: ^3.13.3
+dependencies:
+  flutter:
+    sdk: flutter
+dev_dependencies:
+  flutter_test:
+    sdk: flutter

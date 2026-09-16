@@ -6,6 +6,31 @@ environment:
 
 workspace:
   - apps/mobile
+  - packages/core_domain
+  - packages/core_vpn_engine
+  - packages/config_parser
+  - packages/ui_theme
+  - packages/shared_utils
 
 dev_dependencies:
   melos: ^8.7.0
+
+melos:
+  command:
+    bootstrap:
+      usePubspecOverrides: true
+
+  scripts:
+    analyze:
+      description: Run static analysis across all packages
+      run: melos exec -- flutter analyze .
+
+    format:
+      description: Check code formatting across all packages
+      run: melos exec -- dart format --set-exit-if-changed .
+
+    test:
+      description: Run tests in packages that contain a test directory
+      run: melos exec -- flutter test
+      packageFilters:
+        dirExists: test

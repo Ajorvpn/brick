@@ -26,8 +26,10 @@ repository scaffolding and governance documentation.
 
 - Git repository initialized at `~/Documents/Code/brick-vpn`.
 - Melos-based monorepo scaffolded and verified working:
-  - Root `pubspec.yaml` uses Dart Native Workspace (`workspace:` field).
-  - `melos.yaml` configured with `analyze`, `format`, `test` scripts.
+  - Root `pubspec.yaml` uses Dart Native Workspace (`workspace:` field) and is now the sole
+    source of truth for Melos workspace configuration and scripts.
+  - `melos.yaml` has been removed after verification that Melos 8.7.0 does not read it for
+    workspace/package discovery or `melos run` scripts.
   - `apps/mobile` — a fresh, untouched `flutter create` default app
     (org: `dev.brickvpn`), confirmed bootstrapped successfully via
     `melos bootstrap` (`1 packages bootstrapped`).
@@ -42,7 +44,6 @@ brick-vpn/
 │ └── desktop/ # empty
 ├── AI_ROLES/
 │ └── logs/ # empty
-├── melos.yaml
 ├── pubspec.yaml
 └── .gitignore
 
@@ -92,6 +93,21 @@ Omitting either causes `melos list` / `melos bootstrap` to silently report
 `0 packages bootstrapped` with no clear error. This was already hit once
 and resolved during initial scaffolding — any new package added to this
 repo must follow this pattern from the start.
+
+### Melos 8.7.0 workspace/config contract (dated 2026-09-15)
+
+This was fully re-verified after the stale `melos.yaml` file was removed:
+Melos 8.7.0 does not read `melos.yaml` for workspace/package discovery or
+`melos run` scripts at all. The only configuration entry point it uses is
+the root `pubspec.yaml`, where `workspace:` defines package discovery and
+`melos:` contains the script/config block. The earlier `melos.yaml` file was
+therefore dead configuration in this version and had been duplicating
+settings that were already in `pubspec.yaml`.
+
+The repo now uses a single, unambiguous source of truth: root
+`pubspec.yaml` for both workspace discovery and Melos configuration.
+See the Phase 0 P0-T5 evidence trail in `AI_ROLES/ROADMAP.md` for the
+verified command outputs and package-source proof.
 
 ---
 

@@ -1,0 +1,45 @@
+# Brick VPN CI
+# Pinned Flutter version: 3.47.4 (Dart 3.13.3), verified on 2026-09-16.
+# Version bumps must be handled by a dedicated roadmap task with full
+# validation; do not change this pin silently in an unrelated task.
+
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.47.4
+          cache: true
+          pub-cache: true
+
+      - name: Install Melos
+        run: |
+          dart pub global activate melos 8.7.0
+          echo "$HOME/.pub-cache/bin" >> "$GITHUB_PATH"
+
+      - name: Bootstrap workspace
+        run: melos bootstrap
+
+      - name: Check formatting
+        run: melos run format --no-select
+
+      - name: Analyze workspace
+        run: melos run analyze --no-select
+
+      - name: Test workspace
+        run: melos run test --no-select
