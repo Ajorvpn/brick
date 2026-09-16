@@ -90,7 +90,7 @@ development before any real feature code is written.
 
 ### P0-T1 — Finalize Git repository and baseline scaffold commit
 
-**Status:** Ready for Human Review — the root `.gitignore` was updated to exclude `.freebuff/` and the other required editor/build artifacts, the governance-audit changes were committed in `d056b07`, and the repo is now clean (`git status --short` reports no pending changes). The task is ready for human review/acceptance.
+**Status:** Completed ✅ — reverified on 2026-09-16 that `git status --short` is empty, commits `d056b07` and `c1821c0` are present in history, and `.freebuff/` is excluded by `.gitignore` line 18.
 **Depends On:** —
 
 **Objective:** Ensure the existing monorepo scaffold (`apps/mobile`, `packages/`, `native/`,
