@@ -184,3 +184,11 @@ text
   functionality is equivalent.
 - Never add a dependency "just in case" for future use — see `AGENTS.md` 
   Rule 8 (No Speculative Abstraction).
+
+## 10. License Headers
+
+- Every new source file added from Phase 1 onward must include a concise SPDX
+  header comment declaring `SPDX-License-Identifier: GPL-3.0-or-later`.
+- Existing source files are not retroactively modified as part of this policy
+  decision; header coverage will be applied when those files are next changed
+  or through a separately approved mechanical task.

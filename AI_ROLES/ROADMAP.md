@@ -122,7 +122,7 @@ with a correct `.gitignore` for a Flutter + Melos + native (Kotlin/Go) monorepo.
 
 ### P0-T2 — Add GPL v3 LICENSE file and root license headers policy
 
-**Status:** Ready for Human Review — implemented in commit `bea3eea8af76c0b222da20ea4d6002d43e8a86c3` and pushed to `main`. GitHub Actions run [35094137659](https://github.com/Ajorvpn/brick/actions/runs/35094137659) completed successfully on 2026-09-16. The run used Flutter 3.47.4, installed Melos 8.7.0, bootstrapped all 6 packages, and passed format, analyze, and test.
+**Status:** In Progress — the official GPL v3 text and explicit future-file SPDX header policy are being added and verified in this task.
 **Depends On:** P0-T1
 
 **Objective:** Add the official GNU GPL v3 license text as `LICENSE` at the repo root, and define
