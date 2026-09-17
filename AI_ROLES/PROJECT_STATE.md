@@ -254,6 +254,13 @@ both completed with conclusion `success`. A `pull_request` run
    close) under the project's dependency policy.
 5. **`AI_ROLES/logs/`** — untracked local scratch directory; decide whether
    it should be git-ignored, removed, or left alone.
+6. **The remote `main` branch no longer exists.** `gh api
+   repos/Ajorvpn/brick/branches` lists only `master` and the Dependabot
+   branch, and `git ls-remote origin main` returns nothing, while the local
+   remote-tracking ref `origin/main` is stale. `master` is therefore the sole
+   long-lived branch. This makes the `main`-wording in P0-T5/P0-T12 criteria
+   references to a branch that no longer exists — the human should confirm
+   this deletion was intentional and reword those criteria accordingly.
 
 ---
 
