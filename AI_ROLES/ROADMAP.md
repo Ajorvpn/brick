@@ -186,7 +186,7 @@ statements, no broken cross-references, no leftover placeholder text.
 
 ### P0-T4 — GitHub repository setup: branch protection, Dependabot, secret scanning
 
-**Status:** Blocked 🔴 — this environment lacks GitHub admin/API access, so branch protection, secret scanning, push protection, and Dependabot configuration cannot be verified or applied here. Unblock when GitHub admin access or a human-performed UI setup is available.
+**Status:** Ready for Human Review — all six required items verified on 2026-09-17 via authenticated `gh` API (account `Ajorvpn`): (1) secret scanning ✅ `enabled`; (2) secret scanning push protection ✅ `enabled`; (3) Dependabot vulnerability alerts ✅ HTTP `204` (enabled); (4) Dependabot automated security fixes ✅ `{"enabled": true, "paused": false}`; (5) `.github/dependabot.yml` ✅ created and committed — seven `pub` entries, one per directory containing a `pubspec.yaml`, plus a `github-actions` entry for `.github/workflows/`, validated with PyYAML and grounded in the official Dependabot documentation (`pub` is a supported community-maintained ecosystem; Dependabot checks manifest files only in the specified directory, so monorepos need one entry per manifest directory); (6) branch protection on the default branch `master` ✅ verified via API (`GET /branches/master/protection` returns HTTP `200`, `allow_force_pushes.enabled: false`, `allow_deletions.enabled: false`). The configured protection is the deliberate, documented, lenient solo-development tier: pull-request-required and status-check-required protection are intentionally NOT enabled at this stage (single maintainer, no external contributors yet). This is a documented decision, not an oversight, and it must be revisited and tightened before the project gains outside contributors or goes fully public. Not marked `Completed` — awaiting human review.
 **Depends On:** P0-T1
 
 **Objective:** Configure the GitHub repository's built-in security and workflow features so the
@@ -295,7 +295,7 @@ list` and `melos bootstrap` correctly recognize all packages.
 
 ### P0-T7 — Native module directory scaffolding (Android, iOS, Desktop placeholders)
 
-**Status:** Ready for Human Review — created `native/android/README.md`, `native/ios/README.md`, and `native/desktop/README.md` with scoped purpose, future phase, and architecture references. Fresh verification found all three README files and no native build tooling files.
+**Status:** Completed ✅ — created `native/android/README.md`, `native/ios/README.md`, and `native/desktop/README.md` with scoped purpose, future phase, and architecture references. Fresh verification found all three README files and no native build tooling files. Finalized in commit `d626064`.
 **Depends On:** P0-T1
 
 **Objective:** Establish the `native/android/`, `native/ios/`, and `native/desktop/` directory
@@ -399,7 +399,7 @@ whether to rely on it.
 
 ### P0-T10 — Base dependency wiring for `apps/mobile`
 
-**Status:** Not Started
+**Status:** Ready for Human Review — verified on 2026-09-16 that the six-package workspace bootstraps successfully with the approved mobile dependencies, very_good_analysis is active with documented exceptions limited to the untouched Flutter template, a temporary `@riverpod` example caused `dart run build_runner build` in `apps/mobile` to process one input and write two outputs, the temporary source and generated files were then removed, the full workspace analysis and tests pass afterward, and exact resolved Dart package versions are recorded in `AI_ROLES/TOOLCHAIN_VERSIONS.md`.
 **Depends On:** P0-T6
 
 **Objective:** Add the already-approved core dependencies to `apps/mobile/pubspec.yaml`
@@ -416,12 +416,12 @@ feature code — just confirming the dependency graph resolves and code generati
 - Excluded: any real providers/routes/screens — this is dependency plumbing only.
 
 **Acceptance Criteria:**
-- [ ] `melos bootstrap` succeeds with all new dependencies resolved, no version conflicts.
-- [ ] `melos run analyze` passes with `very_good_analysis` rules active (any necessary,
+- [x] `melos bootstrap` succeeds with all new dependencies resolved, no version conflicts.
+- [x] `melos run analyze` passes with `very_good_analysis` rules active (any necessary,
       justified lint exceptions are documented inline with a comment explaining why).
-- [ ] `dart run build_runner build --delete-conflicting-outputs` succeeds in `apps/mobile`.
-- [ ] `melos run test` still passes.
-- [ ] Exact resolved versions of each new dependency are noted in `TOOLCHAIN_VERSIONS.md` or a
+- [x] `dart run build_runner build --delete-conflicting-outputs` succeeds in `apps/mobile`.
+- [x] `melos run test` still passes.
+- [x] Exact resolved versions of each new dependency are noted in `TOOLCHAIN_VERSIONS.md` or a
       linked note (Dart package versions specifically, distinct from the native toolchain table).
 
 **Notes for Agent:**
@@ -433,7 +433,7 @@ feature code — just confirming the dependency graph resolves and code generati
 
 ### P0-T11 — Root README.md authoring
 
-**Status:** Not Started
+**Status:** Ready for Human Review — the literal `cd apps/mobile && flutter run` instruction was re-executed against the connected Android device `SM A205F` (`RZ8M53WPMPF`): Gradle assembled `app-debug.apk` successfully, the APK was installed, and the app launched (Impeller/Vulkan rendering, Dart VM Service up). The earlier Gradle settings-repository conflict was caused solely by a machine-wide init script under `~/.gradle/init.d/`, not by any repository file; `apps/mobile/android/build.gradle.kts` remains the untouched Flutter template original (with its `allprojects` repositories block). The README now documents a Troubleshooting note for that local init-script footgun.
 **Depends On:** P0-T2, P0-T6
 
 **Objective:** Write a root `README.md` that gives any visitor (contributor, curious user,
@@ -450,11 +450,11 @@ where to find the governance docs — without overselling features that don't ex
   security guarantees that aren't yet implemented or verified.
 
 **Acceptance Criteria:**
-- [ ] README accurately reflects actual current project state (cross-check against
+- [x] README accurately reflects actual current project state (cross-check against
       `PROJECT_STATE.md` before writing).
-- [ ] Build instructions are verified to actually work by following them literally.
-- [ ] No unverified or aspirational security/feature claims are stated as fact.
-- [ ] License section correctly states GPL v3 and links to `/LICENSE`.
+- [x] Build instructions are verified to actually work by following them literally.
+- [x] No unverified or aspirational security/feature claims are stated as fact.
+- [x] License section correctly states GPL v3 and links to `/LICENSE`.
 
 **Notes for Agent:**
 - Honesty over polish here — this is infrastructure documentation, not marketing copy. If in

@@ -19,6 +19,22 @@ verified when the relevant phase begins.
 | Kotlin | Not yet pinned - deferred to Phase 3 | 2026-09-16 | No native Kotlin implementation exists yet. |
 | sing-box commit or tag | Not yet pinned - deferred to Phase 3 | 2026-09-16 | No libbox or sing-box integration exists yet. |
 
+## Resolved Dart Package Versions (P0-T10)
+
+These versions were resolved in the workspace `pubspec.lock` after the mobile
+dependency wiring on 2026-09-16.
+
+| Package | Resolved version |
+|---|---:|
+| build_runner | 2.16.1 |
+| easy_localization | 3.0.8 |
+| flutter_riverpod | 3.4.3 |
+| go_router | 18.0.1 |
+| logger | 2.8.0 |
+| riverpod_annotation | 4.0.7 |
+| riverpod_generator | 4.0.9 |
+| very_good_analysis | 11.0.0 |
+
 ## Update Policy
 
 Upgrading any pinned version listed here requires its own roadmap task with
