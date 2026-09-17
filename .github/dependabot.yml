@@ -1,0 +1,97 @@
+# Dependabot version updates configuration.
+#
+# One entry is required per directory that contains dependency manifest
+# files (see GitHub Dependabot docs: "directory" option — Dependabot
+# checks manifest files only in the specified directory, so monorepos
+# need one update entry per directory). This repository has seven
+# pubspec.yaml files (Dart workspace root + apps/mobile + five packages
+# under packages/) plus GitHub Actions workflows.
+#
+# Covered here:
+#   - pub (Dart/Flutter): "/" root workspace, apps/mobile, and the five
+#     package skeletons under packages/.
+#   - github-actions: .github/workflows/ (directory: "/" is the documented
+#     value for GitHub Actions workflow files).
+#
+# Not covered (intentionally deferred):
+#   - Gradle/Maven (Android): no real Gradle dependency files exist yet;
+#     native Android integration starts in Phase 3.
+#   - npm, docker, or other ecosystems: not used by this repository.
+#
+# Weekly cadence: conservative by design, matching the project's
+# governance preference for slow, reviewable dependency churn (SECURITY.md /
+# P0-T4 scope). Monday mornings, UTC.
+
+version: 2
+updates:
+  # Dart workspace root (pubspec.yaml with the workspace definition).
+  - package-ecosystem: "pub"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "UTC"
+
+  # Mobile Flutter application.
+  - package-ecosystem: "pub"
+    directory: "/apps/mobile"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "UTC"
+
+  # Core domain package.
+  - package-ecosystem: "pub"
+    directory: "/packages/core_domain"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "UTC"
+
+  # Core VPN engine package.
+  - package-ecosystem: "pub"
+    directory: "/packages/core_vpn_engine"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "UTC"
+
+  # Config parser package.
+  - package-ecosystem: "pub"
+    directory: "/packages/config_parser"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "UTC"
+
+  # UI theme package.
+  - package-ecosystem: "pub"
+    directory: "/packages/ui_theme"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "UTC"
+
+  # Shared utils package.
+  - package-ecosystem: "pub"
+    directory: "/packages/shared_utils"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "UTC"
+
+  # GitHub Actions workflows (.github/workflows/ci.yml action versions).
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "UTC"
