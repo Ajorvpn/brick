@@ -1,92 +1,130 @@
 # PROJECT_STATE.md — Current Snapshot
 
-> This file reflects the CURRENT state of the project only. It is not a
-> history log (task-by-task history, if needed, lives in Git commit
-> history and each task's final report — not here). Every AI agent must
-> read this file first, before `ARCHITECTURE.md` or `ROADMAP.md`, to get
-> immediate situational awareness. This file must be updated at the end
-> of every task, per `DEFINITION_OF_DONE.md` Section 7.
+> **PROCESS RULE (non-negotiable):** This file MUST be updated by the coding
+> agent at the end of every task, without exception, reflecting true,
+> verified state — not aspirational state. AI chat context does not persist
+> across sessions; this file does. It is the authoritative persistent memory
+> of the project across sessions. If this file is stale, it must be corrected
+> before any new task begins, not silently worked around.
 
-**Last updated**: 2026-09-16, P0-T5 CI workflow verification
-**Updated by**: Coding agent, with GitHub Actions run evidence
+> This file reflects the CURRENT state of the project only. It is not a
+> history log (task-by-task history lives in Git commit history and each
+> task's final report). Every AI agent must read this file first, before
+> `ARCHITECTURE.md` or `ROADMAP.md`, to get immediate situational awareness.
+
+**Last updated**: 2026-09-17, P0-T4 verification + PROJECT_STATE full rewrite
+**Updated by**: Coding agent, with authenticated `gh` API evidence
 
 ---
 
 ## 1. Current Phase
 
-**Phase 0 — Project Foundation & Governance Setup**
+**Phase 0 — Project Foundation & Governance Setup (near closeout).**
 
-We are still inside Phase 0. No application code, no domain logic, no
-native code, and no UI has been written yet. Everything so far is
-repository scaffolding and governance documentation.
-
----
-
-## 2. What Exists Right Now (Verified, Working)
-
-- Git repository initialized at `~/Documents/Code/brick-vpn`.
-- Melos-based monorepo scaffolded and verified working:
-  - Root `pubspec.yaml` uses Dart Native Workspace (`workspace:` field) and is now the sole
-    source of truth for Melos workspace configuration and scripts.
-  - `melos.yaml` has been removed after verification that Melos 8.7.0 does not read it for
-    workspace/package discovery or `melos run` scripts.
-  - `apps/mobile` — a fresh, untouched `flutter create` default app
-    (org: `dev.brickvpn`), confirmed bootstrapped successfully via
-    `melos bootstrap` as part of the six-package workspace.
-  - Five minimal Dart package skeletons now exist under `packages/`, and
-    `melos list` correctly shows all six workspace packages.
-  - `.github/workflows/ci.yml` exists and was executed successfully by
-    GitHub Actions in run `35094137659` for commit `bea3eea`.
-  - `AI_ROLES/TOOLCHAIN_VERSIONS.md` records the verified Flutter 3.47.4,
-    Dart 3.13.3, Melos 8.7.0, and Git 2.43.0 versions, with Go and native
-    integration pins explicitly deferred to Phase 3.
-- Folder structure created (mostly empty, placeholders only):
-brick-vpn/
-├── apps/mobile/ # default Flutter scaffold, unmodified
-├── packages/ # five minimal Dart package skeletons
-├── native/
-│ ├── android/ # empty
-│ ├── ios/ # empty
-│ └── desktop/ # empty
-├── AI_ROLES/
-│ └── logs/ # empty
-├── .github/workflows/ci.yml
-├── pubspec.yaml
-└── .gitignore
-
-text
-
-- `AI_ROLES/` governance documents completed so far:
-- [x] `ARCHITECTURE.md`
-- [x] `AGENTS.md`
-- [x] `CODING_STANDARDS.md`
-- [x] `DEFINITION_OF_DONE.md`
-- [x] `SECURITY.md`
-- [x] `MCP_MEMORY_GUIDE.md`
-- [x] `PROJECT_STATE.md` (this file)
-- [ ] `ROADMAP.md` — **not yet written, next immediate step**
+No application code, no domain logic, no native code, and no UI have been
+written yet. All Phase 0 tasks (P0-T1 through P0-T12) are implemented, in
+review, or pending human actions. P0-T12 (Phase 0 closeout DoD pass) has NOT
+been started and must not be attempted until the human reviews P0-T10/P0-T11
+and resolves the P0-T4 branch-protection item.
 
 ---
 
-## 3. Environment Notes (Verified on This Machine)
+## 2. Phase 0 Task Status (quoted from `AI_ROLES/ROADMAP.md`)
 
-- OS: Ubuntu 24.04.4 LTS
-- Flutter: 3.47.4 (stable channel)
-- Dart SDK: 3.13.3
-- Melos: 8.7.0 (installed via `dart pub global activate melos`)
-- `flutter doctor` status:
-- [x] Flutter toolchain OK
-- [x] Android toolchain OK (Android SDK 36.1.0) — ⚠️ warning: multiple
-  `adb` binaries detected (`~/Android/Sdk/platform-tools/adb` and
-  `/usr/lib/android-sdk/platform-tools/adb`). Not yet resolved. Low
-  priority — revisit if device connection issues occur.
-- [x] Chrome (web) OK — web is not a target platform for this project,
-  noted only because `flutter doctor` reports it.
-- [ ] Linux desktop toolchain — **not installed** (`clang++`, `CMake`,
-  `ninja`, `pkg-config` missing). Intentionally deferred; only required
-  starting at the Desktop phase (Phase 12), not before.
-- [x] Connected device — at least one physical Android device (or
-  equivalent) detected as available for testing.
+The following one-line summaries reflect the actual `**Status:**` lines
+currently in `AI_ROLES/ROADMAP.md`. Where ROADMAP.md and observed reality
+disagree, it is flagged here rather than silently resolved.
+
+- **P0-T1**: `Completed ✅` — Git repository and baseline scaffold commit
+  finalized (commits `d056b07`, `c1821c0`). Note: the working tree is
+  currently NOT clean (multiple uncommitted changes awaiting human-authorized
+  commit; see Section 6) — this does not contradict the completed scaffold
+  baseline but must be resolved before closeout.
+- **P0-T2**: `Completed ✅` — GPL v3 `LICENSE` added in commit `57db473`.
+- **P0-T3**: `Completed ✅` — all AI_ROLES governance files committed.
+- **P0-T4**: `In Progress` — secret scanning, push protection, Dependabot
+  alerts, and automated security fixes verified PASS via authenticated
+  `gh` API; `.github/dependabot.yml` created locally (uncommitted);
+  branch protection on `master` still NOT configured — human action
+  required; blocks P0-T12, not other Phase 0 work.
+- **P0-T5**: `Completed ✅` — baseline CI workflow passing (runs
+  `35094137659`, `35094469907`).
+- **P0-T6**: `Completed ✅` — six-package Melos workspace verified
+  (bootstrap/analyze/test all pass).
+- **P0-T7**: `Completed ✅` — native/ README scaffolding finalized in commit
+  `d626064` (human-reviewed).
+- **P0-T8**: `Ready for Human Review` — `AI_ROLES/TOOLCHAIN_VERSIONS.md`
+  created and verified.
+- **P0-T9**: `Completed ✅` — Memory MCP write/read round-trip verified.
+- **P0-T10**: `Ready for Human Review` — base dependency wiring for
+  `apps/mobile` done and verified; awaiting human review.
+- **P0-T11**: `Ready for Human Review` — root `README.md` authored; build
+  instructions verified on a real Android device (SM A205F,
+  `RZ8M53WPMPF`); awaiting human review.
+- **P0-T12**: `Not Started` — Phase 0 closeout DoD pass. Explicitly out of
+  scope until T10/T11 review and P0-T4 branch protection are resolved.
+
+---
+
+## 3. What Exists Right Now (Verified)
+
+- Git repository at `~/Documents/Code/brick-vpn` (GitHub: `Ajorvpn/brick`,
+  default branch `master`).
+- Melos monorepo, six packages: root workspace `pubspec.yaml` (Dart Native
+  Workspace, sole source of truth; `melos.yaml` removed), `apps/mobile`
+  (Flutter 3.47.4 scaffold with base dependencies wired per P0-T10), and
+  `packages/{core_domain, core_vpn_engine, config_parser, ui_theme,
+  shared_utils}`.
+- `.github/workflows/ci.yml` — passing CI (P0-T5, runs `35094137659`,
+  `35094469907`).
+- `.github/dependabot.yml` — created 2026-09-17 (P0-T4), 8 entries: 7× `pub`
+  (one per pubspec.yaml directory) + 1× `github-actions`; PyYAML-validated;
+  NOT yet committed/pushed.
+- `LICENSE` (GPL v3), root `README.md` (P0-T11, uncommitted),
+  `AI_ROLES/TOOLCHAIN_VERSIONS.md` (P0-T8).
+- `native/{android,ios,desktop}/README.md` scaffolding (P0-T7).
+- Android debug build verified end-to-end on device SM A205F
+  (`RZ8M53WPMPF`): `flutter run` built `app-debug.apk`, installed, and
+  launched (Impeller/Vulkan, Dart VM Service up) — with
+  `apps/mobile/android/build.gradle.kts` left as the untouched Flutter
+  template original.
+- GitHub repo security settings (verified 2026-09-17 via authenticated
+  `gh` API): secret scanning enabled, push protection enabled, Dependabot
+  alerts enabled, automated security fixes enabled.
+
+## 4. What Does NOT Exist Yet
+
+- Any real domain/VPN/UI code — no VpnService, no libbox/sing-box
+  integration, no feature screens (by design; that is Phases 1–11).
+- Branch protection on `master` (human UI action pending; verified absent
+  via `GET /branches/master/protection` → `404 Branch not protected`).
+- `.github/dependabot.yml` on the remote (created locally; not pushed).
+- No public-facing security policy page (deferred per SECURITY.md).
+- No license/CLA decision beyond GPL v3 direction (open question).
+
+## 5. Environment Notes (Verified on This Machine)
+
+- OS: Ubuntu 24.04.5 LTS
+- Flutter: 3.47.4 (stable channel); Dart SDK: 3.13.3; Melos: 8.7.0;
+  Git: 2.43.0 — authoritative matrix in
+  [`AI_ROLES/TOOLCHAIN_VERSIONS.md`](TOOLCHAIN_VERSIONS.md). AGP/Kotlin/Go/
+  NDK/sing-box pins deliberately deferred to Phase 3.
+- **Local Gradle init-script footgun (must stay disabled):**
+  `/home/e60/.gradle/init.d/iran-mirrors.gradle.disabled` — a machine-wide
+  Gradle init script that injects extra Maven repositories. When active, it
+  breaks the Flutter Android plugin loader with
+  `Build was configured to prefer settings repositories over project
+  repositories but repository 'maven' was added by settings file
+  'settings.gradle.kts'`. It MUST remain renamed with `.disabled`; the fix
+  is NEVER to delete the `allprojects` repositories block from
+  `apps/mobile/android/build.gradle.kts`. Documented in the root README
+  Troubleshooting section.
+- `gh` CLI authenticated as `Ajorvpn` (keyring, `repo` scope) — enables
+  authenticated GitHub API verification.
+- Multiple `adb` binaries warning (low priority, unresolved).
+- Linux desktop toolchain not installed (intentionally deferred until the
+  Desktop phase).
+- At least one physical Android device (SM A205F) available for testing.
 
 ### Known Environment Gotcha (Documented in `ARCHITECTURE.md` Section 2.1)
 
@@ -118,64 +156,49 @@ verified command outputs and package-source proof.
 
 ---
 
-## 4. What Does NOT Exist Yet (Do Not Assume)
+## 6. Working Tree State (uncommitted, awaiting human authorization)
 
-- No `packages/core_domain`, `packages/core_vpn_engine`,
-`packages/config_parser`, `packages/ui_theme`, or
-`packages/shared_utils` have been created yet — these are all still
-just directories/decisions in `ARCHITECTURE.md`, not real code.
-- No native Android/Kotlin code exists yet (`native/android` is empty).
-- No Riverpod, go_router, very_good_analysis, easy_localization, or any
-other planned dependency has been added to `apps/mobile/pubspec.yaml`
-yet — it is still the unmodified default Flutter template.
-- Baseline CI workflow exists at `.github/workflows/ci.yml`; its first
-  GitHub Actions run passed on 2026-09-16 (run `35094137659`).
-- No `libbox` AAR or sing-box integration exists yet.
-- Memory MCP was verified on 2026-09-16 with a real write/read round-trip
-  using `@modelcontextprotocol/server-memory` over stdio and
-  `.mcp-memory/memory.json`. It may be used as a convenience cache for
-  low-sensitivity durable facts, but `AI_ROLES/*.md` remains authoritative.
-- No license file, README content, or public-facing documentation has
-been written yet.
-- No UI/UX design work has started (intentionally deferred to Phase 11
-per `ARCHITECTURE.md`).
+As of 2026-09-17, the working tree contains intentional, uncommitted changes
+(agents are prohibited from committing without explicit human approval):
+
+- `AI_ROLES/ROADMAP.md` — P0-T4/T7/T10/T11 status updates.
+- `AI_ROLES/TOOLCHAIN_VERSIONS.md` — resolved Dart package versions (P0-T10).
+- `apps/mobile/pubspec.yaml`, `apps/mobile/analysis_options.yaml`,
+  `pubspec.lock` — base dependency wiring (P0-T10).
+- `apps/mobile/macos/Flutter/GeneratedPluginRegistrant.swift` — incidental
+  Flutter tooling regeneration during dependency work.
+- `README.md` (untracked) — root README (P0-T11).
+- `.github/dependabot.yml` (untracked) — new (P0-T4).
+
+The human must review and authorize commits for these before P0-T12.
 
 ---
 
-## 5. Immediate Next Steps (In Order)
+## 7. Open Questions / Pending Human Decisions
 
-1. Write `AI_ROLES/ROADMAP.md` — the full phase-by-phase, task-by-task
- plan (Phase 0 through Phase 10 in fine detail; Phases 11–14 at a
- higher level, to be expanded when reached).
-2. Begin executing Phase 0 remaining tasks from the roadmap, expected to
- include (exact list to be finalized in `ROADMAP.md`):
- - Memory MCP installation + verification task.
- - GitHub repository creation, initial push, branch protection,
-   Dependabot/secret-scanning enablement (per `SECURITY.md` Section 11).
- - Base dependency setup in `apps/mobile/pubspec.yaml` (Riverpod,
-   go_router, very_good_analysis, easy_localization, logger).
- - GitHub Actions CI workflow (lint + analyze + test on push/PR).
- - `packages/` skeletons created with correct workspace configuration.
+1. **Branch protection on `master`** (P0-T4): not yet configured on GitHub;
+   requires manual UI action (require PR + required status check + no
+   force-push + no deletions), then agent re-verification.
+2. **P0-T10 review**: human to review dependency-wiring deliverables and
+   mark `Completed`.
+3. **P0-T11 review**: human to review root `README.md` and mark `Completed`.
+4. **P0-T8 review**: still `Ready for Human Review` from an earlier session.
+5. **Commit authorization**: multiple working-tree changes (Section 6) need
+   explicit human go-ahead to commit (and then push, including
+   `.github/dependabot.yml`).
+6. License/CLA wording finalization (GPL v3 direction agreed).
+7. Memory MCP: verified 2026-09-16 with a real write/read round-trip; may be
+   used as a low-sensitivity convenience cache, with graceful fallback to
+   `PROJECT_STATE.md`/`ARCHITECTURE.md`/`ROADMAP.md`; governance files remain
+   the source of truth on any conflict.
 
----
+## 8. Immediate Next Steps (In Order)
 
-## 6. Open Questions / Pending Human Decisions
-
-- Final decision on open-source license file wording/CLA (if any) —
-GPL v3 direction agreed, exact `LICENSE` file not yet added.
-- Memory MCP verification passed: a fresh server invocation retrieved the
-  entity written by a previous invocation. Future agents may query/store
-  low-sensitivity facts when the server is available, while gracefully
-  falling back to `PROJECT_STATE.md`, `ARCHITECTURE.md`, and `ROADMAP.md`
-  whenever it is unavailable or fails; governance files remain the source
-  of truth if any conflict occurs.
-- No blocking technical decisions pending at this time.
-
-## 7. Phase 0 Audit Result Summary
-
-- `P0-T3` was verified by the coding agent in this session and marked as `Completed ✅` in `AI_ROLES/ROADMAP.md`.
-- `P0-T1` was verified as partially complete (`In Progress 🟡`) because the monorepo scaffold exists and the repo history is coherent, but the working tree is not clean (`git status` currently shows modified `.gitignore`, modified `AI_ROLES/ROADMAP.md`, and an untracked `.freebuff/` directory).
-- `P0-T9` was verified with a real cross-process Memory MCP write/read round-trip on 2026-09-16 and marked `Ready for Human Review` in `AI_ROLES/ROADMAP.md`.
-- All other Phase 0 tasks remain `Not Started` in the current repo state, with the main blockers being the missing artifacts (`LICENSE`, `README.md`, `AI_ROLES/TOOLCHAIN_VERSIONS.md`, `.github/workflows/ci.yml`, `.github/dependabot.yml`, native README placeholders, package skeletons, and the missing multi-package `melos` workspace setup).
-- The environment also has a separate verified blocker for future Phase 0/3 work: Android debug build currently fails in `apps/mobile/android/settings.gradle.kts` with `Error resolving plugin [id: 'dev.flutter.flutter-plugin-loader', version: '1.0.0']`, so full build verification beyond the current repo audit remains blocked until that Gradle configuration issue is corrected.
-- `P0-T5` is now verified and marked `Ready for Human Review`: GitHub Actions run `35094137659` passed checkout, Flutter setup, Melos installation, bootstrap, format, analyze, and tests for all six packages.
+1. Human: apply branch protection on `master` (GitHub UI), then agent
+   re-verifies via `gh api repos/Ajorvpn/brick/branches/master/protection`.
+2. Human: review P0-T10 and P0-T11 deliverables (full raw content supplied in
+   the 2026-09-17 session report); on approval, mark `Completed`, unblocking
+   P0-T12.
+3. Human: authorize commits of the working-tree changes (including
+   `.github/dependabot.yml` and `README.md`).
+4. Agent (after 1–3): run P0-T12 — Phase 0 closeout DoD pass.
