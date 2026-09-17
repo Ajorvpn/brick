@@ -464,7 +464,7 @@ where to find the governance docs — without overselling features that don't ex
 
 ### P0-T12 — Phase 0 closeout and Definition-of-Done pass
 
-**Status:** Not Started
+**Status:** Ready for Human Review — the Phase 0 closeout gate was validated on 2026-09-17: a fresh clone of `origin/master` at commit `c506ebb` ran `melos bootstrap` (6 packages bootstrapped), `melos run format --no-select`, `melos run analyze --no-select`, and `melos run test --no-select` with zero manual intervention and zero failures, and GitHub Actions CI run `35169690649` (event `push`, `headSha` `c506ebb`) completed with conclusion `success` on `master` after the workflow trigger was corrected from the stale `main` value to the repository's actual default branch `master`. Note: this task's acceptance criterion "CI is green on the `main` branch" is worded against a branch this repository no longer uses as its default; CI is green on `master`, so that checkbox is intentionally left unchecked pending a human decision to either reword the criterion or verify the stale `main` branch separately. Not marked `Completed` — awaiting human sign-off.
 **Depends On:** P0-T1 through P0-T11
 
 **Objective:** Perform a full closeout review of Phase 0: confirm every task above is genuinely
