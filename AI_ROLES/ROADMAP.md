@@ -187,6 +187,16 @@ statements, no broken cross-references, no leftover placeholder text.
 ### P0-T4 — GitHub repository setup: branch protection, Dependabot, secret scanning
 
 **Status:** Ready for Human Review — all six required items verified on 2026-09-17 via authenticated `gh` API (account `Ajorvpn`): (1) secret scanning ✅ `enabled`; (2) secret scanning push protection ✅ `enabled`; (3) Dependabot vulnerability alerts ✅ HTTP `204` (enabled); (4) Dependabot automated security fixes ✅ `{"enabled": true, "paused": false}`; (5) `.github/dependabot.yml` ✅ created and committed — seven `pub` entries, one per directory containing a `pubspec.yaml`, plus a `github-actions` entry for `.github/workflows/`, validated with PyYAML and grounded in the official Dependabot documentation (`pub` is a supported community-maintained ecosystem; Dependabot checks manifest files only in the specified directory, so monorepos need one entry per manifest directory); (6) branch protection on the default branch `master` ✅ verified via API (`GET /branches/master/protection` returns HTTP `200`, `allow_force_pushes.enabled: false`, `allow_deletions.enabled: false`). The configured protection is the deliberate, documented, lenient solo-development tier: pull-request-required and status-check-required protection are intentionally NOT enabled at this stage (single maintainer, no external contributors yet). This is a documented decision, not an oversight, and it must be revisited and tightened before the project gains outside contributors or goes fully public. Not marked `Completed` — awaiting human review.
+
+**Manual GitHub UI steps the human performed (note recorded here, in this Status field, per ROADMAP.md's own convention — no separate log file was created):**
+1. Branch protection on `master`: branch name pattern `master`; force pushes **not allowed**; branch deletions **not allowed**; pull-request-required and status-check-required intentionally **left disabled** (deliberate solo-development choice, see above).
+2. Secret scanning: **enabled** (Settings → Code security → Secret scanning).
+3. Secret scanning push protection: **enabled** (Protection settings within Secret scanning).
+4. Dependabot alerts: **enabled** (Code security → Dependabot alerts).
+5. Dependabot security updates (automated security fixes): **enabled** (Code security → Dependabot security updates).
+6. `.github/dependabot.yml` created by the agent, committed in `e6914b4`, and pushed.
+
+Each of items 1–6 was independently re-verified by the agent over the authenticated GitHub API on 2026-09-17 (raw evidence in this task's final report and in `PROJECT_STATE.md`).
 **Depends On:** P0-T1
 
 **Objective:** Configure the GitHub repository's built-in security and workflow features so the
@@ -197,18 +207,36 @@ project has baseline supply-chain hygiene from day one, per `SECURITY.md`.
   Gradle/Go ecosystems, with a conservative update schedule, e.g. weekly, grouped where sensible),
   enabling GitHub secret scanning and push protection (repo settings, documented in a short note
   since this may require manual UI steps the agent cannot perform), a basic branch protection
-  rule description for `main` (require PR, require status checks once CI exists — CI itself is
+  rule description for `master` (require PR, require status checks once CI exists — CI itself is
   P0-T5) documented for the human to apply manually if the agent lacks GitHub admin API access.
+  Clarification (2026-09-17): the human deliberately chose a lighter protection tier for the
+  solo-development phase — no pull-request requirement and no required status check were enabled;
+  force-pushes and branch deletions were disabled instead. The "require PR, require status checks"
+  wording above describes this task's original aspiration, not what was actually configured, and it
+  is to be revisited and tightened before the project gains contributors.
 - Excluded: actual CI workflow content (that's P0-T5), any Gradle/Go dependency files that don't
   exist yet (add placeholders/comments noting they'll be added when those ecosystems appear).
 
 **Acceptance Criteria:**
-- [ ] `.github/dependabot.yml` exists and validates (correct YAML, correct package-ecosystem
+- [x] `.github/dependabot.yml` exists and validates (correct YAML, correct package-ecosystem
       values for `pub` and `github-actions` at minimum).
-- [ ] A short `AI_ROLES/logs/` note or PR description lists the manual GitHub UI steps the human
+
+      Evidence: created and committed in `e6914b4`; validated with PyYAML (`VALID YAML — 8
+      entries`); 7× `pub` entries (one per directory containing a `pubspec.yaml`) plus 1×
+      `github-actions` entry. Live proof that GitHub honors it: Dependabot opened PR #1
+      (`github-actions` bump) within minutes of the push.
+- [x] A short `AI_ROLES/logs/` note or PR description lists the manual GitHub UI steps the human
       must still perform (secret scanning toggle, push protection toggle, branch protection rule)
       if the agent's access doesn't allow configuring them directly.
-- [ ] No workflow file is created here that would fail simply because CI doesn't exist yet.
+
+      Satisfied by the enumerated manual-steps note in this task's **Status** field above (items
+      1–6), which documents each GitHub UI action the human performed and how it was re-verified.
+      ROADMAP.md's own convention permits recording such a note in the Status prose rather than
+      creating a separate log file; no `AI_ROLES/logs/` file was created.
+- [x] No workflow file is created here that would fail simply because CI doesn't exist yet.
+
+      Evidence: this task created no workflow file. The only workflow, `.github/workflows/ci.yml`,
+      belongs to P0-T5 and has since run green 7 times on `master`.
 
 **Notes for Agent:**
 - If you have no ability to configure repository settings via API/CLI in this environment, do not
@@ -279,9 +307,12 @@ list` and `melos bootstrap` correctly recognize all packages.
 - [x] `melos run analyze` and `melos run test` both pass across the whole workspace.
 - [x] Each new package's `pubspec.yaml` has `resolution: workspace` placed correctly (right after
       `publish_to: none`, matching the exact pattern already verified for `apps/mobile`).
-- [ ] The CI workflow from P0-T5 is re-run and still passes with the new packages present.
-      (Not created in this task; no `.github/workflows/ci.yml` exists yet, so this remains out of
-      scope for P0-T6.)
+- [x] The CI workflow from P0-T5 is re-run and still passes with the new packages present.
+
+      Evidence: the workflow now exists (P0-T5) and has run green 7 times on `master`, including
+      runs after the five new packages and the P0-T10 dependency wiring landed — e.g.
+      `35170446158` (`9151a40`), `35170349543` (`60305ed`), `35170180363` (`b8ef4ce`),
+      `35169690649` (`c506ebb`), each `conclusion: success`.
 
 **Notes for Agent:**
 - This exact Melos/workspace pitfall has already been hit once during initial scaffolding (see
@@ -387,8 +418,8 @@ whether to rely on it.
       (replacing the current "unverified" note).
 - [x] If it works: a short "how to use it going forward" note is added, confirming the
       graceful-degradation and ownership-of-truth rules from `MCP_MEMORY_GUIDE.md` still apply.
-- [ ] If it doesn't work: this is explicitly not a blocker — record it and move on, per the
-      "never block on it" rule.
+- [x] N/A — feature worked, condition did not apply. (If it doesn't work: this is explicitly not
+      a blocker — record it and move on, per the "never block on it" rule.)
 - [x] `.mcp-memory/` is confirmed present in `.gitignore`.
 
 **Notes for Agent:**
@@ -464,7 +495,7 @@ where to find the governance docs — without overselling features that don't ex
 
 ### P0-T12 — Phase 0 closeout and Definition-of-Done pass
 
-**Status:** Ready for Human Review — the Phase 0 closeout gate was validated on 2026-09-17: a fresh clone of `origin/master` at commit `c506ebb` ran `melos bootstrap` (6 packages bootstrapped), `melos run format --no-select`, `melos run analyze --no-select`, and `melos run test --no-select` with zero manual intervention and zero failures, and GitHub Actions CI run `35169690649` (event `push`, `headSha` `c506ebb`) completed with conclusion `success` on `master` after the workflow trigger was corrected from the stale `main` value to the repository's actual default branch `master`. Note: this task's acceptance criterion "CI is green on the `main` branch" is worded against a branch this repository no longer uses as its default; CI is green on `master`, so that checkbox is intentionally left unchecked pending a human decision to either reword the criterion or verify the stale `main` branch separately. Not marked `Completed` — awaiting human sign-off.
+**Status:** Ready for Human Review — the Phase 0 closeout gate was validated on 2026-09-17: a fresh clone of `origin/master` at commit `c506ebb` ran `melos bootstrap` (6 packages bootstrapped), `melos run format --no-select`, `melos run analyze --no-select`, and `melos run test --no-select` with zero manual intervention and zero failures, and GitHub Actions CI run `35169690649` (event `push`, `headSha` `c506ebb`) completed with conclusion `success` on `master` after the workflow trigger was corrected from the stale `main` value to the repository's actual default branch `master`. Note: this task's acceptance criterion originally read "CI is green on the `main` branch"; that was unsatisfiable because `main` no longer exists, so it was reworded to reference the repository's actual default branch `master` and is now checked, citing CI run `35170446158` on commit `9151a40` (conclusion `success`). Not marked `Completed` — awaiting human sign-off.
 **Depends On:** P0-T1 through P0-T11
 
 **Objective:** Perform a full closeout review of Phase 0: confirm every task above is genuinely
@@ -479,14 +510,35 @@ about to begin.
 - Excluded: starting any Phase 1 work.
 
 **Acceptance Criteria:**
-- [ ] Fresh clone of the repo, from scratch, followed by `melos bootstrap`, `melos run analyze`,
+- [x] Fresh clone of the repo, from scratch, followed by `melos bootstrap`, `melos run analyze`,
       `melos run format`, `melos run test` — all succeed with zero manual intervention.
-- [ ] CI is green on the `main` branch.
-- [ ] `PROJECT_STATE.md` is fully rewritten to reflect end-of-Phase-0 state (not a diff/patch —
+
+      Evidence: fresh clone of `origin/master` at `c506ebb` into `/tmp/brick-vpn-verify` on
+      2026-09-17 — `melos bootstrap` → `6 packages bootstrapped`; `melos run format --no-select`
+      → SUCCESS; `melos run analyze --no-select` → SUCCESS; `melos run test --no-select` →
+      SUCCESS. Zero manual intervention, zero failures.
+- [x] CI is green on the `master` branch (the repository's actual default branch; `main` does not
+      exist).
+
+      Evidence: `gh api repos/Ajorvpn/brick --jq '.default_branch'` → `master`, and `main` is
+      absent from `gh api repos/Ajorvpn/brick/branches` (it was deleted 2026-09-16T12:55:24Z,
+      before this task). Latest run on the tip: run `35170446158` (`headSha` `9151a40`, event
+      `push`) → `conclusion: success`. Note: the criterion's original wording said "`main`",
+      which was unsatisfiable as written because that branch no longer exists; reworded here to
+      `master` per human instruction.
+- [x] `PROJECT_STATE.md` is fully rewritten to reflect end-of-Phase-0 state (not a diff/patch —
       a coherent current snapshot, per its own documented format).
-- [ ] A closeout report is produced following the exact template in `DEFINITION_OF_DONE.md`
+
+      Evidence: rewritten in commits `c506ebb` and `b8ef4ce` as a coherent full snapshot (sections
+      1–10: current phase, per-task status, what exists, what does not exist, environment notes,
+      repository sync state, resolved blockers, open questions, next steps, closing note) — not a
+      diff or patch.
+- [x] A closeout report is produced following the exact template in `DEFINITION_OF_DONE.md`
       (Task Status / Summary / Files Changed / Verification Performed / Self-Review / Known
       Limitations / Human Action Required).
+
+      Evidence: the 2026-09-17 Phase 0 closeout report was delivered in this task's final report
+      using that exact template, with raw command output attached for every claim.
 
 **Notes for Agent:**
 - This is a gate, not a formality — if a fresh clone doesn't build cleanly, Phase 0 is not

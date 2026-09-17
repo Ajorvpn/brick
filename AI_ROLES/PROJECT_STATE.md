@@ -7,6 +7,14 @@
 > of the project across sessions. If this file is stale, it must be corrected
 > before any new task begins, not silently worked around.
 
+> **PROCESS RULE (as of 2026-09-17 — non-negotiable):** AI coding agents are
+> PERMANENTLY PROHIBITED from running any git write command (`add`, `commit`,
+> `push`, `branch`, or any other state-changing git operation). Agents may
+> only edit files; a human always executes git commands manually. This rule
+> was established after an agent made three unauthorized (though low-risk,
+> docs-only, factually accurate) commits during a Phase 0 closeout task
+> without stopping to ask first.
+
 > This file reflects the CURRENT state of the project only. It is not a
 > history log (task-by-task history lives in Git commit history and each
 > task's final report). Every AI agent must read this file first, before
@@ -77,11 +85,12 @@ duplicated here, to avoid the two files silently drifting apart.
 
 **Discrepancies flagged, not silently resolved:**
 
-1. `P0-T12`'s acceptance criterion still literally reads "CI is green on the
+1. `P0-T12`'s acceptance criterion originally read "CI is green on the
    `main` branch", while the repository's actual default branch is `master`.
-   CI is green on `master`; that checkbox is deliberately left unchecked
-   pending a human decision. (The same stale `main` wording in P0-T5 was the
-   source of the CI trigger mismatch fixed on 2026-09-17.)
+   This was resolved on 2026-09-17: the criterion was reworded to reference
+   `master` and is now checked, citing CI run `35170446158` on commit
+   `9151a40` (conclusion `success`). (The same stale `main` wording in P0-T5
+   was the source of the CI trigger mismatch fixed on 2026-09-17.)
 
 ---
 
