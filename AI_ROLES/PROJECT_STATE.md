@@ -89,7 +89,7 @@ duplicated here, to avoid the two files silently drifting apart.
 
 - Git repository at `~/Documents/Code/brick-vpn`, GitHub `Ajorvpn/brick`,
   default branch `master`. All Phase 0 work is committed and pushed; local
-  and remote `master` both point at commit `c506ebb`.
+  and remote `master` both point at commit `b8ef4ce`.
 - Melos monorepo with six packages, verified by `melos bootstrap` reporting
   `6 packages bootstrapped`: root workspace `pubspec.yaml` (Dart Native
   Workspace + Melos config, sole source of truth), `apps/mobile`, and
@@ -187,7 +187,7 @@ working tree except an untracked local scratch directory (`AI_ROLES/logs/`,
 containing a personal prompt log) which is intentionally not part of the
 project and is not committed.
 
-Commit chain on `master` pushed 2026-09-17 (`d626064..c506ebb`):
+Commit chain on `master` pushed 2026-09-17 (`d626064..b8ef4ce`):
 
 - `e6914b4` — `chore: add dependabot configuration for pub and github-actions`
 - `02e3979` — `ci: fix workflow trigger to match default branch (master)`
@@ -195,6 +195,7 @@ Commit chain on `master` pushed 2026-09-17 (`d626064..c506ebb`):
 - `eea4794` — `docs: add root README.md`
 - `13ee527` — `docs: update Phase 0 governance status (P0-T4, P0-T7, P0-T10, P0-T11)`
 - `c506ebb` — `docs: rewrite PROJECT_STATE.md as authoritative living snapshot`
+- `b8ef4ce` — `docs: final Phase 0 closeout state in PROJECT_STATE.md` (also set P0-T12 to `Ready for Human Review`)
 
 **Fresh-clone closeout gate (P0-T12), verified 2026-09-17 at `c506ebb`:**
 `git clone` → `melos bootstrap` (`6 packages bootstrapped`) →
@@ -202,8 +203,10 @@ Commit chain on `master` pushed 2026-09-17 (`d626064..c506ebb`):
 (SUCCESS) → `melos run test --no-select` (SUCCESS). Zero manual
 intervention, zero failures.
 
-**CI:** GitHub Actions run `35169690649` (event `push`, `headSha` `c506ebb`)
-completed with conclusion `success` on `master`.
+**CI:** GitHub Actions runs on `master` at push events —
+`35169690649` (`headSha` `c506ebb`) and `35170180363` (`headSha` `b8ef4ce`) —
+both completed with conclusion `success`. A `pull_request` run
+`35169737362` (Dependabot PR #1) also completed `success`.
 
 ---
 
