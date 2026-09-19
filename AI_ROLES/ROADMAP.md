@@ -561,7 +561,7 @@ Phase 1 exists purely to make Phase 2+ possible to build cleanly.
 
 ### P1-T1 — Result-type error handling primitive
 
-**Status:** Not Started
+**Status:** Completed ✅ — Implemented hand-written sealed `Result<T, E>` in packages/shared_utils with 10 unit tests. Standing CI is green on this work, and Melos test-routing has been verified to execute shared_utils standalone under plain `dart test` in 5.8s.
 **Depends On:** P0-T12
 
 **Objective:** Implement the shared `Result<T, E>`-style type (per `CODING_STANDARDS.md`'s
@@ -624,6 +624,7 @@ timestamp) — in `packages/core_domain`, as pure Dart with zero Flutter depende
 - [ ] Unit tests cover equality, exhaustiveness (a `switch` with no `default` compiles and is
       analyzer-clean), and construction of every variant.
 - [ ] `melos run analyze` and `melos run test` pass.
+- [ ] `core_domain` is added to the `test:dart` scope list (allowlist) and to the `test:flutter` ignore list (denylist) in the root `pubspec.yaml` in the same commit that removes its Flutter dependency, ensuring deterministic test routing.
 
 **Notes for Agent:**
 - This directly encodes the "two explicitly separate streams... must never share a failure
@@ -705,6 +706,7 @@ a `getStatus()` query method.
       enough that a future agent implementing a concrete engine cannot misread it.
 - [ ] `melos run analyze` and `melos run test` pass (tests here can only cover the sealed type
       shape itself, since there's no implementation yet).
+- [ ] `core_vpn_engine` is added to the `test:dart` scope list (allowlist) and to the `test:flutter` ignore list (denylist) in the root `pubspec.yaml` in the same commit that removes its Flutter dependency, ensuring deterministic test routing.
 
 **Notes for Agent:**
 - This is one of the most important files in the whole project — the legacy failure was rooted
