@@ -62,6 +62,7 @@ melos:
         dirExists: test
         scope:
           - shared_utils
+          - core_domain
 
     test:flutter:
       description: Run `flutter test` for packages that depend on Flutter.
@@ -70,3 +71,4 @@ melos:
         dirExists: test
         ignore:
           - shared_utils
+          - core_domain

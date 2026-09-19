@@ -1,12 +1,8 @@
 name: core_domain
-description: "Brick VPN core domain package skeleton"
+description: "Brick VPN core domain entities (pure Dart, no Flutter dependency)"
 publish_to: 'none'
 resolution: workspace
 environment:
   sdk: ^3.13.3
-dependencies:
-  flutter:
-    sdk: flutter
 dev_dependencies:
-  flutter_test:
-    sdk: flutter
+  test: ^1.31.1
