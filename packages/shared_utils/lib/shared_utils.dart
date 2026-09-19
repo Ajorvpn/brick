@@ -1,4 +1,10 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+/// Brick VPN shared utilities.
+///
+/// This package is pure Dart by design: it must not depend on Flutter so it
+/// can be consumed by any Dart target. Implementation details live under
+/// `lib/src/` and are exported only through this barrel file.
 library shared_utils;
 
-/// Placeholder library for the Brick VPN shared_utils package skeleton.
-/// Real shared utilities will be added in a future phase.
+export 'src/result.dart';

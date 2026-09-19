@@ -1,12 +1,8 @@
 name: shared_utils
-description: "Brick VPN shared utils package skeleton"
+description: "Brick VPN shared utilities (pure Dart, no Flutter dependency)"
 publish_to: 'none'
 resolution: workspace
 environment:
   sdk: ^3.13.3
-dependencies:
-  flutter:
-    sdk: flutter
 dev_dependencies:
-  flutter_test:
-    sdk: flutter
+  test: ^1.31.1
