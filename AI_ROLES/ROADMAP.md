@@ -596,7 +596,7 @@ programmer errors.
 
 ### P1-T2 — Core domain entities: connection state and traffic stats
 
-**Status:** Not Started
+**Status:** Completed ✅ — Implemented sealed `ConnectionState` (5 variants: Disconnected, Connecting, Connected, Disconnecting, Error) with structured `ConnectionErrorReason` (sealed class, 4 variants including PlatformError with String payload), plus immutable `TrafficStats` value type. `packages/core_domain` migrated to pure Dart; added to `test:dart` scope allowlist and `test:flutter` ignore denylist in the same commit. 13 tests pass standalone via `dart test`. CI green on commit `e6f9874`.
 **Depends On:** P1-T1
 
 **Objective:** Define the two central domain types referenced throughout `ARCHITECTURE.md`

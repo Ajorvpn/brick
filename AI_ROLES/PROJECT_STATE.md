@@ -20,17 +20,17 @@
 > task's final report). Every AI agent must read this file first, before
 > `ARCHITECTURE.md` or `ROADMAP.md`, to get immediate situational awareness.
 
-**Last updated**: 2026-09-19 — Phase 1 Transition (P1-T1 closeout, Melos script refactor)
-**Updated by**: Coding agent, following a strict read-only audit verifying remote master state
+**Last updated**: 2026-09-19 — Phase 1 progress (P1-T2 shipped, governance re-synced)
+**Updated by**: Coding agent, after verifying committed state matches file claims
 
 ---
 
 ## 1. Current Phase
 
-**Phase 1 — Architecture Skeleton: IN PROGRESS (P1-T1 complete; P1-T2 is the next task to begin).**
+**Phase 1 — Architecture Skeleton: IN PROGRESS (P1-T1 and P1-T2 complete; P1-T3 is the next task to begin).**
 
 Phase 0 (Project Foundation & Governance Setup) is 100% completed, committed, and signed off.
-The project has successfully transitioned into Phase 1. The baseline primitive `Result<T, E>` (P1-T1) has been fully implemented, tested, and integrated. Melos test routing has been refactored to support pure-Dart and Flutter testing paths natively and deterministically.
+The project has continued executing Phase 1. The baseline primitive `Result<T, E>` (P1-T1) and the two central domain types `ConnectionState` and `TrafficStats` (P1-T2) are implemented, tested, and merged. `packages/core_domain` has been converted to pure Dart and integrated into the deterministic Melos test routing. The next task is P1-T3 (ServerProfile domain entity).
 
 ---
 
@@ -39,8 +39,8 @@ The project has successfully transitioned into Phase 1. The baseline primitive `
 Status tokens below are quoted verbatim from the corresponding `**Status:**` line in `AI_ROLES/ROADMAP.md`.
 
 - **P1-T1** (`ROADMAP.md:564`): `Completed ✅` — Hand-written `Result<T, E>` implemented in `packages/shared_utils` with 10 standalone unit tests passing. Pushed and merged to master.
-- **P1-T2** (`ROADMAP.md:599`): `Not Started` — "Core domain entities: connection state and traffic stats" under packages/core_domain (this is the next planned task; work has not yet begun in the file).
-- **P1-T3** (`ROADMAP.md:642`): `Not Started` — Server profile domain model.
+- **P1-T2** (`ROADMAP.md:599`): `Completed ✅` — `ConnectionState` (sealed, 5 variants) and `TrafficStats` (immutable value type) implemented in `packages/core_domain` with 13 standalone unit tests passing. `ConnectionErrorReason` implemented as a sealed class (chosen over enum to carry `PlatformError`'s String payload). Package migrated to pure Dart. Pushed and merged to master at commit `e6f9874`.
+- **P1-T3** (`ROADMAP.md:642`): `Not Started` — Server profile domain model (this is the next planned task; work has not yet begun in the file).
 - **P1-T4** (`ROADMAP.md:679`): `Not Started` — VpnEngine abstract interface and supporting command/result types.
 
 ---
@@ -49,16 +49,17 @@ Status tokens below are quoted verbatim from the corresponding `**Status:**` lin
 
 ### Code & Architecture Skeleton
 - **`packages/shared_utils/` (Pure Dart, verified):** Retroactively corrected P0-T6's scaffolding by removing all Flutter SDK transitives. Contains a hand-written, sealed `Result<T, E>` primitive with `Ok` and `Err` final subclasses (value-equality with `identical` fast path, intentionally no `toString` override so sensitive error payloads are not printed by default, `map`/`mapErr` transforms, and exhaustive `fold`/pattern-matching). Tested with 10 standalone unit tests running under `dart test`.
+- **`packages/core_domain/` (Pure Dart, verified):** Migrated from Flutter-scaffolded to pure Dart in the same commit that added its content. Contains sealed `ConnectionState` (5 variants: Disconnected, Connecting, Connected, Disconnecting, Error), sealed `ConnectionErrorReason` (4 variants: PermissionDenied, InvalidConfig, PlatformError with `String detail`, Unknown), and immutable `TrafficStats` value type (const constructor, value equality with `identical` fast path, intentionally no `toString` override per SECURITY.md to prevent connection telemetry leaking to system logs). Tested with 13 standalone unit tests running under `dart test`.
 - **`apps/mobile` (Flutter, wired):** Base dependencies resolved and pinned (`riverpod`, `riverpod_annotation`, `riverpod_generator`, `build_runner`, `go_router`, `easy_localization`, `logger`, `very_good_analysis`). Contains standard boilerplate tests.
 - **Melos Workspace (6 packages):** Configured via root `pubspec.yaml` list and individual package `resolution: workspace` settings.
 - **Deterministic Test Routing (Refactored):** Root `pubspec.yaml` Melos `test` script was refactored into a composite script that dispatches tests to:
-  * `test:dart` (`melos exec -- dart test`): routes pure-Dart packages (`shared_utils`) via an allowlist (`scope:`).
+  * `test:dart` (`melos exec -- dart test`): routes pure-Dart packages (`shared_utils`, `core_domain`) via an allowlist (`scope:`). Currently 2 packages allowlisted; more will be added as P1-T4 (`core_vpn_engine`) and Phase 2 (`config_parser`) migrate to pure Dart.
   * `test:flutter` (`melos exec -- flutter test`): routes Flutter-dependent packages via a denylist (`ignore:`).
   * This ensures pure-Dart packages are tested natively with plain `dart test` (5.8s real time) rather than relying on undocumented Flutter fallback behavior (13.8s real time).
 
 ### Repository & CI
-- **Git HEAD:** Match confirmed between local `master` and live remote `origin/master` at commit `f197932b438fa681f19fca3bce9b28c64f236e7a`.
-- **CI Status:** GitHub Actions CI is green on `master` (runs `35461569805` and `35456305742` completed successfully).
+- **Git HEAD:** Match confirmed between local `master` and live remote `origin/master` at commit `e6f9874`.
+- **CI Status:** GitHub Actions CI is green on `master` (runs `35475420430`, `35471636547`, and `35461569805` completed successfully).
 - **Branch Protection:** Active on remote `master` via GitHub UI (no force-push, no deletion).
 - **Vulnerability Scanners:** GitHub secret scanning, push protection, and Dependabot are active.
 - **Tracked logs:** Phase 0 closeout report is committed and tracked in `AI_ROLES/logs/phase-0-closeout-2026-09-17.md`.
@@ -67,7 +68,7 @@ Status tokens below are quoted verbatim from the corresponding `**Status:**` lin
 
 ## 4. What Does NOT Exist Yet
 
-- Real domain models for `core_domain` (`ConnectionState`, `TrafficStats`, `ServerProfile` — being built in P1-T2/P1-T3).
+- `ServerProfile` domain model for `core_domain` (being built in P1-T3). `ConnectionState` and `TrafficStats` already exist and are shipped.
 - `VpnEngine` contract interface (`core_vpn_engine` — P1-T4) or its mock implementation (`P1-T5`).
 - Android native integration (`VpnService`, `libbox` JNI bridge) — deferred to Phase 3.
 - Clean Linux desktop toolchain (missing locally: clang, cmake, ninja, pkg-config; deferred to Phase 12).
@@ -91,9 +92,6 @@ Status tokens below are quoted verbatim from the corresponding `**Status:**` lin
 
 ## 7. Immediate Next Steps (In Order)
 
-1. Human: commit and push these governance updates.
-2. Agent (P1-T2): Begin migrating `packages/core_domain` to pure Dart:
-   - Remove `flutter` dependencies from its `pubspec.yaml` and add `test: ^1.31.1`.
-   - Update its placeholder tests to import `package:test/test.dart` instead of `flutter_test`.
-   - Add `core_domain` to root `pubspec.yaml`'s `test:dart` (`scope`) allowlist **and** `test:flutter` (`ignore`) denylist in the same commit.
-   - Implement `ConnectionState`, `ConnectionErrorReason`, and `TrafficStats` as pure-Dart immutable models with comprehensive tests.
+1. Agent (P1-T3): Implement `ServerProfile` domain entity + `ProtocolType` enum in `packages/core_domain/lib/src/server_profile.dart`, with unit tests. This task must decide between a generic `Map<String, dynamic>` payload and typed sealed per-protocol config classes (see P1-T3 Notes for Agent — recommendation is typed sealed classes, but requires human confirmation before implementation).
+2. Agent (P1-T4): Implement abstract `VpnEngine` interface in `packages/core_vpn_engine`, following the same pure-Dart migration pattern as P1-T2 (remove Flutter deps, add to Melos dual-list routing).
+3. Human: after each task, review, commit, and push.
