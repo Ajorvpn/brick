@@ -29,8 +29,44 @@ melos:
       description: Check code formatting across all packages
       run: melos exec -- dart format --set-exit-if-changed .
 
+    # `test` is a composite script that dispatches to two sub-scripts
+    # based on whether a package is pure Dart or depends on Flutter.
+    # Pure-Dart packages MUST be tested with `dart test` (not
+    # `flutter test`) to prove they have no Flutter dependency — this
+    # is a load-bearing architectural invariant (see ARCHITECTURE.md
+    # Section 3 on the VpnEngine abstraction and its pure-Dart
+    # contract packages).
+    #
+    # ADDING A NEW PURE-DART PACKAGE requires TWO edits below, in the
+    # SAME COMMIT that removes the package's Flutter dependency:
+    #   1. Add the package name to `test:dart` → `scope:` (allowlist).
+    #   2. Add the same name to `test:flutter` → `ignore:` (denylist).
+    # Both edits are required. If only step 1 is done, the package is
+    # tested twice (once by each sub-script). If only step 2 is done,
+    # the package is not tested at all. This dual-list design is
+    # deliberate: Melos has no built-in "detect Flutter dependency"
+    # primitive, so explicit opt-in routing is the simplest correct
+    # solution — but it costs one small manual sync step per new
+    # pure-Dart package. Planned pure-Dart packages that will need
+    # this treatment: `core_domain` (P1-T2), `core_vpn_engine` (P1-T4).
     test:
-      description: Run tests in packages that contain a test directory
+      description: Run all tests, routing pure-Dart packages to `dart test` and Flutter packages to `flutter test`.
+      steps:
+        - test:dart
+        - test:flutter
+
+    test:dart:
+      description: Run `dart test` for pure-Dart packages (no Flutter dependency).
+      run: melos exec -- dart test
+      packageFilters:
+        dirExists: test
+        scope:
+          - shared_utils
+
+    test:flutter:
+      description: Run `flutter test` for packages that depend on Flutter.
       run: melos exec -- flutter test
       packageFilters:
         dirExists: test
+        ignore:
+          - shared_utils
