@@ -45,7 +45,7 @@ informed a decision.
 | Navigation | **go_router** | Official Flutter team package, declarative routing, deep-link ready. |
 | Linting | **very_good_analysis** | Stricter ruleset than default `flutter_lints`, industry-respected (Very Good Ventures). |
 | Localization | **easy_localization** | Structured i18n from day one (Persian + English), even though UI polish comes later. |
-| Logging (dev-only) | **logger** or **talker** | Structured local logging for development/debugging. Explicitly NOT wired to any remote telemetry service. |
+| Logging (dev-only) | **logger** | Structured local logging for development/debugging. Explicitly NOT wired to any remote telemetry service. |
 | Telemetry/Analytics | **None** (by design) | This is a censorship-circumvention / privacy tool. No Google Analytics, no Firebase, no default crash reporting to third parties. If crash reporting is ever added, it must be self-hosted or privacy-first, and opt-in only. |
 | CI/CD | **GitHub Actions** | Lint + type-check + test + build matrix run on every push/PR from the first task onward — not bolted on later. |
 | License | **GPL v3** | Ensures derivative/commercial forks must remain open source, protecting the project from being silently absorbed into closed-source commercial products. |
@@ -345,7 +345,7 @@ No plaintext storage of server configs or credentials anywhere —
 uses platform-native secure storage (Android Keystore-backed encrypted
 storage, equivalent mechanisms per platform later).
 No default logging of sensitive data (server IPs, user configs)
-even in dev-mode logger/talker output — sensitive fields must be
+even in dev-mode logger output — sensitive fields must be
 redacted at the logging utility level in shared_utils.
 Config parser (packages/config_parser) is a pure, sandboxed
 function with no side effects, network calls, or file I/O — this

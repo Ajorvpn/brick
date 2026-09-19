@@ -42,9 +42,8 @@ APK installed, and app launched). It requires a connected Android device or
 running emulator; iOS and desktop targets are not verified yet.
 
 The repository also contains a baseline workflow at
-[.github/workflows/ci.yml](.github/workflows/ci.yml). It is configured for
-pushes to `main` and pull requests; the repository's current GitHub default
-branch is `master`.
+[.github/workflows/ci.yml](.github/workflows/ci.yml). It triggers on push to
+`master` (the repository's actual default branch) and on all pull requests.
 
 ## Troubleshooting
 

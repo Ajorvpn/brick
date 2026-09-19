@@ -186,7 +186,7 @@ statements, no broken cross-references, no leftover placeholder text.
 
 ### P0-T4 — GitHub repository setup: branch protection, Dependabot, secret scanning
 
-**Status:** Completed ✅ — all six required items verified on 2026-09-17 via authenticated `gh` API (account `Ajorvpn`): (1) secret scanning ✅ `enabled`; (2) secret scanning push protection ✅ `enabled`; (3) Dependabot vulnerability alerts ✅ HTTP `204` (enabled); (4) Dependabot automated security fixes ✅ `{"enabled": true, "paused": false}`; (5) `.github/dependabot.yml` ✅ created and committed — seven `pub` entries, one per directory containing a `pubspec.yaml`, plus a `github-actions` entry for `.github/workflows/`, validated with PyYAML and grounded in the official Dependabot documentation (`pub` is a supported community-maintained ecosystem; Dependabot checks manifest files only in the specified directory, so monorepos need one entry per manifest directory); (6) branch protection on the default branch `master` ✅ verified via API (`GET /branches/master/protection` returns HTTP `200`, `allow_force_pushes.enabled: false`, `allow_deletions.enabled: false`). The configured protection is the deliberate, documented, lenient solo-development tier: pull-request-required and status-check-required protection are intentionally NOT enabled at this stage (single maintainer, no external contributors yet). This is a documented decision, not an oversight, and it must be revisited and tightened before the project gains outside contributors or goes fully public. Not marked `Completed` — awaiting human review.
+**Status:** Completed ✅ — all six required items verified on 2026-09-17 via authenticated `gh` API (account `Ajorvpn`): (1) secret scanning ✅ `enabled`; (2) secret scanning push protection ✅ `enabled`; (3) Dependabot vulnerability alerts ✅ HTTP `204` (enabled); (4) Dependabot automated security fixes ✅ `{"enabled": true, "paused": false}`; (5) `.github/dependabot.yml` ✅ created and committed — seven `pub` entries, one per directory containing a `pubspec.yaml`, plus a `github-actions` entry for `.github/workflows/`, validated with PyYAML and grounded in the official Dependabot documentation (`pub` is a supported community-maintained ecosystem; Dependabot checks manifest files only in the specified directory, so monorepos need one entry per manifest directory); (6) branch protection on the default branch `master` ✅ verified via API (`GET /branches/master/protection` returns HTTP `200`, `allow_force_pushes.enabled: false`, `allow_deletions.enabled: false`). The configured protection is the deliberate, documented, lenient solo-development tier: pull-request-required and status-check-required protection are intentionally NOT enabled at this stage (single maintainer, no external contributors yet). This is a documented decision, not an oversight, and it must be revisited and tightened before the project gains outside contributors or goes fully public.
 
 **Manual GitHub UI steps the human performed (note recorded here, in this Status field, per ROADMAP.md's own convention — no separate log file was created):**
 1. Branch protection on `master`: branch name pattern `master`; force pushes **not allowed**; branch deletions **not allowed**; pull-request-required and status-check-required intentionally **left disabled** (deliberate solo-development choice, see above).
@@ -263,7 +263,8 @@ against the monorepo, using pinned tool versions.
   workflow (Phase 10).
 
 **Acceptance Criteria:**
-- [x] Workflow triggers on `push` to `main` and on all `pull_request` events.
+- [x] Workflow triggers on `push` to `master` (not `main`, which no longer exists) and on all
+      `pull_request` events.
 - [x] Workflow installs the pinned Flutter version, runs `melos bootstrap`, then `melos run
       format`, `melos run analyze`, `melos run test`, failing the job on any non-zero exit.
 - [x] Workflow uses dependency/build caching to keep run time reasonable.
@@ -435,7 +436,7 @@ whether to rely on it.
 
 **Objective:** Add the already-approved core dependencies to `apps/mobile/pubspec.yaml`
 (`flutter_riverpod`, `riverpod_generator` + `riverpod_annotation`, `go_router`,
-`easy_localization`, `logger` or `talker` per final choice, `very_good_analysis` as a dev
+`easy_localization`, `logger`, `very_good_analysis` as a dev
 dependency wired into `analysis_options.yaml`, `build_runner` for code generation) with zero
 feature code — just confirming the dependency graph resolves and code generation runs.
 
@@ -495,7 +496,7 @@ where to find the governance docs — without overselling features that don't ex
 
 ### P0-T12 — Phase 0 closeout and Definition-of-Done pass
 
-**Status:** Completed ✅ — the Phase 0 closeout gate was validated on 2026-09-17: a fresh clone of `origin/master` at commit `c506ebb` ran `melos bootstrap` (6 packages bootstrapped), `melos run format --no-select`, `melos run analyze --no-select`, and `melos run test --no-select` with zero manual intervention and zero failures, and GitHub Actions CI run `35169690649` (event `push`, `headSha` `c506ebb`) completed with conclusion `success` on `master` after the workflow trigger was corrected from the stale `main` value to the repository's actual default branch `master`. Note: this task's acceptance criterion originally read "CI is green on the `main` branch"; that was unsatisfiable because `main` no longer exists, so it was reworded to reference the repository's actual default branch `master` and is now checked, citing CI run `35170446158` on commit `9151a40` (conclusion `success`). Not marked `Completed` — awaiting human sign-off.
+**Status:** Completed ✅ — the Phase 0 closeout gate was validated on 2026-09-17: a fresh clone of `origin/master` at commit `c506ebb` ran `melos bootstrap` (6 packages bootstrapped), `melos run format --no-select`, `melos run analyze --no-select`, and `melos run test --no-select` with zero manual intervention and zero failures, and GitHub Actions CI run `35169690649` (event `push`, `headSha` `c506ebb`) completed with conclusion `success` on `master` after the workflow trigger was corrected from the stale `main` value to the repository's actual default branch `master`. Note: this task's acceptance criterion originally read "CI is green on the `main` branch"; that was unsatisfiable because `main` no longer exists, so it was reworded to reference the repository's actual default branch `master` and is now checked, citing CI run `35170446158` on commit `9151a40` (conclusion `success`).
 **Depends On:** P0-T1 through P0-T11
 
 **Objective:** Perform a full closeout review of Phase 0: confirm every task above is genuinely
@@ -863,19 +864,19 @@ features into without needing to design routing from scratch.
 
 ---
 
-### P1-T9 — Logging skeleton (Talker) with redaction hook stub
+### P1-T9 — Logging skeleton (logger) with redaction hook stub
 
 **Status:** Not Started
 **Depends On:** P0-T10
 
-**Objective:** Wire up the chosen logging library (`talker`, confirmed dev-tooling choice) in
+**Objective:** Wire up the chosen logging library (`logger`, confirmed dev-tooling choice) in
 `apps/mobile`, active only in debug/profile builds by default, with a stubbed-out redaction
 function that later phases (Phase 3 native logs, Phase 8 security hardening) will extend to
 actually redact sensitive fields (server credentials, keys) per `SECURITY.md`'s logging/redaction
 policy.
 
 **Scope:**
-- Included: `apps/mobile/lib/core/logging/app_logger.dart` (or equivalent), Talker initialized
+- Included: `apps/mobile/lib/core/logging/app_logger.dart` (or equivalent), the `logger` package initialized
   and accessible via a simple provider or singleton (justify the choice), a `redact(String input)`
   stub function (can be a no-op returning input unchanged for now, but must be clearly marked
   `// TODO(security): implement real redaction — see SECURITY.md logging policy` and referenced
@@ -886,7 +887,7 @@ policy.
 
 **Acceptance Criteria:**
 - [ ] Logger is initialized once at app startup, accessible from anywhere via a documented,
-      consistent access pattern (not ad-hoc `Talker()` instantiations scattered around).
+      consistent access pattern (not ad-hoc logger instances scattered around).
 - [ ] Release-mode builds do not emit logs (verified by checking build-mode conditionals, e.g.
       `kReleaseMode`), consistent with the no-telemetry, privacy-first stance.
 - [ ] The redaction stub function exists, is clearly marked as incomplete, and is referenced by
@@ -954,7 +955,7 @@ a real device/emulator showing placeholder navigation wired to the mock VPN engi
       warnings.
 - [ ] `core_domain` and `core_vpn_engine` packages remain provably pure-Dart (no Flutter
       dependency) — re-verify, don't just trust earlier tasks' claims.
-- [ ] CI is green on `main`.
+- [ ] CI is green on `master` (the repository's actual default branch).
 - [ ] `PROJECT_STATE.md` fully rewritten as a coherent current snapshot.
 - [ ] Closeout report follows the exact `DEFINITION_OF_DONE.md` template.
 
@@ -1407,7 +1408,7 @@ is finished and Phase 3 (the highest-risk phase) is about to begin.
 - [ ] All six protocol parsers plus subscription content parsing plus subscription fetching are
       demonstrated working via the test suite, with a documented, non-trivial adversarial test
       pass per P2-T11.
-- [ ] CI is green on `main`.
+- [ ] CI is green on `master` (the repository's actual default branch).
 - [ ] `PROJECT_STATE.md` fully rewritten as a coherent current snapshot, explicitly flagging that
       Phase 3 (Android VPN Engine) is the next and highest-risk phase, and that its two-gate
       structure (native-only lifecycle gate, then Platform-Channel/Flutter integration gate) must
@@ -2527,7 +2528,7 @@ Phase 5 (Core MVP Features) is ready to begin.
       intervention beyond documented setup.
 - [ ] A full manual walkthrough of the app (as described above) is performed and documented with
       no crashes, no state-desync glitches, and no analyzer warnings.
-- [ ] CI is green on `main`.
+- [ ] CI is green on `master` (the repository's actual default branch).
 - [ ] `PROJECT_STATE.md` fully rewritten as a coherent current snapshot, explicitly noting Phase 5
       is next and will build real functionality (add server, server list, QR scan,
       connect/disconnect using real user-supplied configs) on top of this now-stable skeleton.

@@ -6,7 +6,6 @@
 name: CI
 
 on:
-  # Known mismatch (see ROADMAP.md P0-T5): its criterion names `main`, but the repository's actual default branch is `master`.
   push:
     branches:
       - master
