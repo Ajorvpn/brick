@@ -639,7 +639,7 @@ timestamp) — in `packages/core_domain`, as pure Dart with zero Flutter depende
 
 ### P1-T3 — Core domain entity: server profile model
 
-**Status:** Not Started
+**Status:** Completed ✅ — Implemented comprehensive sealed class hierarchy for `OutboundConfig` and `ServerProfile` in `packages/core_domain` with 76 new unit tests (89 total passing). Enforces zero Flutter dependencies, no `toString()` overrides for security, and strict `extraParams` null-defaults tripwire test. CI green.
 **Depends On:** P1-T1
 
 **Objective:** Define the `ServerProfile` domain entity in `packages/core_domain` — the
