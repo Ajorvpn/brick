@@ -10,3 +10,7 @@ library core_domain;
 
 export 'src/connection_state.dart';
 export 'src/traffic_stats.dart';
+export 'src/protocol_type.dart';
+export 'src/composition_types.dart';
+export 'src/outbound_config.dart';
+export 'src/server_profile.dart';
