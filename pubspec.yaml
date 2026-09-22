@@ -48,7 +48,8 @@ melos:
     # primitive, so explicit opt-in routing is the simplest correct
     # solution — but it costs one small manual sync step per new
     # pure-Dart package. Planned pure-Dart packages that will need
-    # this treatment: `core_domain` (P1-T2), `core_vpn_engine` (P1-T4).
+    # this treatment: `core_domain` (P1-T2, done), `core_vpn_engine` (P1-T4, done).
+    # Next candidate: `config_parser` (Phase 2).
     test:
       description: Run all tests, routing pure-Dart packages to `dart test` and Flutter packages to `flutter test`.
       steps:
@@ -63,6 +64,7 @@ melos:
         scope:
           - shared_utils
           - core_domain
+          - core_vpn_engine
 
     test:flutter:
       description: Run `flutter test` for packages that depend on Flutter.
@@ -72,3 +74,4 @@ melos:
         ignore:
           - shared_utils
           - core_domain
+          - core_vpn_engine

@@ -1,12 +1,10 @@
 name: core_vpn_engine
-description: "Brick VPN core VPN engine package skeleton"
+description: "Brick VPN core VPN engine abstractions (pure Dart, no Flutter dependency)"
 publish_to: 'none'
 resolution: workspace
 environment:
   sdk: ^3.13.3
 dependencies:
-  flutter:
-    sdk: flutter
+  core_domain: 'any'
 dev_dependencies:
-  flutter_test:
-    sdk: flutter
+  test: ^1.31.1
