@@ -676,7 +676,7 @@ how it was parsed (that's Phase 2's job) or how it's stored (that's Phase 8's se
 
 ### P1-T4 — VpnEngine abstract interface and supporting command/result types
 
-**Status:** Not Started
+**Status:** Completed ✅ — Implemented `abstract interface class VpnEngine` and sealed `VpnCommandResult` (5 variants: Accepted, RejectedBusy, RejectedInvalidConfig, RejectedPermissionDenied, Failed) in `packages/core_vpn_engine`. Migrated package to pure Dart and added to Melos dual-list test routing (3 dart + 3 flutter packages). 13 tests pass. CI green.
 **Depends On:** P1-T2
 
 **Objective:** Implement the abstract `VpnEngine` interface in `packages/core_vpn_engine`,
