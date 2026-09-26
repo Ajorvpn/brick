@@ -1,0 +1,13 @@
+{
+  "app_title": "Brick VPN",
+  "home": {
+    "title": "Brick VPN",
+    "label": "Home",
+    "go_to_settings": "Go to Settings"
+  },
+  "settings": {
+    "title": "Settings",
+    "label": "Settings",
+    "back_to_home": "Back to Home"
+  }
+}

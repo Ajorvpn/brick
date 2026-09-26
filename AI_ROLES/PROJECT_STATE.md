@@ -74,6 +74,13 @@ Status tokens below are quoted verbatim from the corresponding `**Status:**` lin
 ## 4. What Does NOT Exist Yet
 
 - ~~`MockVpnEngine` reference implementation (`core_vpn_engine` — P1-T5)~~ — **now exists** (see §3). UI feature wiring and native integration are still ahead.
+- **Real redaction logic** (P1-T9 stub, Phase 8 work). The `redact()` helper
+  lives in `packages/shared_utils/lib/src/redaction.dart` and is currently a
+  documented pass-through stub returning its input unchanged. `AppLogger`
+  (`apps/mobile/lib/core/logging/app_logger.dart`) already routes every log
+  message through it, so Phase 8 only has to implement the masking rules — no
+  call-site changes required. Until then, NO sensitive value is actually
+  redacted at runtime; see SECURITY.md Section 4.
 - Android native integration (`VpnService`, `libbox` JNI bridge) — deferred to Phase 3.
 - Clean Linux desktop toolchain (missing locally: clang, cmake, ninja, pkg-config; deferred to Phase 12).
 

@@ -46,6 +46,33 @@ unless they are universally understood in this domain (e.g., `Vpn`,
 
 ---
 
+### 2.1 UI Strings & Localization
+
+- **Hardcoded user-facing strings are strictly forbidden in widgets.** All
+  UI strings must be sourced from localization files via easy_localization
+  (`.tr()`).
+  - Applies to every user-visible string: `AppBar` titles, button labels,
+    body text, snackbars, dialogs, error messages, and
+    `MaterialApp.onGenerateTitle`.
+  - Correct: `Text('home.go_to_settings'.tr())`.
+  - Wrong: `Text('Go to Settings')`.
+  - Keys live in `apps/mobile/assets/translations/<locale>.json` and must be
+    declared there before use; the `assets/translations/` directory is
+    registered under `flutter: assets:` in `apps/mobile/pubspec.yaml`.
+- **`MaterialApp` must register the localization delegates.** Passing
+  `localizationsDelegates: context.localizationDelegates` and
+  `supportedLocales: context.supportedLocales` is mandatory. Without them
+  `.tr()` silently returns the raw key instead of the translated text — a
+  failure that is invisible in code review and only surfaces as untranslated
+  UI.
+- Route names, class names, and debug-only identifiers are NOT user-facing
+  strings and are exempt from this rule.
+- Widget tests must reproduce the real localization stack (see
+  `apps/mobile/test/localization_test_harness.dart`); a test that pumps a
+  bare `MaterialApp` will observe raw keys, not translations.
+
+---
+
 ## 3. Package & Feature Structure (Mandatory Template)
 
 ### 3.1 Pure Dart Packages (`packages/core_domain`, `packages/config_parser`, etc.)

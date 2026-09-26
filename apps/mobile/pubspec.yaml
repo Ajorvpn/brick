@@ -55,6 +55,9 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   riverpod_generator: ^4.0.9
+  # Used directly by the widget-test localization harness to stub the
+  # persisted-locale channel that easy_localization reads at startup.
+  shared_preferences: ^2.5.3
   very_good_analysis: ^11.0.0
 
 # For information on the generic Dart part of this file, see the
@@ -62,6 +65,11 @@ dev_dependencies:
 
 # The following section is specific to Flutter packages.
 flutter:
+  # Localization assets. Every user-facing string is sourced from these
+  # JSON files via easy_localization's `.tr()`; hardcoded strings in widgets
+  # are forbidden (see CODING_STANDARDS.md).
+  assets:
+    - assets/translations/
 
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in

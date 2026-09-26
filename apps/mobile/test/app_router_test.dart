@@ -8,11 +8,13 @@ import 'package:mobile/features/connection/presentation/screens/home_screen.dart
 import 'package:mobile/features/settings/presentation/screens/settings_screen.dart';
 import 'package:mobile/main.dart';
 
+import 'localization_test_harness.dart';
+
 void main() {
+  setUpAll(initTestLocalization);
   group('appRouterProvider navigation', () {
     testWidgets('default initial location renders HomeScreen', (tester) async {
-      await tester.pumpWidget(const ProviderScope(child: MyApp()));
-      await tester.pumpAndSettle();
+      await pumpLocalizedApp(tester, const MyApp());
 
       expect(find.byType(HomeScreen), findsOneWidget);
       expect(find.text('Home'), findsOneWidget);
@@ -22,8 +24,7 @@ void main() {
     testWidgets('navigating to /settings renders SettingsScreen', (
       tester,
     ) async {
-      await tester.pumpWidget(const ProviderScope(child: MyApp()));
-      await tester.pumpAndSettle();
+      await pumpLocalizedApp(tester, const MyApp());
 
       await tester.tap(find.text('Go to Settings'));
       await tester.pumpAndSettle();
@@ -38,8 +39,7 @@ void main() {
     testWidgets('back navigation returns from Settings to Home', (
       tester,
     ) async {
-      await tester.pumpWidget(const ProviderScope(child: MyApp()));
-      await tester.pumpAndSettle();
+      await pumpLocalizedApp(tester, const MyApp());
 
       await tester.tap(find.text('Go to Settings'));
       await tester.pumpAndSettle();
@@ -60,8 +60,7 @@ void main() {
       // A detached GoRouter has an empty `currentConfiguration.uri` until it
       // is attached to a widget tree, so the initial location is asserted
       // through the rendered output rather than through router internals.
-      await tester.pumpWidget(const ProviderScope(child: MyApp()));
-      await tester.pumpAndSettle();
+      await pumpLocalizedApp(tester, const MyApp());
 
       expect(find.byType(HomeScreen), findsOneWidget);
     });
