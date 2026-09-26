@@ -7,4 +7,5 @@
 /// `lib/src/` and are exported only through this barrel file.
 library shared_utils;
 
+export 'src/redaction.dart';
 export 'src/result.dart';
