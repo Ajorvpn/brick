@@ -128,6 +128,48 @@ interacts with an abstract Dart interface. This is a direct application
 of the Dependency Inversion Principle and is what makes the domain layer
 testable without a real device/VPN connection.
 
+3.1.1 Legal State Transition Graph (normative)
+The `VpnEngine` lifecycle is a finite state machine over the sealed
+`ConnectionState` hierarchy (`packages/core_domain/lib/src/
+connection_state.dart`). The graph below is NORMATIVE: every engine
+implementation, native or mock, must permit exactly these transitions and
+must reject everything else. An illegal transition is a programmer error
+and must be surfaced (the mock throws `StateError`; a native engine must
+log and refuse, per Section 3.5) - never silently coerced into a
+plausible-looking state. Silently "fixing" an impossible transition is
+precisely what produced the legacy prototype's "Connected over a dead
+tunnel" bug.
+
+From | To | Meaning
+Disconnected | Connecting | User-requested connect accepted; attempt begins.
+Connecting | Connected | Attempt succeeded; tunnel is up and traffic may flow.
+Connecting | Error | Attempt failed; the tunnel was never established.
+Connecting | Disconnecting | User stopped the attempt before it settled.
+Connected | Disconnecting | User-requested teardown begins.
+Connected | Error | The tunnel died without being asked to (unexpected disconnect). **Added 2026-09-26 (P1-T5).** A live tunnel can fail spontaneously, so `Error` must be reachable from `Connected`; otherwise an unexpected drop could only be reported as a clean teardown, losing the failure reason and misrepresenting the tunnel's state.
+Disconnecting | Disconnected | Teardown completed. The ONLY legal exit from `Disconnecting` (enforced by the stop watchdog - see Section 3.5).
+Error | Connecting | Explicit retry.
+Error | Disconnecting | User dismissed/cleared the failure.
+
+Deliberately NOT legal, and each for a reason:
+- `Connected -> Connecting` without an intervening `Disconnecting` /
+  `Disconnected`. A second attempt must never be layered over a live
+  tunnel; this is the legacy prototype's core bug class (Section 0).
+- `Disconnecting -> Error` and `Disconnecting -> Connecting`. Once a
+  teardown has been announced the machine must converge on
+  `Disconnected`; this is what lets the 5000 ms stop watchdog
+  (Section 3.5) force a stuck teardown to a legal resting state instead
+  of needing an escape hatch.
+- `Disconnected -> Error`, `Disconnected -> Disconnecting`. Nothing has
+  been attempted, so there is no failure to report and nothing to tear
+  down.
+
+Session tokens (Section 3.5) and the 5000 ms stop watchdog (Section 3.5)
+are the two mechanisms that keep this graph honest under concurrency: the
+first prevents a superseded attempt's late callback from applying a
+transition that is legal in the abstract but wrong for the current
+session; the second guarantees `Disconnecting` can never be terminal.
+
 3.2 The Abstraction
 text
 

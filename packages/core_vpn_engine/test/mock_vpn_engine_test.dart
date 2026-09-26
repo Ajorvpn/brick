@@ -38,12 +38,14 @@ MockVpnEngine buildEngine({
   Duration connectDelay = const Duration(milliseconds: 30),
   Duration disconnectDelay = const Duration(milliseconds: 30),
   Duration statsInterval = const Duration(milliseconds: 10),
+  Duration stopWatchdogTimeout = MockVpnEngine.defaultStopWatchdogTimeout,
   int txBytesPerTick = 1024,
   int rxBytesPerTick = 4096,
 }) => MockVpnEngine(
   connectDelay: connectDelay,
   disconnectDelay: disconnectDelay,
   statsInterval: statsInterval,
+  stopWatchdogTimeout: stopWatchdogTimeout,
   txBytesPerTick: txBytesPerTick,
   rxBytesPerTick: rxBytesPerTick,
 );
@@ -170,49 +172,53 @@ void main() {
       },
     );
 
-    test(
-      'stop while Disconnected is rejected busy and emits nothing',
-      () async {
-        final engine = buildEngine();
-        addTearDown(engine.dispose);
-        final states = <ConnectionState>[];
-        final sub = engine.connectionState.listen(states.add);
-        addTearDown(sub.cancel);
+    test('stop while Disconnected is an idempotent no-op that emits '
+        'nothing', () async {
+      final engine = buildEngine();
+      addTearDown(engine.dispose);
+      final states = <ConnectionState>[];
+      final sub = engine.connectionState.listen(states.add);
+      addTearDown(sub.cancel);
 
-        expect(await engine.stop(), const VpnCommandRejectedBusy());
-        expect(await engine.getStatus(), const Disconnected());
+      // Idempotent by design: an already-stopped engine has nothing to
+      // tear down, so the command is accepted rather than rejected.
+      expect(await engine.stop(), const VpnCommandAccepted());
+      expect(await engine.getStatus(), const Disconnected());
 
-        // Longer than disconnectDelay: a wrongly scheduled teardown would
-        // have fired by now.
-        await Future<void>.delayed(const Duration(milliseconds: 60));
-        expect(states, isEmpty);
-      },
-    );
+      // Longer than disconnectDelay: a wrongly scheduled teardown would
+      // have fired by now.
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+      expect(states, isEmpty);
+    });
 
-    test(
-      'repeated stop while Disconnecting has no additional effect',
-      () async {
-        final engine = buildEngine(
-          disconnectDelay: const Duration(milliseconds: 120),
-        );
-        addTearDown(engine.dispose);
-        final states = <ConnectionState>[];
-        final sub = engine.connectionState.listen(states.add);
-        addTearDown(sub.cancel);
+    test('repeated stop while Disconnecting is accepted and has no additional '
+        'effect', () async {
+      final engine = buildEngine(
+        disconnectDelay: const Duration(milliseconds: 120),
+      );
+      addTearDown(engine.dispose);
+      final states = <ConnectionState>[];
+      final sub = engine.connectionState.listen(states.add);
+      addTearDown(sub.cancel);
 
-        expect(await engine.start(buildProfile()), const VpnCommandAccepted());
-        await waitFor(() => states.contains(const Connected()));
+      expect(await engine.start(buildProfile()), const VpnCommandAccepted());
+      await waitFor(() => states.contains(const Connected()));
 
-        expect(await engine.stop(), const VpnCommandAccepted());
-        await waitFor(() => states.contains(const Disconnecting()));
-        expect(await engine.stop(), const VpnCommandRejectedBusy());
-        expect(await engine.stop(), const VpnCommandRejectedBusy());
+      expect(await engine.stop(), const VpnCommandAccepted());
+      await waitFor(() => states.contains(const Disconnecting()));
 
-        await waitFor(() => states.contains(const Disconnected()));
-        expect(states.whereType<Disconnecting>().length, 1);
-        expect(states.whereType<Disconnected>().length, 1);
-      },
-    );
+      // Every repeated stop is accepted, but none of them may spawn a
+      // second teardown routine or invalidate the first one's token.
+      expect(await engine.stop(), const VpnCommandAccepted());
+      expect(await engine.stop(), const VpnCommandAccepted());
+      expect(await engine.stop(), const VpnCommandAccepted());
+
+      // The engine still settles exactly once.
+      await waitFor(() => states.contains(const Disconnected()));
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+      expect(states.whereType<Disconnecting>().length, 1);
+      expect(states.whereType<Disconnected>().length, 1);
+    });
 
     test('stop during Connecting cancels the pending attempt', () async {
       final engine = buildEngine(
@@ -406,6 +412,431 @@ void main() {
         expect(stateErrors, isEmpty);
       },
     );
+  });
+
+  group('session tokens (ARCHITECTURE.md 3.5)', () {
+    test(
+      'a superseded start callback cannot resurrect a stopped session',
+      () async {
+        // The engine is stopped and restarted while the FIRST connect
+        // timer is still pending. The stale callback must be discarded.
+        final engine = buildEngine(
+          connectDelay: const Duration(milliseconds: 120),
+          disconnectDelay: const Duration(milliseconds: 10),
+        );
+        addTearDown(engine.dispose);
+        final states = <ConnectionState>[];
+        final sub = engine.connectionState.listen(states.add);
+        addTearDown(sub.cancel);
+
+        expect(await engine.start(buildProfile()), const VpnCommandAccepted());
+        await waitFor(() => states.contains(const Connecting()));
+
+        // Accepted stop supersedes the in-flight attempt...
+        expect(await engine.stop(), const VpnCommandAccepted());
+        await waitFor(() => states.contains(const Disconnected()));
+
+        // ...and a brand-new attempt is started before the stale connect
+        // timer would have fired.
+        expect(await engine.start(buildProfile()), const VpnCommandAccepted());
+        await waitFor(() => states.contains(const Connected()));
+
+        // Wait past the superseded connectDelay.
+        await Future<void>.delayed(const Duration(milliseconds: 150));
+
+        // Exactly one Connecting, one Connected, one clean teardown: the
+        // stale callback produced nothing and no duplicate connection.
+        expect(states.whereType<Connecting>().length, 2);
+        expect(states.whereType<Connected>().length, 1);
+        expect(states, [
+          const Connecting(),
+          const Disconnecting(),
+          const Disconnected(),
+          const Connecting(),
+          const Connected(),
+        ]);
+      },
+    );
+
+    test(
+      'rapid start -> stop -> start never yields an illegal transition',
+      () async {
+        final engine = buildEngine(
+          connectDelay: const Duration(milliseconds: 40),
+          disconnectDelay: const Duration(milliseconds: 40),
+        );
+        addTearDown(engine.dispose);
+        final states = <ConnectionState>[];
+        final sub = engine.connectionState.listen(states.add);
+        addTearDown(sub.cancel);
+
+        // No awaits between the commands: this is the tightest possible
+        // interleaving of accept/reject paths.
+        //
+        // Expected acceptance: only the first `start` is accepted (the
+        // engine is Disconnected). `stop` is then accepted and moves the
+        // engine to Disconnecting, so the second `start` is correctly
+        // rejected busy, the second `stop` is an idempotent no-op, and
+        // the third `start` is rejected busy too. The engine therefore
+        // settles on Disconnected without ever reaching Connected — and
+        // critically, without any illegal transition or phantom Connected.
+        expect(await engine.start(buildProfile()), const VpnCommandAccepted());
+        expect(await engine.stop(), const VpnCommandAccepted());
+        expect(
+          await engine.start(buildProfile()),
+          const VpnCommandRejectedBusy(),
+        );
+        expect(await engine.stop(), const VpnCommandAccepted());
+        expect(
+          await engine.start(buildProfile()),
+          const VpnCommandRejectedBusy(),
+        );
+
+        // The teardown completes, and the abandoned connect attempt never
+        // surfaces a phantom Connected.
+        await waitFor(() => states.contains(const Disconnected()));
+        await Future<void>.delayed(const Duration(milliseconds: 120));
+
+        expect(states.whereType<Connected>(), isEmpty);
+        expect(states.whereType<Connecting>().length, 1);
+        expect(states, [
+          const Connecting(),
+          const Disconnecting(),
+          const Disconnected(),
+        ]);
+        expect(await engine.getStatus(), const Disconnected());
+      },
+    );
+  });
+
+  group('stop watchdog (ARCHITECTURE.md 3.5, 5000ms hard timeout)', () {
+    test('the mandated default really is 5000ms', () {
+      expect(
+        MockVpnEngine.defaultStopWatchdogTimeout,
+        const Duration(milliseconds: 5000),
+      );
+      expect(
+        MockVpnEngine().stopWatchdogTimeout,
+        const Duration(milliseconds: 5000),
+      );
+    });
+
+    test('forces Disconnected when teardown overruns the watchdog', () async {
+      // Teardown would take far longer than the watchdog allows.
+      final engine = buildEngine(
+        disconnectDelay: const Duration(milliseconds: 400),
+        stopWatchdogTimeout: const Duration(milliseconds: 40),
+      );
+      addTearDown(engine.dispose);
+      final states = <ConnectionState>[];
+      final sub = engine.connectionState.listen(states.add);
+      addTearDown(sub.cancel);
+
+      expect(await engine.start(buildProfile()), const VpnCommandAccepted());
+      await waitFor(() => states.contains(const Connected()));
+
+      expect(await engine.stop(), const VpnCommandAccepted());
+      await waitFor(() => states.contains(const Disconnected()));
+
+      // The watchdog, not the slow teardown, completed this.
+      expect(
+        states.whereType<Disconnecting>().length,
+        1,
+        reason: 'a stuck Disconnecting is a P0 bug',
+      );
+
+      // The still-pending slow completion must not fire a second
+      // Disconnected afterwards.
+      await Future<void>.delayed(const Duration(milliseconds: 450));
+      expect(states.whereType<Disconnected>().length, 1);
+      expect(await engine.getStatus(), const Disconnected());
+    });
+
+    test('a graceful teardown cancels the watchdog', () async {
+      // Teardown finishes well inside the watchdog window.
+      final engine = buildEngine(
+        disconnectDelay: const Duration(milliseconds: 20),
+        stopWatchdogTimeout: const Duration(milliseconds: 300),
+      );
+      addTearDown(engine.dispose);
+      final states = <ConnectionState>[];
+      final sub = engine.connectionState.listen(states.add);
+      addTearDown(sub.cancel);
+
+      expect(await engine.start(buildProfile()), const VpnCommandAccepted());
+      await waitFor(() => states.contains(const Connected()));
+      expect(await engine.stop(), const VpnCommandAccepted());
+      await waitFor(() => states.contains(const Disconnected()));
+
+      // Wait past the watchdog window: a watchdog that was NOT cancelled
+      // would try to force a second transition here.
+      await Future<void>.delayed(const Duration(milliseconds: 350));
+      expect(states, [
+        const Connecting(),
+        const Connected(),
+        const Disconnecting(),
+        const Disconnected(),
+      ]);
+    });
+  });
+
+  group('failure simulation hooks', () {
+    test(
+      'simulateConnectionFailure settles on Error and stops the attempt',
+      () async {
+        final engine = buildEngine(
+          connectDelay: const Duration(milliseconds: 150),
+        );
+        addTearDown(engine.dispose);
+        final states = <ConnectionState>[];
+        final stats = <TrafficStats>[];
+        final stateSub = engine.connectionState.listen(states.add);
+        final statsSub = engine.trafficStats.listen(stats.add);
+        addTearDown(stateSub.cancel);
+        addTearDown(statsSub.cancel);
+
+        expect(await engine.start(buildProfile()), const VpnCommandAccepted());
+        await waitFor(() => states.contains(const Connecting()));
+
+        engine.simulateConnectionFailure();
+
+        // Legal from Connecting; the injected reason is carried in the
+        // Error payload, not matched on its detail text. The stream is
+        // asynchronous, so the emission must be awaited, not assumed.
+        await waitFor(() => states.whereType<Error>().isNotEmpty);
+        final last = states.last;
+        expect(last, isA<Error>());
+        expect((last as Error).reason, isA<PlatformError>());
+        expect(await engine.getStatus(), isA<Error>());
+
+        // The cancelled completion must not overwrite the failure.
+        await Future<void>.delayed(const Duration(milliseconds: 200));
+        expect(states.whereType<Connected>(), isEmpty);
+        expect(stats, isEmpty);
+      },
+    );
+
+    test(
+      'simulateUnexpectedDisconnect settles on Error and stops stats',
+      () async {
+        final engine = buildEngine();
+        addTearDown(engine.dispose);
+        final states = <ConnectionState>[];
+        final stats = <TrafficStats>[];
+        final stateSub = engine.connectionState.listen(states.add);
+        final statsSub = engine.trafficStats.listen(stats.add);
+        addTearDown(stateSub.cancel);
+        addTearDown(statsSub.cancel);
+
+        expect(await engine.start(buildProfile()), const VpnCommandAccepted());
+        await waitFor(() => states.contains(const Connected()));
+        await waitFor(() => stats.isNotEmpty);
+
+        engine.simulateUnexpectedDisconnect();
+
+        // Awaited delivery: the hook is synchronous, the stream is not.
+        await waitFor(() => states.whereType<Error>().isNotEmpty);
+        final last = states.last;
+        expect(last, isA<Error>());
+        expect((last as Error).reason, isA<PlatformError>());
+
+        // The statistics pipeline is halted: a dead tunnel reports no
+        // more throughput.
+        final statsAtFailure = stats.length;
+        await Future<void>.delayed(const Duration(milliseconds: 60));
+        expect(stats.length, statsAtFailure);
+      },
+    );
+
+    test('both hooks reject an invalid state with a StateError', () async {
+      final engine = buildEngine();
+      addTearDown(engine.dispose);
+
+      // From Disconnected both hooks are invalid.
+      expect(engine.simulateConnectionFailure, throwsStateError);
+      expect(engine.simulateUnexpectedDisconnect, throwsStateError);
+
+      // From Connected, only simulateConnectionFailure is invalid.
+      expect(await engine.start(buildProfile()), const VpnCommandAccepted());
+      while (await engine.getStatus() != const Connected()) {
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+      }
+      expect(engine.simulateConnectionFailure, throwsStateError);
+
+      // The engine is undamaged by the rejected calls.
+      expect(await engine.getStatus(), const Connected());
+    });
+
+    test('both hooks throw after dispose', () async {
+      final engine = buildEngine();
+      await engine.dispose();
+      expect(engine.simulateConnectionFailure, throwsStateError);
+      expect(engine.simulateUnexpectedDisconnect, throwsStateError);
+    });
+  });
+
+  group('concurrency and resource safety', () {
+    test('100 interleaved commands across many engines never corrupt '
+        'state', () async {
+      const engineCount = 10;
+      const commandsPerEngine = 10;
+      final engines = List.generate(
+        engineCount,
+        (_) => buildEngine(
+          connectDelay: const Duration(milliseconds: 2),
+          disconnectDelay: const Duration(milliseconds: 2),
+          statsInterval: const Duration(milliseconds: 2),
+        ),
+      );
+      addTearDown(() async {
+        for (final engine in engines) {
+          await engine.dispose();
+        }
+      });
+
+      // Every observed transition must be a legal one; any illegal
+      // transition would have thrown a StateError from _transitionTo and
+      // failed the test.
+      const legal = <Type, Set<Type>>{
+        Disconnected: {Connecting},
+        Connecting: {Connected, Error, Disconnecting},
+        Connected: {Disconnecting, Error},
+        Disconnecting: {Disconnected},
+        Error: {Connecting, Disconnecting},
+      };
+
+      for (final engine in engines) {
+        final states = <ConnectionState>[];
+        final sub = engine.connectionState.listen(states.add);
+        addTearDown(sub.cancel);
+        // Drain async errors so a stray failure surfaces as a test error
+        // rather than an unhandled zone error.
+        engine.trafficStats.listen((_) {}, onError: (_) {});
+
+        for (var i = 0; i < commandsPerEngine; i++) {
+          switch (i % 4) {
+            case 0:
+              await engine.start(buildProfile());
+            case 1:
+              await engine.stop();
+            case 2:
+              // Both hooks are state-dependent by design; a StateError
+              // here is the contract working, not a failure.
+              try {
+                engine.simulateConnectionFailure();
+              } on StateError {
+                // Expected: not in Connecting.
+              }
+            case 3:
+              try {
+                engine.simulateUnexpectedDisconnect();
+              } on StateError {
+                // Expected: not in Connected.
+              }
+          }
+          // Yield so timers interleave between commands.
+          await Future<void>.delayed(const Duration(milliseconds: 3));
+        }
+
+        // The engine always rests in a state it can legitimately reach.
+        expect(await engine.getStatus(), isA<ConnectionState>());
+
+        for (var i = 1; i < states.length; i++) {
+          final allowed = legal[states[i - 1].runtimeType];
+          expect(
+            allowed,
+            contains(states[i].runtimeType),
+            reason:
+                'illegal transition ${states[i - 1].runtimeType} -> '
+                '${states[i].runtimeType}',
+          );
+        }
+      }
+    });
+
+    test('100+ engines can be created, run, and disposed with no leaked '
+        'callbacks', () async {
+      const iterations = 100;
+      for (var i = 0; i < iterations; i++) {
+        final engine = buildEngine(
+          connectDelay: const Duration(milliseconds: 1),
+          disconnectDelay: const Duration(milliseconds: 1),
+          statsInterval: const Duration(milliseconds: 1),
+        );
+        final states = <ConnectionState>[];
+        final stats = <TrafficStats>[];
+        final stateSub = engine.connectionState.listen(states.add);
+        final statsSub = engine.trafficStats.listen(stats.add);
+
+        await engine.start(buildProfile());
+        await Future<void>.delayed(const Duration(milliseconds: 3));
+        await engine.stop();
+        await Future<void>.delayed(const Duration(milliseconds: 3));
+
+        await engine.dispose();
+        await stateSub.cancel();
+        await statsSub.cancel();
+
+        // Nothing may fire after release.
+        final statesAtDispose = states.length;
+        final statsAtDispose = stats.length;
+        await Future<void>.delayed(const Duration(milliseconds: 2));
+        expect(states.length, statesAtDispose);
+        expect(stats.length, statsAtDispose);
+
+        // The engine is genuinely finished with.
+        await expectLater(engine.start(buildProfile()), throwsStateError);
+      }
+    });
+
+    test('dispose during an in-flight connect emits nothing further', () async {
+      final engine = buildEngine(
+        connectDelay: const Duration(milliseconds: 200),
+      );
+      final states = <ConnectionState>[];
+      final sub = engine.connectionState.listen(states.add);
+
+      expect(await engine.start(buildProfile()), const VpnCommandAccepted());
+      await waitFor(() => states.contains(const Connecting()));
+
+      await engine.dispose();
+      final statesAtDispose = states.length;
+
+      // Well past the pending connectDelay: no late Connected, and no
+      // exception escaping a released engine.
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      expect(states.length, statesAtDispose);
+      await sub.cancel();
+    });
+
+    test('per-session counters reset on the next start', () async {
+      final engine = buildEngine(
+        statsInterval: const Duration(milliseconds: 10),
+        txBytesPerTick: 1000,
+        rxBytesPerTick: 2000,
+      );
+      addTearDown(engine.dispose);
+      final stats = <TrafficStats>[];
+      final sub = engine.trafficStats.listen(stats.add);
+      addTearDown(sub.cancel);
+
+      expect(await engine.start(buildProfile()), const VpnCommandAccepted());
+      await waitFor(() => stats.length >= 3);
+      expect(stats.first.txBytes, 1000);
+      expect(stats.last.txBytes, greaterThan(1000));
+
+      expect(await engine.stop(), const VpnCommandAccepted());
+      while (await engine.getStatus() != const Disconnected()) {
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+      }
+
+      // The second session must not inherit the first session's totals.
+      stats.clear();
+      expect(await engine.start(buildProfile()), const VpnCommandAccepted());
+      await waitFor(() => stats.isNotEmpty);
+      expect(stats.first.txBytes, 1000);
+      expect(stats.first.rxBytes, 2000);
+    });
   });
 
   group('disposal', () {

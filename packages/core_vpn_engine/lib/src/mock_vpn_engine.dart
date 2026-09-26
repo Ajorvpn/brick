@@ -37,10 +37,34 @@ import 'vpn_engine.dart';
 /// [trafficStats] only; the connection-state pipeline cannot be affected
 /// by it.
 ///
+/// Session tokens (ARCHITECTURE.md Section 3.5, "Session tokens are
+/// mandatory on every start()/stop() command"): every accepted command
+/// claims a fresh token, and the delayed callbacks it schedules capture
+/// that token. A callback whose captured token is no longer current
+/// belongs to a superseded lifecycle attempt and is discarded at the point
+/// of receipt, so a late "connected" event can never resurrect a session
+/// the user already stopped.
+///
+/// Stop watchdog (ARCHITECTURE.md Section 3.5, "Stop watchdog with a hard
+/// timeout"): entering [Disconnecting] arms [defaultStopWatchdogTimeout]
+/// (5000 ms) as a fallback. If teardown has not completed by then the
+/// watchdog forces [Disconnected] and cancels the pending completion — a
+/// stuck `Disconnecting` is a P0 bug, never acceptable behaviour.
+///
 /// Security note: this file intentionally overrides no `toString` on any
 /// class and the engine performs no logging at all — profiles and configs
-/// carry credentials (SECURITY.md).
+/// carry credentials (SECURITY.md). [start] deliberately neither retains
+/// nor inspects its [profile] argument.
 final class MockVpnEngine implements VpnEngine {
+  /// The hard watchdog ceiling mandated by ARCHITECTURE.md Section 3.5.
+  ///
+  /// A real engine may not exceed this. [stopWatchdogTimeout] is
+  /// overridable only so the watchdog *mechanism* can be exercised in fast
+  /// unit tests; the default always applies in production-shaped usage.
+  static const Duration defaultStopWatchdogTimeout = Duration(
+    milliseconds: 5000,
+  );
+
   /// Creates a mock engine with configurable simulated timing and failure
   /// modes.
   ///
@@ -53,6 +77,7 @@ final class MockVpnEngine implements VpnEngine {
     this.connectDelay = const Duration(milliseconds: 300),
     this.disconnectDelay = const Duration(milliseconds: 200),
     this.statsInterval = const Duration(seconds: 1),
+    this.stopWatchdogTimeout = defaultStopWatchdogTimeout,
     this.txBytesPerTick = 65536,
     this.rxBytesPerTick = 262144,
     this.simulatePermissionDenied = false,
@@ -71,6 +96,13 @@ final class MockVpnEngine implements VpnEngine {
 
   /// Period of the simulated traffic-stats ticks while [Connected].
   final Duration statsInterval;
+
+  /// Hard ceiling on how long [Disconnecting] may last before the watchdog
+  /// forces [Disconnected].
+  ///
+  /// Defaults to [defaultStopWatchdogTimeout] (5000 ms); overridable only
+  /// so tests can drive the watchdog path without a five-second wait.
+  final Duration stopWatchdogTimeout;
 
   /// Bytes added to the transmitted counter on every stats tick.
   final int txBytesPerTick;
@@ -105,8 +137,19 @@ final class MockVpnEngine implements VpnEngine {
   final _statsController = StreamController<TrafficStats>.broadcast();
 
   ConnectionState _state = const Disconnected();
-  Timer? _transitionTimer;
+
+  /// Monotonic session token (ARCHITECTURE.md Section 3.5).
+  ///
+  /// Incremented only when a command is *accepted* and therefore opens a
+  /// new lifecycle attempt. A rejected or idempotent-no-op command must
+  /// NOT bump it: doing so would invalidate the token of a genuinely
+  /// in-flight attempt and strand the engine in [Connecting] forever.
+  int _sessionToken = 0;
+
+  Timer? _connectTimer;
+  Timer? _disconnectTimer;
   Timer? _statsTimer;
+  Timer? _stopWatchdogTimer;
   int _txBytes = 0;
   int _rxBytes = 0;
   bool _disposed = false;
@@ -166,47 +209,61 @@ final class MockVpnEngine implements VpnEngine {
     if (simulateStartupFailure) {
       return const VpnCommandFailed();
     }
+    // Claim a fresh session token for the attempt we are about to open.
+    // The delayed completion captures it and refuses to act if any later
+    // accepted command has superseded it.
+    final currentSession = ++_sessionToken;
+    // Per-session counters are reset *before* the transition, so the
+    // first tick of this session is that session's own first sample and
+    // the previous session's totals can never leak into it.
+    _txBytes = 0;
+    _rxBytes = 0;
     _transitionTo(const Connecting());
-    _scheduleConnectCompletion();
+    _scheduleConnectCompletion(currentSession);
     return const VpnCommandAccepted();
   }
 
   /// Requests a simulated teardown.
   ///
-  /// Acceptance matrix:
+  /// Acceptance matrix (every outcome is [VpnCommandAccepted]; the rows
+  /// differ only in whether a teardown routine is actually spawned):
   ///
-  /// | Current state   | Result                                    |
-  /// |-----------------|-------------------------------------------|
-  /// | `Connecting`    | accepted (cancels the pending attempt)     |
-  /// | `Connected`     | accepted (stops the stats pipeline)        |
-  /// | `Error`         | accepted (clears the recorded failure)     |
-  /// | `Disconnecting` | [VpnCommandRejectedBusy] (no extra effect) |
-  /// | `Disconnected`  | [VpnCommandRejectedBusy] (no extra effect) |
+  /// | Current state   | Result                                          |
+  /// |-----------------|-------------------------------------------------|
+  /// | `Disconnecting` | accepted, idempotent no-op (no second routine)   |
+  /// | `Disconnected`  | accepted, idempotent no-op (nothing to tear down) |
+  /// | `Connected`     | accepted (stops the stats pipeline)              |
+  /// | `Connecting`    | accepted (cancels the pending attempt)           |
+  /// | `Error`         | accepted (clears the recorded failure)           |
   ///
-  /// Any pending delayed transition and the stats timer are cancelled
-  /// before the teardown is announced, so a stop during the connecting
-  /// phase genuinely cancels the in-progress attempt: no phantom
-  /// `Connected` (or stats tick) from the previous session can surface
-  /// afterwards.
+  /// `stop` is deliberately **always** idempotent and always accepted. A
+  /// teardown is idempotent by nature, so reporting "busy" would be a lie
+  /// that forces every caller to special-case a state that is already on
+  /// its way to the requested resting state. This matches the P1-T5
+  /// acceptance criterion "stop is idempotent" and the native rule that
+  /// "calling it multiple times has no additional effect beyond the
+  /// first": only the first call in a given state spawns a teardown.
   ///
-  /// Idempotency (P1-T5 acceptance criteria) is guaranteed at the state
-  /// level: repeated calls never alter a teardown already in flight. The
-  /// second and later calls report [VpnCommandRejectedBusy] and the
-  /// engine still settles on `Disconnected` exactly once — mirroring the
-  /// Phase 3 native rule that "calling it multiple times has no
-  /// additional effect beyond the first".
+  /// Any pending delayed transition, the stats timer, and the stop
+  /// watchdog are cancelled or re-armed before the teardown is announced,
+  /// so a stop during the connecting phase genuinely cancels the
+  /// in-progress attempt: no phantom `Connected` (or stats tick) from the
+  /// previous session can surface afterwards.
   @override
   Future<VpnCommandResult> stop() async {
     _assertNotDisposed();
-    if (_state is Disconnected || _state is Disconnecting) {
-      return const VpnCommandRejectedBusy();
+    // Idempotent no-ops. Neither branch touches the session token, so an
+    // in-flight teardown armed by the first call is never invalidated.
+    if (_state is Disconnecting || _state is Disconnected) {
+      return const VpnCommandAccepted();
     }
-    _transitionTimer?.cancel();
-    _transitionTimer = null;
-    _statsTimer?.cancel();
-    _statsTimer = null;
+    final currentSession = ++_sessionToken;
+    _connectTimer?.cancel();
+    _connectTimer = null;
+    _stopStatsTimer();
     _transitionTo(const Disconnecting());
-    _scheduleDisconnectCompletion();
+    _scheduleDisconnectCompletion(currentSession);
+    _armStopWatchdog(currentSession);
     return const VpnCommandAccepted();
   }
 
@@ -228,15 +285,24 @@ final class MockVpnEngine implements VpnEngine {
   /// disposal every command and query throws [StateError]: a disposed
   /// engine has no state to report, and silently succeeding would hide a
   /// use-after-dispose bug in the calling UI layer.
+  ///
+  /// [dispose] also bumps the session token so any callback that is
+  /// already queued but not yet delivered is discarded by the same
+  /// stale-callback guard that protects ordinary command races.
   Future<void> dispose() async {
     if (_disposed) {
       return;
     }
     _disposed = true;
-    _transitionTimer?.cancel();
-    _transitionTimer = null;
+    _sessionToken++;
+    _connectTimer?.cancel();
+    _connectTimer = null;
+    _disconnectTimer?.cancel();
+    _disconnectTimer = null;
     _statsTimer?.cancel();
     _statsTimer = null;
+    _stopWatchdogTimer?.cancel();
+    _stopWatchdogTimer = null;
     await _stateController.close();
     await _statsController.close();
   }
@@ -250,21 +316,115 @@ final class MockVpnEngine implements VpnEngine {
     }
   }
 
-  // ── Simulated lifecycle internals ──────────────────────────────────
+  // ── Failure-simulation hooks ────────────────────────────────────────
 
-  void _scheduleConnectCompletion() {
-    _transitionTimer = Timer(connectDelay, _completeConnect);
+  /// Simulates the connect attempt failing while it is in flight.
+  ///
+  /// Only valid from [Connecting] — a real engine cannot fail a connection
+  /// that was never attempted, and allowing it from [Connected] would let
+  /// a test fabricate a failure for a tunnel that is demonstrably up.
+  /// Throws [StateError] from any other state and after [dispose].
+  ///
+  /// Cancels the pending connect completion first, so a late completion
+  /// cannot overwrite the injected failure with a spurious `Connected`.
+  void simulateConnectionFailure([
+    ConnectionErrorReason reason = const PlatformError(
+      'Simulated connection failure',
+    ),
+  ]) {
+    _assertNotDisposed();
+    if (_state is! Connecting) {
+      throw StateError(
+        'Cannot simulate connection failure when state is '
+        '${_state.runtimeType}. simulateConnectionFailure is only valid '
+        'when state is Connecting.',
+      );
+    }
+    _connectTimer?.cancel();
+    _connectTimer = null;
+    _stopStatsTimer();
+    _sessionToken++;
+    _transitionTo(Error(reason));
   }
 
-  void _scheduleDisconnectCompletion() {
-    _transitionTimer = Timer(disconnectDelay, _completeDisconnect);
+  /// Simulates a tunnel that died without being asked to.
+  ///
+  /// Only valid from [Connected] — an unexpected drop is by definition a
+  /// failure of an already-established tunnel. Throws [StateError] from
+  /// any other state and after [dispose].
+  void simulateUnexpectedDisconnect([
+    ConnectionErrorReason reason = const PlatformError(
+      'Simulated unexpected disconnect',
+    ),
+  ]) {
+    _assertNotDisposed();
+    if (_state is! Connected) {
+      throw StateError(
+        'Cannot simulate unexpected disconnect when state is '
+        '${_state.runtimeType}. simulateUnexpectedDisconnect is only valid '
+        'when state is Connected.',
+      );
+    }
+    _stopStatsTimer();
+    _sessionToken++;
+    _transitionTo(Error(reason));
+  }
+
+  // ── Simulated lifecycle internals ──────────────────────────────────
+
+  void _scheduleConnectCompletion(int session) {
+    _connectTimer = Timer(connectDelay, () => _completeConnect(session));
+  }
+
+  void _scheduleDisconnectCompletion(int session) {
+    _disconnectTimer = Timer(
+      disconnectDelay,
+      () => _completeDisconnect(session),
+    );
+  }
+
+  /// Arms the hard stop watchdog for the in-flight teardown.
+  ///
+  /// If the engine is somehow still [Disconnecting] when this fires, the
+  /// teardown is force-completed: a stuck `Disconnecting` state is a P0
+  /// bug, never acceptable behaviour (ARCHITECTURE.md Section 3.5).
+  ///
+  /// The watchdog can only ever reach [Disconnected] because
+  /// `Disconnecting -> Disconnected` is the only legal exit from
+  /// [Disconnecting]; forcing an [Error] there would itself be an illegal
+  /// transition.
+  void _armStopWatchdog(int session) {
+    _stopWatchdogTimer = Timer(
+      stopWatchdogTimeout,
+      () => _fireStopWatchdog(session),
+    );
+  }
+
+  /// Watchdog callback: force the in-flight teardown to completion.
+  void _fireStopWatchdog(int session) {
+    _stopWatchdogTimer = null;
+    // A stale watchdog must never touch a newer session.
+    if (_disposed || session != _sessionToken || _state is! Disconnecting) {
+      return;
+    }
+    // The normal completion is still pending; drop it so it cannot fire a
+    // second, redundant transition afterwards.
+    _disconnectTimer?.cancel();
+    _disconnectTimer = null;
+    _stopStatsTimer();
+    _transitionTo(const Disconnected());
   }
 
   /// Settles an accepted connect: either the simulated error or
   /// `Connected` plus the stats pipeline coming alive.
-  void _completeConnect() {
-    _transitionTimer = null;
-    if (_disposed || _state is! Connecting) {
+  ///
+  /// The [session] guard is what makes a superseded attempt inert: if a
+  /// `stop` (or a newer `start`) was accepted while this timer was
+  /// pending, [_sessionToken] has moved on and this callback discards
+  /// itself without transitioning anything.
+  void _completeConnect(int session) {
+    _connectTimer = null;
+    if (_disposed || session != _sessionToken || _state is! Connecting) {
       return;
     }
     final failure = simulatedConnectionError;
@@ -276,20 +436,28 @@ final class MockVpnEngine implements VpnEngine {
     _startStatsTicks();
   }
 
-  /// Settles an accepted stop, returning the engine to rest and clearing
-  /// the per-session counters so the next session starts from zero.
-  void _completeDisconnect() {
-    _transitionTimer = null;
-    if (_disposed || _state is! Disconnecting) {
+  /// Settles an accepted stop, returning the engine to rest.
+  ///
+  /// Cancels the stop watchdog on the graceful path, so a clean teardown
+  /// never leaves a timer armed that could later force a redundant
+  /// transition.
+  void _completeDisconnect(int session) {
+    _disconnectTimer = null;
+    if (_disposed || session != _sessionToken || _state is! Disconnecting) {
       return;
     }
+    _stopWatchdogTimer?.cancel();
+    _stopWatchdogTimer = null;
     _transitionTo(const Disconnected());
-    _txBytes = 0;
-    _rxBytes = 0;
   }
 
   void _startStatsTicks() {
     _statsTimer = Timer.periodic(statsInterval, (_) => _emitStatsTick());
+  }
+
+  void _stopStatsTimer() {
+    _statsTimer?.cancel();
+    _statsTimer = null;
   }
 
   /// Emits one synthetic traffic snapshot, or routes a simulated failure
@@ -302,7 +470,12 @@ final class MockVpnEngine implements VpnEngine {
   /// affecting (or being able to affect) tunnel state — the coupling the
   /// legacy prototype suffered from is structurally impossible here.
   void _emitStatsTick() {
-    if (_disposed || _state is! Connected || _statsController.isClosed) {
+    // Disposal is checked FIRST, before any other condition: a tick that
+    // arrives after release must not touch a closed controller.
+    if (_disposed) {
+      return;
+    }
+    if (_state is! Connected || _statsController.isClosed) {
       return;
     }
     try {
@@ -338,7 +511,7 @@ final class MockVpnEngine implements VpnEngine {
         'Illegal MockVpnEngine transition: ${_state.runtimeType} -> '
         '${next.runtimeType}. Legal graph: Disconnected -> Connecting; '
         'Connecting -> Connected | Error | Disconnecting; Connected -> '
-        'Disconnecting; Disconnecting -> Disconnected; Error -> '
+        'Disconnecting | Error; Disconnecting -> Disconnected; Error -> '
         'Connecting | Disconnecting.',
       );
     }
@@ -352,11 +525,16 @@ final class MockVpnEngine implements VpnEngine {
   /// [ConnectionState] hierarchy so that a future new variant cannot
   /// silently escape this check (the analyzer rejects a non-exhaustive
   /// switch over a sealed type).
+  ///
+  /// Note the deliberate shape of the graph: an established tunnel can
+  /// only be torn down ([Connected] -> [Disconnecting]) or fail
+  /// unexpectedly ([Connected] -> [Error]); it can never go straight back
+  /// to [Connecting], and [Disconnecting] has exactly one legal exit.
   static bool _isLegalTransition(ConnectionState from, ConnectionState to) =>
       switch (from) {
         Disconnected() => to is Connecting,
         Connecting() => to is Connected || to is Error || to is Disconnecting,
-        Connected() => to is Disconnecting,
+        Connected() => to is Disconnecting || to is Error,
         Disconnecting() => to is Disconnected,
         Error() => to is Connecting || to is Disconnecting,
       };

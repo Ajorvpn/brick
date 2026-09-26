@@ -718,7 +718,7 @@ a `getStatus()` query method.
 
 ### P1-T5 — MockVpnEngine reference implementation
 
-**Status:** Not Started
+**Status:** Completed ✅ — `MockVpnEngine` reference implementation (541 lines) fully implemented and hardened: simulated lifecycle, configurable rejections, independent failure domains, monotonic **session tokens** (so superseded async callbacks can never transition the engine), a hard **5000 ms stop watchdog**, fully **idempotent `stop()`**, and idempotent disposal. 30 tests in `mock_vpn_engine_test.dart` (43 total in the package, up from 13 at P1-T4). **147 pure-Dart tests pass monorepo-wide** (10 shared_utils + 94 core_domain + 43 core_vpn_engine) and `flutter analyze` is clean across all 6 packages. The legal-transition graph gained a `Connected -> Error` edge to support `simulateUnexpectedDisconnect()` (formally documented in ARCHITECTURE.md Section 3.1.1). Originally CI-green on commit 45b7c85 (that commit's message does not follow conventional-commit format — see PROJECT_STATE.md known deviations); the P1-T5 hardening is staged and **awaiting human review/commit**.
 **Depends On:** P1-T4
 
 **Objective:** Implement `MockVpnEngine implements VpnEngine` in `packages/core_vpn_engine`, a
@@ -737,20 +737,42 @@ tested before the real Phase 3 Android engine exists.
   test double.
 
 **Acceptance Criteria:**
-- [ ] `MockVpnEngine` implements every member of `VpnEngine` per P1-T4's contract exactly.
-- [ ] Unit tests prove: calling `start` while already `Connecting`/`Connected` returns
+- [x] `MockVpnEngine` implements every member of `VpnEngine` per P1-T4's contract exactly.
+      (`connectionState`, `trafficStats`, `start`, `stop`, `getStatus` — analyzer-clean.)
+- [x] Unit tests prove: calling `start` while already `Connecting`/`Connected` returns
       `rejectedBusy` and does not corrupt internal state; `stop` is idempotent; simulated failure
       modes produce the correct `ConnectionState.Error` variant with correct reason.
-- [ ] State transition sequence is enforced internally (illegal transitions either throw a clear
+      (Covered by the `busy semantics`, `simulated start rejections`, `simulated connection error`,
+      and `failure simulation hooks` groups.)
+- [x] State transition sequence is enforced internally (illegal transitions either throw a clear
       programmer-error exception in debug builds or are structurally impossible — document which
       approach was chosen and why).
-- [ ] `melos run analyze` and `melos run test` pass.
+      (Approach chosen: **unconditional `StateError` on every illegal transition, in all build
+      modes**, enforced by an exhaustive `switch` over the sealed `ConnectionState` hierarchy in
+      `_isLegalTransition` so a future variant cannot silently escape the check. This is a test
+      double with no release build to protect, so a loud failure is always the desired outcome. The
+      legal graph is documented normatively in ARCHITECTURE.md Section 3.1.1.)
+- [x] `melos run analyze` and `melos run test` pass.
+      (Verified per-package — see the tooling caveat below: `melos run` itself hung in this
+      environment, so the identical underlying commands `dart test` / `flutter analyze .` were run
+      directly per package. All 147 pure-Dart tests pass; all 6 packages analyze clean.)
 
 **Notes for Agent:**
 - Treat this mock's internal state machine with the same rigor as the real Android one will
   eventually need — this is a good low-risk place to prove out the state-machine logic and
   invariants before they matter for real (with real TUN interfaces and real user impact) in
   Phase 3.
+
+**Implementation note (P1-T5 hardening, 2026-09-26):** Beyond the original scope, the engine now
+carries three architecture-mandated mechanisms from ARCHITECTURE.md Section 3.5, because this mock
+is the reference blueprint for the Phase 3 native engines and must model them correctly: (a) a
+**session token** claimed by every accepted `start()`/`stop()` and checked by every delayed
+callback, so a superseded attempt's late completion is discarded rather than applied; (b) a
+**5000 ms stop watchdog** that force-completes a stuck `Disconnecting` (configurable only so tests
+can drive the mechanism fast; the default is the mandated ceiling); and (c) **idempotent
+`stop()`** that is always accepted rather than reporting "busy" for a teardown already in flight.
+`Connected -> Error` was added to the legal graph so an established tunnel can fail spontaneously
+(`simulateUnexpectedDisconnect()`); see ARCHITECTURE.md Section 3.1.1 for the normative table.
 
 ---
 
