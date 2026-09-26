@@ -23,4 +23,5 @@ export 'src/parsers/trojan_parser.dart';
 export 'src/parsers/uri_parser.dart';
 export 'src/parsers/vless_parser.dart';
 export 'src/parsers/vmess_parser.dart';
+export 'src/serializers/singbox_serializer.dart';
 export 'src/server_profile_conversion.dart';
