@@ -549,6 +549,12 @@ about to begin.
 
 ## Phase 1 — Architecture Skeleton
 
+**Status: Ready for Human Review — all 11 tasks implemented.** 175 tests pass (152 pure-Dart
++ 23 Flutter); analyzer clean across all 6 packages; `dart format` reports 0 changed files.
+Phase 1 is functionally complete, but see the closeout note below: four criteria requiring a
+real device run, one CI criterion, and the literal `melos run <script>` invocation remain
+unverified. This phase is **not** declared 100% closed until a human runs the app on a device.
+
 **Phase Goal:** establish the core abstractions, domain types, dependency-injection wiring, and
 feature-first folder conventions that every later phase builds on — with zero real features,
 zero real VPN logic, and zero final UI. Everything here must be provable with unit tests alone.
@@ -559,6 +565,23 @@ Phase 1 exists purely to make Phase 2+ possible to build cleanly.
 
 ---
 
+> **Phase 1 closeout note (2026-09-26).** Acceptance criteria below were re-verified
+> against the live repository at closeout, not carried over from task reports.
+> Three caveats apply and are recorded honestly rather than papered over:
+>
+> 1. **`melos run <script>` hangs in this environment** (12+ min, no child processes,
+>    no output; `melos bootstrap` itself succeeds). Criteria phrased as "melos run
+>    analyze / melos run test pass" were therefore verified by running the **identical
+>    underlying commands per package** — `dart test` in each pure-Dart package and
+>    `flutter analyze .` in all six. Those equivalents pass. The literal `melos run`
+>    invocation is the one thing not proven.
+> 2. **Criteria requiring a real Android device run are left UNCHECKED** (P1-T7, P1-T8,
+>    P1-T10, P1-T11). No device is connected (`flutter devices` shows only Linux and
+>    Chrome; `adb devices` is empty; no emulator is available), so these could not be
+>    honestly asserted. The corresponding *widget-test* coverage passes.
+> 3. **"CI is green on master" is left UNCHECKED.** The P1-T5 hardening through P1-T11
+>    work is currently uncommitted, so no CI run has exercised it.
+>
 ### P1-T1 — Result-type error handling primitive
 
 **Status:** Completed ✅ — Implemented hand-written sealed `Result<T, E>` in packages/shared_utils with 10 unit tests. Standing CI is green on this work, and Melos test-routing has been verified to execute shared_utils standalone under plain `dart test` in 5.8s.
@@ -579,11 +602,11 @@ programmer errors.
   later tasks/phases) — this task only builds the generic mechanism.
 
 **Acceptance Criteria:**
-- [ ] `Result<T, E>` is a sealed class (or equivalent exhaustive pattern) so `switch` statements
+- [x] `Result<T, E>` is a sealed class (or equivalent exhaustive pattern) so `switch` statements
       on it are exhaustiveness-checked by the analyzer.
-- [ ] Unit tests cover: constructing `Ok`/`Err`, `map`, `fold`, equality/hashCode behavior.
-- [ ] `melos run analyze` and `melos run test` pass.
-- [ ] A short doc comment on the type explains when to use `Result` vs. when a Dart `Exception`
+- [x] Unit tests cover: constructing `Ok`/`Err`, `map`, `fold`, equality/hashCode behavior.
+- [x] `melos run analyze` and `melos run test` pass.
+- [x] A short doc comment on the type explains when to use `Result` vs. when a Dart `Exception`
       is still appropriate (per `CODING_STANDARDS.md`), so future agents don't have to re-derive
       the rule.
 
@@ -613,18 +636,18 @@ timestamp) — in `packages/core_domain`, as pure Dart with zero Flutter depende
   any server/profile model (also this phase, but a separate task below).
 
 **Acceptance Criteria:**
-- [ ] `ConnectionState` is a sealed class with exactly the five variants listed above; `Error`
+- [x] `ConnectionState` is a sealed class with exactly the five variants listed above; `Error`
       carries a structured reason (not a bare `String message` — use a small enum or sealed
       reason type so calling code can branch on failure category, per the legacy lesson that
       vague error states caused undebuggable behavior).
-- [ ] `TrafficStats` is immutable (`const` constructor where possible), value-equal (`==`/
+- [x] `TrafficStats` is immutable (`const` constructor where possible), value-equal (`==`/
       `hashCode` implemented or generated), and has no mutable public fields.
-- [ ] Both types have zero imports from `package:flutter/*` — verified by attempting to run their
+- [x] Both types have zero imports from `package:flutter/*` — verified by attempting to run their
       tests with plain `dart test`, not `flutter test`, to prove the package is pure Dart.
-- [ ] Unit tests cover equality, exhaustiveness (a `switch` with no `default` compiles and is
+- [x] Unit tests cover equality, exhaustiveness (a `switch` with no `default` compiles and is
       analyzer-clean), and construction of every variant.
-- [ ] `melos run analyze` and `melos run test` pass.
-- [ ] `core_domain` is added to the `test:dart` scope list (allowlist) and to the `test:flutter` ignore list (denylist) in the root `pubspec.yaml` in the same commit that removes its Flutter dependency, ensuring deterministic test routing.
+- [x] `melos run analyze` and `melos run test` pass.
+- [x] `core_domain` is added to the `test:dart` scope list (allowlist) and to the `test:flutter` ignore list (denylist) in the root `pubspec.yaml` in the same commit that removes its Flutter dependency, ensuring deterministic test routing.
 
 **Notes for Agent:**
 - This directly encodes the "two explicitly separate streams... must never share a failure
@@ -653,17 +676,17 @@ how it was parsed (that's Phase 2's job) or how it's stored (that's Phase 8's se
 - Excluded: any parsing logic, any storage/persistence logic, any UI-facing formatting.
 
 **Acceptance Criteria:**
-- [ ] `ServerProfile` is immutable, value-equal, and contains only generic fields that apply
+- [x] `ServerProfile` is immutable, value-equal, and contains only generic fields that apply
       across all six protocols plus a protocol-specific `Map<String, dynamic>` or sealed
       per-protocol config payload (decide and justify the choice in the task report — this is a
       real design decision, not a formality, and should be informed by what Phase 2's parser
       will actually need to produce).
-- [ ] `ProtocolType` enum has exactly the six required values, named consistently with how
+- [x] `ProtocolType` enum has exactly the six required values, named consistently with how
       they'll appear in subscription URLs/config parsing later.
-- [ ] Zero Flutter dependency, verified the same way as P1-T2.
-- [ ] Unit tests cover construction, equality, and (if a sealed per-protocol payload is chosen)
+- [x] Zero Flutter dependency, verified the same way as P1-T2.
+- [x] Unit tests cover construction, equality, and (if a sealed per-protocol payload is chosen)
       exhaustive pattern matching.
-- [ ] `melos run analyze` and `melos run test` pass.
+- [x] `melos run analyze` and `melos run test` pass.
 
 **Notes for Agent:**
 - If genuinely torn between a generic `Map`-based payload vs. a fully-typed sealed class per
@@ -694,19 +717,19 @@ a `getStatus()` query method.
   the in-memory mock implementation is the next task, P1-T5).
 
 **Acceptance Criteria:**
-- [ ] `VpnEngine` is an abstract interface (`abstract interface class` or equivalent) exposing:
+- [x] `VpnEngine` is an abstract interface (`abstract interface class` or equivalent) exposing:
       `Stream<ConnectionState> get connectionState`, `Stream<TrafficStats> get trafficStats`,
       `Future<VpnCommandResult> start(ServerProfile profile)`,
       `Future<VpnCommandResult> stop()`, `Future<ConnectionState> getStatus()`.
-- [ ] `VpnCommandResult` is a sealed class with exactly the five variants listed above (matching
+- [x] `VpnCommandResult` is a sealed class with exactly the five variants listed above (matching
       `ARCHITECTURE.md` Section 3.5 patch verbatim).
-- [ ] No platform-channel, dart:ffi, or any concrete I/O code exists in this package — it is a
+- [x] No platform-channel, dart:ffi, or any concrete I/O code exists in this package — it is a
       pure contract package, dependency-free apart from `core_domain`.
-- [ ] Doc comments on every public member explain the accepted-vs-final-state distinction clearly
+- [x] Doc comments on every public member explain the accepted-vs-final-state distinction clearly
       enough that a future agent implementing a concrete engine cannot misread it.
-- [ ] `melos run analyze` and `melos run test` pass (tests here can only cover the sealed type
+- [x] `melos run analyze` and `melos run test` pass (tests here can only cover the sealed type
       shape itself, since there's no implementation yet).
-- [ ] `core_vpn_engine` is added to the `test:dart` scope list (allowlist) and to the `test:flutter` ignore list (denylist) in the root `pubspec.yaml` in the same commit that removes its Flutter dependency, ensuring deterministic test routing.
+- [x] `core_vpn_engine` is added to the `test:dart` scope list (allowlist) and to the `test:flutter` ignore list (denylist) in the root `pubspec.yaml` in the same commit that removes its Flutter dependency, ensuring deterministic test routing.
 
 **Notes for Agent:**
 - This is one of the most important files in the whole project — the legacy failure was rooted
@@ -778,7 +801,7 @@ can drive the mechanism fast; the default is the mandated ceiling); and (c) **id
 
 ### P1-T6 — Feature-first folder structure convention + reference feature skeleton
 
-**Status:** Not Started
+**Status:** Ready for Human Review ✅ — `features/README.md` plus the reference `connection` feature's three-layer skeleton (data/domain/presentation, using the sub-folders from CODING_STANDARDS.md Section 3.2), with a README in each layer. The "presentation never imports data" rule is documented in both the feature README and CODING_STANDARDS.md (the latter was corrected from a contradictory looser rule during this task). `core_domain`/`core_vpn_engine` also added as explicit `apps/mobile` dependencies. 9 directories, 4 READMEs, 0 Dart files (documentation-only task).
 **Depends On:** P0-T10, P1-T4
 
 **Objective:** Establish, inside `apps/mobile/lib`, the concrete feature-first Clean
@@ -798,14 +821,14 @@ reference feature — `connection` — that later Phase 4/5 tasks will fill in w
   and the documented convention, to be filled in starting Phase 4.
 
 **Acceptance Criteria:**
-- [ ] The three-layer folder structure exists under `features/connection/` with clear README
+- [x] The three-layer folder structure exists under `features/connection/` with clear README
       content in each (not just empty folders with no explanation).
-- [ ] `features/README.md` states the layering rule explicitly and unambiguously, including the
+- [x] `features/README.md` states the layering rule explicitly and unambiguously, including the
       "presentation never imports data directly" rule, and gives a one-line rationale (testability,
       replaceability of data sources without touching UI).
-- [ ] `melos run analyze` still passes (no code was added that could fail analysis, but confirm
+- [x] `melos run analyze` still passes (no code was added that could fail analysis, but confirm
       nothing broke).
-- [ ] A brief addendum is added to `CODING_STANDARDS.md` (or confirmed already present — check
+- [x] A brief addendum is added to `CODING_STANDARDS.md` (or confirmed already present — check
       first, don't duplicate) pointing to this concrete example as the canonical reference
       structure for all future features.
 
@@ -817,7 +840,7 @@ reference feature — `connection` — that later Phase 4/5 tasks will fill in w
 
 ### P1-T7 — Riverpod dependency-injection wiring skeleton
 
-**Status:** Not Started
+**Status:** Ready for Human Review ✅ — root `ProviderScope` wired in `main()`; `@Riverpod(keepAlive: true)` `vpnEngineProvider` bound to `MockVpnEngine` with `ref.onDispose`; `.g.dart` generated via `build_runner`. 4 provider tests (resolution, singleton identity, keepAlive survives listener loss, `overrideWithValue`). NOTE: `keepAlive: true` was required — a bare `@riverpod` generates an auto-dispose provider that would kill a live tunnel on navigation. Device-run criterion left unchecked (no device available).
 **Depends On:** P1-T5, P1-T6
 
 **Objective:** Wire up the root Riverpod `ProviderScope` in `apps/mobile`'s `main.dart`, and
@@ -839,12 +862,12 @@ Riverpod convention from `CODING_STANDARDS.md`.
 - [ ] App builds and runs (on the connected Android device/emulator) showing the current default
       Flutter scaffold (no real UI yet), with `ProviderScope` active and no runtime provider
       errors.
-- [ ] The `VpnEngine` provider is code-generated (`@riverpod`), not a hand-written
+- [x] The `VpnEngine` provider is code-generated (`@riverpod`), not a hand-written
       `Provider((ref) => ...)`.
-- [ ] A doc comment at the provider definition explicitly states: "This is bound to
+- [x] A doc comment at the provider definition explicitly states: "This is bound to
       `MockVpnEngine` until Phase 3; do not implement real platform-channel logic here — override
       this provider's implementation at the composition root when Phase 3 is ready."
-- [ ] `dart run build_runner build --delete-conflicting-outputs` succeeds.
+- [x] `dart run build_runner build --delete-conflicting-outputs` succeeds.
 - [ ] `melos run analyze` and `melos run test` pass; app runs without crashing.
 
 **Notes for Agent:**
@@ -856,7 +879,7 @@ Riverpod convention from `CODING_STANDARDS.md`.
 
 ### P1-T8 — go_router skeleton with placeholder routes
 
-**Status:** Not Started
+**Status:** Ready for Human Review ✅ — `go_router` wired via `@Riverpod(keepAlive: true)` `appRouterProvider`; `/` (Home) and `/settings` (Settings) placeholder routes; `MyApp` converted to `ConsumerWidget` using `MaterialApp.router`. 5 navigation/config tests pass. API verified against the installed go_router 18.0.1 source (neither `routingConfig` nor the constructor is deprecated) rather than assumed. Device-run criterion left unchecked (no device available).
 **Depends On:** P1-T7
 
 **Objective:** Wire up `go_router` in `apps/mobile` with two placeholder routes — `/` (Home) and
@@ -873,10 +896,10 @@ features into without needing to design routing from scratch.
 - Excluded: any real settings content, any deep-linking configuration, any route guards.
 
 **Acceptance Criteria:**
-- [ ] App launches directly into the Home placeholder route.
-- [ ] Navigating to `/settings` (via a simple button on Home, for manual verification only) shows
+- [x] App launches directly into the Home placeholder route.
+- [x] Navigating to `/settings` (via a simple button on Home, for manual verification only) shows
       the Settings placeholder and back-navigation works correctly.
-- [ ] Router is defined using `go_router`'s recommended current API (verify current
+- [x] Router is defined using `go_router`'s recommended current API (verify current
       recommended patterns — e.g. `GoRouter.routingConfig` vs. constructor-based route lists —
       rather than assuming a possibly-outdated pattern from training data).
 - [ ] `melos run analyze` and `melos run test` pass; manual run confirms navigation works on
@@ -890,7 +913,7 @@ features into without needing to design routing from scratch.
 
 ### P1-T9 — Logging skeleton (logger) with redaction hook stub
 
-**Status:** Not Started
+**Status:** Ready for Human Review ✅ — pure-Dart `redact()` stub in `packages/shared_utils/lib/src/redaction.dart` (exported via the barrel, zero dependencies) per SECURITY.md Section 4; `AppLogger` in `apps/mobile/lib/core/logging/app_logger.dart` routing every level through `redact()` and gating on `kReleaseMode` via `Level.off`; `@Riverpod(keepAlive: true)` `appLoggerProvider`. 5 shared_utils + 8 mobile tests pass, including an assertion that release mode emits ZERO output. Phase 8 cross-reference added to PROJECT_STATE.md. NOTE: redaction is a documented pass-through stub — no sensitive value is actually masked yet.
 **Depends On:** P0-T10
 
 **Objective:** Wire up the chosen logging library (`logger`, confirmed dev-tooling choice) in
@@ -910,14 +933,14 @@ policy.
   phase anyway), any log-export/diagnostic-bundle feature (later phase).
 
 **Acceptance Criteria:**
-- [ ] Logger is initialized once at app startup, accessible from anywhere via a documented,
+- [x] Logger is initialized once at app startup, accessible from anywhere via a documented,
       consistent access pattern (not ad-hoc logger instances scattered around).
-- [ ] Release-mode builds do not emit logs (verified by checking build-mode conditionals, e.g.
+- [x] Release-mode builds do not emit logs (verified by checking build-mode conditionals, e.g.
       `kReleaseMode`), consistent with the no-telemetry, privacy-first stance.
-- [ ] The redaction stub function exists, is clearly marked as incomplete, and is referenced by
+- [x] The redaction stub function exists, is clearly marked as incomplete, and is referenced by
       name in a note added to `PROJECT_STATE.md`'s "what does NOT exist yet" or open-questions
       section so it isn't forgotten by Phase 8.
-- [ ] `melos run analyze` and `melos run test` pass.
+- [x] `melos run analyze` and `melos run test` pass.
 
 **Notes for Agent:**
 - Do not attempt to implement real redaction logic now — there's nothing sensitive to redact yet,
@@ -928,7 +951,7 @@ policy.
 
 ### P1-T10 — easy_localization skeleton wiring
 
-**Status:** Not Started
+**Status:** Ready for Human Review ✅ — `easy_localization` wired with locale `en`, `assets/translations/en.json`, and `EasyLocalization` above `ProviderScope` in `main()`. Both placeholder screens use `.tr()` exclusively (zero hardcoded user-facing strings). The critical `MaterialApp` delegate registration is implemented and documented in CODING_STANDARDS.md Section 2.1. 5 localization tests plus the full mobile suite pass. Device-run criterion left unchecked (no device available).
 **Depends On:** P1-T8
 
 **Objective:** Wire up `easy_localization` in `apps/mobile` with a single locale (`en`) and a
@@ -945,11 +968,11 @@ hardcoded strings in widgets from this point forward).
   scope unless the human decides otherwise later.
 
 **Acceptance Criteria:**
-- [ ] App runs with all placeholder-screen text sourced from `en.json`, not hardcoded.
-- [ ] Adding a new translation key and using it in a widget is demonstrated to work end-to-end
+- [x] App runs with all placeholder-screen text sourced from `en.json`, not hardcoded.
+- [x] Adding a new translation key and using it in a widget is demonstrated to work end-to-end
       (part of the task's own verification, using one of the existing placeholder strings).
 - [ ] `melos run analyze` and `melos run test` pass; manual run confirms text renders correctly.
-- [ ] The "no hardcoded user-facing strings" rule is explicitly stated in `CODING_STANDARDS.md`.
+- [x] The "no hardcoded user-facing strings" rule is explicitly stated in `CODING_STANDARDS.md`.
 
 **Notes for Agent:**
 - Verify current `easy_localization` setup steps against its current published documentation —
@@ -959,7 +982,7 @@ hardcoded strings in widgets from this point forward).
 
 ### P1-T11 — Phase 1 closeout and Definition-of-Done pass
 
-**Status:** Not Started
+**Status:** Ready for Human Review ✅ — Closeout audit re-verified pure-Dart isolation (0 `package:flutter/*` / `dart:ui` imports across shared_utils, core_domain, core_vpn_engine), ran all suites (175 tests: 152 pure-Dart + 23 Flutter), swept the analyzer across all 6 packages (0 errors/warnings/lints), and confirmed `dart format` reports 0 changed files. Governance synced. Open items: the device-run and CI criteria remain unchecked (see the Phase 1 closeout note above), and `melos run <script>` hangs in this environment.
 **Depends On:** P1-T1 through P1-T10
 
 **Objective:** Perform a full closeout review of Phase 1: confirm every task above is genuinely
@@ -977,11 +1000,11 @@ a real device/emulator showing placeholder navigation wired to the mock VPN engi
 - [ ] App launches on a real Android device/emulator, shows Home placeholder, navigates to
       Settings placeholder and back, all text sourced from localization, no crashes, no analyzer
       warnings.
-- [ ] `core_domain` and `core_vpn_engine` packages remain provably pure-Dart (no Flutter
+- [x] `core_domain` and `core_vpn_engine` packages remain provably pure-Dart (no Flutter
       dependency) — re-verify, don't just trust earlier tasks' claims.
 - [ ] CI is green on `master` (the repository's actual default branch).
-- [ ] `PROJECT_STATE.md` fully rewritten as a coherent current snapshot.
-- [ ] Closeout report follows the exact `DEFINITION_OF_DONE.md` template.
+- [x] `PROJECT_STATE.md` fully rewritten as a coherent current snapshot.
+- [x] Closeout report follows the exact `DEFINITION_OF_DONE.md` template.
 
 **Notes for Agent:**
 - Pay particular attention to re-verifying the "pure Dart, no Flutter dependency" property of

@@ -27,12 +27,28 @@
 
 ## 1. Current Phase
 
-**Phase 1 — Architecture Skeleton: P1-T1 through P1-T5 complete. P1-T5 is finished and ready for human review/commit; P1-T6 is the next task to begin.**
+**Phase 1 — Architecture Skeleton: all 11 tasks (P1-T1..P1-T11) are implemented and awaiting human
+review. Phase 1 is NOT declared 100% closed — see §6 "Open items" for the specific gaps.**
 
 Phase 0 (Project Foundation & Governance Setup) is 100% completed, committed, and signed off.
-The project has continued executing Phase 1. The baseline primitive `Result<T, E>` (P1-T1), the core domain types (P1-T2), the polymorphic `OutboundConfig` protocol hierarchy with its `ServerProfile` container (P1-T3), the `VpnEngine` contract with sealed `VpnCommandResult` (P1-T4), and the in-memory `MockVpnEngine` reference implementation (P1-T5) are implemented, tested, and verified — 147 pure-Dart tests pass monorepo-wide and all 6 packages analyze clean. Three packages (`shared_utils`, `core_domain`, `core_vpn_engine`) are pure Dart. The P1-T5 hardening (session tokens, stop watchdog, idempotent `stop`, stress/leak tests, and the `Connected -> Error` transition) is **staged for human review and commit**; the next coding task is P1-T6 (feature-first folder structure convention + reference feature skeleton), which follows the Phase 1 Architecture Review gate.
+Phase 1 built, and is verified by re-running the suites against the live repository:
+`Result<T, E>` (P1-T1), the core domain types (P1-T2), the polymorphic `OutboundConfig` hierarchy
+with `ServerProfile` (P1-T3), the `VpnEngine` contract with sealed `VpnCommandResult` (P1-T4),
+the hardened `MockVpnEngine` reference implementation (P1-T5), the feature-first folder convention
+(P1-T6), the Riverpod DI wiring (P1-T7), the `go_router` skeleton (P1-T8), the logging skeleton with
+a redaction stub (P1-T9), and the `easy_localization` wiring (P1-T10). P1-T11 is this closeout audit.
 
----
+**Closeout measurements (2026-09-26, all re-run at audit time):**
+- **175 tests pass** — 152 pure-Dart (`shared_utils` 15, `core_domain` 94, `core_vpn_engine` 43)
+  plus 23 Flutter (`apps/mobile`).
+- `flutter analyze .` — 0 errors, 0 warnings, 0 lints across all 6 packages.
+- `dart format --set-exit-if-changed` — 0 changed files across all 6 packages.
+- **Pure-Dart isolation re-verified:** 0 `package:flutter/*` and 0 `dart:ui` imports in
+  `shared_utils`, `core_domain`, and `core_vpn_engine`; all three run under plain `dart test`.
+
+**This phase is not "zero technical debt."** Known open items are listed in §6. The most
+consequential: the device-run acceptance criteria for P1-T7/T8/T10/T11 were never executed
+(no Android device was available), and `redact()` is a documented no-op stub until Phase 8.
 
 ## 2. Active Phase 1 Task Status (quoted from `AI_ROLES/ROADMAP.md`)
 
@@ -55,10 +71,17 @@ Status tokens below are quoted verbatim from the corresponding `**Status:**` lin
 
 **API-shape change (2026-09-25):** `TlsSettings`, `WebSocketTransport`, `HttpTransport`, `HttpUpgradeTransport`, and `Hysteria2Outbound` are **no longer `const`-constructible**. The first four now defensively copy their `List`/`Map` fields into unmodifiable views at construction (so a caller mutating a collection afterwards can no longer change a "value type" that may sit in a `Set`/`Map` with a shifting `hashCode`); `Hysteria2Outbound` gained an unconditional constructor-time `ArgumentError` when `obfsType`/`obfsPassword` are set inconsistently. Both are runtime operations a const constructor cannot express. All other domain value types remain `const`-constructible.
 - **`packages/core_vpn_engine/` (Pure Dart, verified):** Migrated from Flutter scaffold to pure Dart in P1-T4. Exposes the `abstract interface class VpnEngine` contract (authoritative `connectionState` stream, independent `trafficStats` stream, acceptance-separate-from-state `start(ServerProfile)`/`stop()`/`getStatus()`) and sealed `VpnCommandResult` (5 stateless variants: Accepted, RejectedBusy, RejectedInvalidConfig, RejectedPermissionDenied, Failed — const, value-equal, discriminated `toJson()`, no `toString`). P1-T5 added the in-memory `MockVpnEngine` reference implementation (541 lines): simulated lifecycle (`Disconnected` → `Connecting` → `Connected` → `Disconnecting` → `Disconnected`) with injectable delays, a periodic `TrafficStats` ticker, configurable rejection/failure hooks, an exhaustively-checked legal-transition graph that throws `StateError` on impossible sequences, structurally independent stats/connection pipelines, and an idempotent `dispose()`. Tested with **43 standalone unit tests** under `dart test` (13 from P1-T4 + 30 in `mock_vpn_engine_test.dart`), including exhaustive-switch, stream-isolation, session-token race, stop-watchdog, 100-interleaved-command stress, and 100-engine resource-leak checks. **P1-T5 hardening (2026-09-26)** further added: a monotonic **session token** so superseded async callbacks can never transition the engine; a hard **5000 ms stop watchdog** (`MockVpnEngine.defaultStopWatchdogTimeout`, overridable only so tests can drive the mechanism without a 5-second wait) that force-completes a stuck teardown; fully **idempotent `stop()`** (always accepted); per-session counter reset relocated into `start()`; hardened disposal ordering (`_disposed` set before controllers close, all four timers cancelled); and `simulateConnectionFailure()` / `simulateUnexpectedDisconnect()` failure hooks. The legal-transition graph now permits **`Connected` -> `Error`** so an established tunnel can fail without being asked to (previously only `Connecting` could reach `Error`), which is what `simulateUnexpectedDisconnect()` exercises.
-- **`apps/mobile` (Flutter, wired):** Base dependencies resolved and pinned (`riverpod`, `riverpod_annotation`, `riverpod_generator`, `build_runner`, `go_router`, `easy_localization`, `logger`, `very_good_analysis`). Contains standard boilerplate tests.
+- **`apps/mobile` (Flutter, wired, pure-Dart deps declared):** Dependencies resolved and pinned (`flutter_riverpod`, `riverpod_annotation`, `riverpod_generator`, `build_runner`, `go_router`, `easy_localization`, `logger`, `very_good_analysis`), plus the workspace siblings `core_domain`, `core_vpn_engine`, and `shared_utils` declared explicitly. Built out during P1-T6..P1-T10:
+  * `lib/core/providers/` — `@Riverpod(keepAlive: true)` providers: `vpnEngineProvider` (bound to `MockVpnEngine`, with `ref.onDispose`), `appRouterProvider` (`GoRouter`), `appLoggerProvider` (`AppLogger`). All `.g.dart` files are generated by `build_runner` and **are committed** (not gitignored).
+  * `lib/core/logging/app_logger.dart` — the single supported logging entry point; routes every message through `redact()` and silences itself entirely in release builds (`Level.off`).
+  * `lib/core/router/app_router.dart` — the route table (`/` Home, `/settings` Settings).
+  * `lib/features/` — the feature-first convention: `README.md` plus the `connection` and `settings` reference features, each with `data/`, `domain/`, `presentation/`. Screens use `.tr()` exclusively.
+  * `assets/translations/en.json` — the localization asset, registered under `flutter: assets:`.
+  * `test/localization_test_harness.dart` — reproduces the real `EasyLocalization` + `ProviderScope` stack (in-memory `AssetLoader`) so widget tests exercise the actual `.tr()` lookup path.
+  * 23 Flutter tests pass. The app has **not** yet been run on a device (see §6).
 - **Melos Workspace (6 packages):** Configured via root `pubspec.yaml` list and individual package `resolution: workspace` settings.
 - **Deterministic Test Routing (Refactored):** Root `pubspec.yaml` Melos `test` script was refactored into a composite script that dispatches tests to:
-  * `test:dart` (`melos exec -- dart test`): routes pure-Dart packages (`shared_utils`, `core_domain`, `core_vpn_engine`) via an allowlist (`scope:`). Currently 3 packages allowlisted — shared_utils (10 tests), core_domain (94 tests), and core_vpn_engine (43 tests, including the P1-T4 `VpnEngine`/`VpnCommandResult` suite and the P1-T5 `MockVpnEngine` suite); more will be added as Phase 2 (`config_parser`) migrates to pure Dart. **Monorepo total as of the P1-T5 closeout: 147 passing pure-Dart tests** (10 + 94 + 43).
+  * `test:dart` (`melos exec -- dart test`): routes pure-Dart packages (`shared_utils`, `core_domain`, `core_vpn_engine`) via an allowlist (`scope:`). Currently 3 packages allowlisted — shared_utils (15 tests), core_domain (94 tests), and core_vpn_engine (43 tests, including the P1-T4 `VpnEngine`/`VpnCommandResult` suite and the P1-T5 `MockVpnEngine` suite); more will be added as Phase 2 (`config_parser`) migrates to pure Dart. **Monorepo total as of the P1-T11 closeout: 152 passing pure-Dart tests** (15 + 94 + 43), plus **23 Flutter tests** in `apps/mobile` = **175 total**.
   * `test:flutter` (`melos exec -- flutter test`): routes Flutter-dependent packages via a denylist (`ignore:`).
   * This ensures pure-Dart packages are tested natively with plain `dart test` (5.8s real time) rather than relying on undocumented Flutter fallback behavior (13.8s real time).
 
@@ -97,6 +120,39 @@ Status tokens below are quoted verbatim from the corresponding `**Status:**` lin
 
 ## 6. Open Questions / Pending Human Decisions
 
+### Phase 1 closeout — open items (2026-09-26)
+
+These are the specific reasons Phase 1 is **not** declared 100% closed. Each is stated with the
+evidence that established it, so the next agent can verify rather than re-derive.
+
+6. **The app has never been run on a real Android device or emulator.** This leaves four
+   acceptance-criteria boxes unchecked (P1-T7, P1-T8, P1-T10, P1-T11). Evidence:
+   `flutter devices` lists only Linux and Chrome; `adb devices -l` is empty; `lsusb` shows no
+   Android/Samsung USB device; `flutter emulators` reports no emulators available. Additionally,
+   `assembleDebug` cannot complete in this environment because the `io.flutter:*_debug` engine
+   artifacts are neither cached nor downloadable — `storage.googleapis.com` is unreachable
+   (curl times out) while `github.com` and `pub.dev` both return HTTP 200. **Until a human runs the
+   app on a device, the routing, localization, and Riverpod wiring are proven only by widget tests,
+   never on a real target.**
+7. **`melos run <script>` hangs in this environment** — 12+ minutes with no child processes and no
+   output, for both `test:dart` and `analyze`; `melos bootstrap` itself succeeds. All Phase 1
+   verification was therefore done with the identical underlying commands run per package
+   (`dart test` / `flutter analyze .` / `dart format`), which all pass. The literal `melos run`
+   invocation is unproven and is a real (if environmental) gap against
+   `DEFINITION_OF_DONE.md` Section 3, which mandates `melos run format|analyze|test`.
+8. **CI has not validated any of the P1-T5..P1-T11 work**, because it is all still uncommitted. The
+   P1-T11 criterion "CI is green on master" is left unchecked for that reason, not because a red run
+   was observed.
+9. **`redact()` is a no-op stub** (see §4). `SECURITY.md` Section 4's redaction requirement is
+   structurally in place — `AppLogger` routes every message through it — but nothing is actually
+   masked at runtime. Deliberately deferred to Phase 8, and recorded so it is not forgotten.
+10. **Governance drift found during the closeout, not fixed here:** `ARCHITECTURE.md` Section 3.2
+   still lists a `Reconnecting` `ConnectionState` variant that was never implemented. Separately, the
+   "N1–N10" invariant labels referenced in several task briefs do not exist anywhere in `AI_ROLES/`
+   (Section 3.5's ten unnumbered bullets are the real source). Both are documentation-only and were
+   left alone rather than silently rewritten.
+
+
 1. **Dependabot PR #1:** An automated PR to update GitHub Actions remains open and requires a human decision (merge/close).
 2. **Dependabot pub failures:** 6 automated dependency updates failed on Dependabot's dynamic run on 2026-09-17 (`apps/mobile`, `core_domain`, `core_vpn_engine`, `config_parser`, `shared_utils`, `ui_theme`) due to monorepo package resolution errors. Non-blocking for local development, but worth noting for automation health.
 3. **Pre-P1-T3 competitive research completed (informational, no decision pending):** Four independent AI agents surveyed sing-box protocol documentation, Hiddify implementation, and Iranian VPN user community reports (2025-2026 blackouts). Three agents converged on the same protocol config architecture: a base `sealed OutboundConfig` with family sealed sub-classes (`TcpBasedOutbound`, `QuicBasedOutbound`, standalone `ShadowsocksOutbound`) plus shared composition types (`TlsSettings`, `TransportSettings`, `QuicSettings`, `MultiplexSettings`, `RealitySettings`). Findings including field surveys, competitive gaps, and Iranian censorship-blackout scenarios (dnstt fallback, TLS Fragment, Chrome QUIC parroting) are documented in `AI_ROLES/COMPETITIVE_RESEARCH.md` (see AI_ROLES/COMPETITIVE_RESEARCH.md). This research informed P1-T3's architecture choices before implementation began.
@@ -110,6 +166,15 @@ Status tokens below are quoted verbatim from the corresponding `**Status:**` lin
 
 ## 7. Immediate Next Steps (In Order)
 
-1. Human: review and commit the P1-T5 hardening (`mock_vpn_engine.dart` + tests + governance docs). The state-machine `Connected -> Error` addition and the configurable (default-5000 ms) stop watchdog are the two design decisions most worth a second look before commit.
-2. Agent (P1-T6): Establish the feature-first folder structure convention in `apps/mobile/lib/features/` with one reference feature skeleton.
-3. Human: after each task, review, commit, and push.
+1. Human: review and commit the Phase 1 work (P1-T5 hardening through P1-T11, plus the governance
+   sync). Two design decisions most worth a second look: the `Connected -> Error` state-machine
+   edge added in P1-T5, and the `keepAlive: true` decision on the Riverpod providers (P1-T7/T8).
+2. Human: run the app on a real Android device/emulator. This is the single highest-value outstanding
+   action — it closes the four unchecked device-run acceptance criteria across P1-T7/T8/T10/T11 and
+   is the only way to confirm the localization, routing, and provider wiring behave on a real target.
+   (Note: `assembleDebug` currently cannot resolve the `io.flutter:*_debug` engine artifacts because
+   `storage.googleapis.com` is unreachable from this environment; that must be fixed or allowed
+   before an APK build can complete.)
+3. Human: confirm CI is green on `master` after committing — CI has not yet seen any of the
+   P1-T5..P1-T11 work.
+4. Agent (P2-T1): begin Phase 2 — WireGuard & AmneziaWG config parser in `packages/config_parser`.
