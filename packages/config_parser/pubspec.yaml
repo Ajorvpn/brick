@@ -1,12 +1,15 @@
 name: config_parser
-description: "Brick VPN config parser package skeleton"
+description: "Brick VPN config parser (pure Dart, no Flutter dependency)"
 publish_to: 'none'
 resolution: workspace
 environment:
   sdk: ^3.13.3
+# Pure Dart by design (P2-T1): every parser must be independently unit-testable
+# with no widget tree, and must never gain a Flutter dependency. Routing in the
+# root `pubspec.yaml` is updated in the same change (test:dart allowlist +
+# test:flutter denylist) so this package is tested with plain `dart test`.
 dependencies:
-  flutter:
-    sdk: flutter
+  core_domain:
+  shared_utils:
 dev_dependencies:
-  flutter_test:
-    sdk: flutter
+  test: ^1.31.1
