@@ -1,0 +1,189 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+/// Why this file has no `toString` override: an error is very likely to end
+/// up interpolated into a log line, a user-facing message, or a crash
+/// report. `SECURITY.md` Section 2 classifies server configuration as
+/// High-sensitivity data, so an error type in the parsing pipeline must be
+/// incapable of carrying a credential into a log by accident. Every variant
+/// below therefore stores only structural metadata (field names, sizes,
+/// enum-ish reasons) and never the offending value itself.
+
+/// A structured, exhaustive description of why a config could not be parsed.
+///
+/// Sealed so that a `switch` over it is checked by the analyzer: adding a
+/// category later becomes a compile-time error in every consumer rather than
+/// a silently unhandled runtime case. This is the `E` in the
+/// `Result<ServerProfile, ConfigParseError>` convention (P2-T1
+/// acceptance criteria).
+///
+/// Security: no variant holds the raw input that failed. `detail` fields
+/// carry a short, developer-authored explanation; `field` carries a
+/// key name like `'PrivateKey'`, never a key value.
+sealed class ConfigParseError {
+  const ConfigParseError();
+
+  /// A stable, machine-readable category string.
+  ///
+  /// Safe to log and to branch on. Never includes input data.
+  String get code;
+
+  /// A short, safe, human-readable explanation.
+  ///
+  /// Callers may display this to a user. It MUST NOT be built by
+  /// interpolating the offending input.
+  String get message;
+}
+
+/// The input was syntactically invalid for the expected format.
+final class InvalidSyntaxError extends ConfigParseError {
+  /// Creates an invalid-syntax error for [field].
+  const InvalidSyntaxError(this.field, this.reason);
+
+  /// The field or section that failed to parse, e.g. `'vless uri'`.
+  final String field;
+
+  /// A short explanation of the syntax problem.
+  final String reason;
+
+  @override
+  String get code => 'invalid_syntax';
+
+  @override
+  String get message => 'Invalid syntax in $field: $reason';
+}
+
+/// A required field was absent.
+final class MissingRequiredFieldError extends ConfigParseError {
+  /// Creates a missing-field error naming [field].
+  const MissingRequiredFieldError(this.field);
+
+  /// The name of the absent field, e.g. `'uuid'`. Never a value.
+  final String field;
+
+  @override
+  String get code => 'missing_required_field';
+
+  @override
+  String get message => 'Missing required field: $field';
+}
+
+/// A field was present but its value was not usable.
+final class InvalidFieldValueError extends ConfigParseError {
+  /// Creates an invalid-value error for [field] explaining [reason].
+  const InvalidFieldValueError(this.field, this.reason);
+
+  /// The name of the offending field, e.g. `'port'`. Never a value.
+  final String field;
+
+  /// A short explanation, e.g. `'not a number in 1..65535'`.
+  final String reason;
+
+  @override
+  String get code => 'invalid_field_value';
+
+  @override
+  String get message => 'Invalid value for $field: $reason';
+}
+
+/// Base64 input could not be decoded, or decoded to an unexpected size.
+///
+/// Note: this variant deliberately stores only the *expected* size, never
+/// the decoded bytes or the input string.
+final class CorruptedBase64Error extends ConfigParseError {
+  /// Creates a base64 error for [field] with [reason] and [expectedBytes].
+  const CorruptedBase64Error(this.field, this.reason, {this.expectedBytes});
+
+  /// The field whose base64 payload was invalid, e.g. `'uuid'`.
+  final String field;
+
+  /// A short explanation, e.g. `'not valid base64'`.
+  final String reason;
+
+  /// The byte length the payload was required to have, when known.
+  final int? expectedBytes;
+
+  @override
+  String get code => 'corrupted_base64';
+
+  @override
+  String get message => expectedBytes == null
+      ? 'Corrupted base64 in $field: $reason'
+      : 'Corrupted base64 in $field: $reason (expected $expectedBytes bytes)';
+}
+
+/// The URI scheme is not one this package knows how to parse.
+final class UnsupportedSchemeError extends ConfigParseError {
+  /// Creates an unsupported-scheme error naming [scheme].
+  const UnsupportedSchemeError(this.scheme);
+
+  /// The scheme that was not recognised, e.g. `'notavpn'`.
+  ///
+  /// The scheme is a short, non-sensitive token taken from the URI prefix.
+  final String scheme;
+
+  @override
+  String get code => 'unsupported_scheme';
+
+  @override
+  String get message => 'Unsupported scheme: $scheme';
+}
+
+/// The protocol family is not implemented.
+final class UnsupportedProtocolError extends ConfigParseError {
+  /// Creates an unsupported-protocol error naming [protocol].
+  const UnsupportedProtocolError(this.protocol);
+
+  /// The protocol that is not yet implemented.
+  final String protocol;
+
+  @override
+  String get code => 'unsupported_protocol';
+
+  @override
+  String get message => 'Unsupported protocol: $protocol';
+}
+
+/// The input exceeded a configured size limit.
+///
+/// This is a memory-exhaustion guard: `SECURITY.md` requires bounded
+/// resource usage for untrusted input, and a hostile subscription could
+/// otherwise allocate unbounded memory before any parsing begins.
+final class InputTooLargeError extends ConfigParseError {
+  /// Creates an oversized-input error.
+  const InputTooLargeError({
+    required this.actualLength,
+    required this.maxLength,
+    required this.what,
+  });
+
+  /// The length of the rejected input, in bytes or characters.
+  final int actualLength;
+
+  /// The limit that was exceeded.
+  final int maxLength;
+
+  /// What was being measured, e.g. `'subscription body'`.
+  final String what;
+
+  @override
+  String get code => 'input_too_large';
+
+  @override
+  String get message =>
+      '$what is too large: $actualLength exceeds the $maxLength limit';
+}
+
+/// A catch-all for a failure that does not fit a more specific category.
+final class UnknownParseError extends ConfigParseError {
+  /// Creates an unknown-parse error explaining [reason].
+  const UnknownParseError(this.reason);
+
+  /// A short, safe explanation of what went wrong.
+  final String reason;
+
+  @override
+  String get code => 'unknown';
+
+  @override
+  String get message => 'Could not parse config: $reason';
+}
