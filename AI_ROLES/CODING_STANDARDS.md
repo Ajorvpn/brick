@@ -85,12 +85,20 @@ features/<feature_name>/
 text
 
 
-**Strict layering rule**: 
-- `presentation/` may depend on `domain/` and `data/`.
-- `domain/` must NEVER import anything from `presentation/` or Flutter 
-  (`package:flutter/...`). Domain logic must be framework-agnostic and 
-  unit-testable without a widget tree.
-- `data/` may depend on `domain/` (to implement its interfaces) but not 
+**Strict layering rule**:
+- `presentation/` depends ONLY on `domain/`. Direct imports from `data/`
+  into `presentation/` are forbidden: a screen, widget, or provider must
+  reference a repository interface / use case, never a concrete repository
+  or data-source class. (Corrected 2026-09-26 during P1-T6: an earlier
+  version of this file said `presentation/` "may depend on `domain/` and
+  `data/`", which contradicted the strict rule and permitted the exact
+  UI-to-storage coupling this architecture exists to prevent. The strict,
+  inward-only rule is now authoritative and matches `ARCHITECTURE.md`
+  Section 4 and `apps/mobile/lib/features/README.md`.)
+- `domain/` must NEVER import anything from `presentation/` or Flutter
+  (`package:flutter/...`). Domain logic must be framework-agnostic and
+  unit-testable without a widget tree. It must not import `data/` either.
+- `data/` may depend on `domain/` (to implement its interfaces) but not
   on `presentation/`.
 
 ---
