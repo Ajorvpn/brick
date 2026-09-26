@@ -5,8 +5,8 @@ import 'dart:io';
 import 'package:core_domain/core_domain.dart';
 import 'package:test/test.dart';
 
-const _tcpTls = TlsSettings(enabled: true);
-const _quicTls = TlsSettings(enabled: true, serverName: 'q.example');
+final _tcpTls = TlsSettings(enabled: true);
+final _quicTls = TlsSettings(enabled: true, serverName: 'q.example');
 
 /// Exhaustively maps every outbound to a short label.
 ///
@@ -102,13 +102,13 @@ void main() {
         server: 'v.example',
         serverPort: 443,
         uuid: 'u',
-        tls: const TlsSettings(enabled: true, alpn: ['h2']),
+        tls: TlsSettings(enabled: true, alpn: ['h2']),
       );
       final b = VlessOutbound(
         server: 'v.example',
         serverPort: 443,
         uuid: 'u',
-        tls: const TlsSettings(enabled: true, alpn: ['h2']),
+        tls: TlsSettings(enabled: true, alpn: ['h2']),
       );
       expect(a, b);
       expect(a.hashCode, b.hashCode);
@@ -185,7 +185,7 @@ void main() {
     });
 
     test('TuicOutbound keeps zeroRttHandshake disabled by default', () {
-      const config = TuicOutbound(
+      final config = TuicOutbound(
         server: 'q.example',
         serverPort: 443,
         uuid: 'u',
@@ -205,7 +205,7 @@ void main() {
 
   group('family serialization', () {
     test('TcpBasedOutbound omits null blocks and nests present ones', () {
-      const transport = WebSocketTransport(path: '/ray');
+      final transport = WebSocketTransport(path: '/ray');
       final json = VlessOutbound(
         server: 'v.example',
         serverPort: 443,
@@ -271,6 +271,85 @@ void main() {
         tls: _quicTls,
       ).toJson();
       expect(json.containsKey('obfs'), isFalse);
+    });
+
+    group('Hysteria2Outbound obfs pairing validation', () {
+      // Why this matters: a partially-set obfs block serialized to
+      // `{"obfs": {"type": null, "password": "..."}}`, which sing-box
+      // rejects. The constructor now refuses the state outright rather
+      // than emitting a config that only fails at Phase 3 runtime.
+
+      test('throws ArgumentError when only obfsType is set', () {
+        expect(
+          () => Hysteria2Outbound(
+            server: 'h.example',
+            serverPort: 443,
+            password: 'p',
+            tls: _quicTls,
+            obfsType: 'salamander',
+          ),
+          throwsA(isA<ArgumentError>()),
+        );
+      });
+
+      test('throws ArgumentError when only obfsPassword is set', () {
+        expect(
+          () => Hysteria2Outbound(
+            server: 'h.example',
+            serverPort: 443,
+            password: 'p',
+            tls: _quicTls,
+            obfsPassword: 'obfs-secret',
+          ),
+          throwsA(isA<ArgumentError>()),
+        );
+      });
+
+      test('does not leak the obfs password into the error message', () {
+        Object? caught;
+        try {
+          Hysteria2Outbound(
+            server: 'h.example',
+            serverPort: 443,
+            password: 'p',
+            tls: _quicTls,
+            obfsPassword: 'super-secret-obfs-value',
+          );
+        } on ArgumentError catch (error) {
+          caught = error;
+        }
+        expect(caught, isNotNull);
+        expect(
+          '$caught',
+          isNot(contains('super-secret-obfs-value')),
+          reason: 'obfs passwords are credential material (SECURITY.md)',
+        );
+      });
+
+      test('succeeds when both obfs fields are set', () {
+        final outbound = Hysteria2Outbound(
+          server: 'h.example',
+          serverPort: 443,
+          password: 'p',
+          tls: _quicTls,
+          obfsType: 'salamander',
+          obfsPassword: 'obfs-secret',
+        );
+        expect(outbound.toJson()['obfs'], {
+          'type': 'salamander',
+          'password': 'obfs-secret',
+        });
+      });
+
+      test('succeeds when neither obfs field is set', () {
+        final outbound = Hysteria2Outbound(
+          server: 'h.example',
+          serverPort: 443,
+          password: 'p',
+          tls: _quicTls,
+        );
+        expect(outbound.toJson().containsKey('obfs'), isFalse);
+      });
     });
 
     test('TuicOutbound serializes its defaults explicitly', () {

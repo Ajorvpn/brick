@@ -168,17 +168,23 @@ final class TlsFragmentSettings {
 /// separate type. `serverName` is the SNI value sent in the ClientHello.
 final class TlsSettings {
   /// Creates an immutable TLS settings block.
-  const TlsSettings({
+  ///
+  /// Not a `const` constructor: [alpn] is defensively copied into an
+  /// unmodifiable view so a caller mutating their list afterwards cannot
+  /// silently change this value object (and its `hashCode` while it sits
+  /// in a `Set`/`Map`). Defensive copying needs runtime code, which a
+  /// const constructor cannot express.
+  TlsSettings({
     required this.enabled,
     this.serverName,
     this.insecure = false,
-    this.alpn,
+    List<String>? alpn,
     this.minVersion,
     this.maxVersion,
     this.utls,
     this.reality,
     this.fragment,
-  });
+  }) : alpn = alpn == null ? null : List<String>.unmodifiable(alpn);
 
   /// Whether TLS negotiation is active for this outbound.
   final bool enabled;
@@ -264,12 +270,19 @@ sealed class TransportSettings {
 
 /// WebSocket transport.
 final class WebSocketTransport extends TransportSettings {
-  const WebSocketTransport({
+  /// Creates an immutable WebSocket transport block.
+  ///
+  /// Not a `const` constructor: [headers] is defensively copied into an
+  /// unmodifiable view so a caller mutating their map afterwards cannot
+  /// silently change this value object.
+  WebSocketTransport({
     required this.path,
-    this.headers,
+    Map<String, String>? headers,
     this.maxEarlyData,
     this.earlyDataHeaderName,
-  });
+  }) : headers = headers == null
+           ? null
+           : Map<String, String>.unmodifiable(headers);
 
   /// WebSocket path, e.g. '/ray'.
   final String path;
@@ -366,7 +379,20 @@ final class GrpcTransport extends TransportSettings {
 
 /// Plain HTTP/2 transport.
 final class HttpTransport extends TransportSettings {
-  const HttpTransport({this.host, this.path, this.method, this.headers});
+  /// Creates an immutable HTTP transport block.
+  ///
+  /// Not a `const` constructor: [host] and [headers] are defensively
+  /// copied into unmodifiable views so a caller mutating either collection
+  /// afterwards cannot silently change this value object.
+  HttpTransport({
+    List<String>? host,
+    this.path,
+    this.method,
+    Map<String, String>? headers,
+  }) : host = host == null ? null : List<String>.unmodifiable(host),
+       headers = headers == null
+           ? null
+           : Map<String, String>.unmodifiable(headers);
 
   /// Optional host list sent in requests.
   final List<String>? host;
@@ -417,7 +443,15 @@ final class HttpTransport extends TransportSettings {
 
 /// HTTP upgrade transport.
 final class HttpUpgradeTransport extends TransportSettings {
-  const HttpUpgradeTransport({this.host, this.path, this.headers});
+  /// Creates an immutable HTTP-upgrade transport block.
+  ///
+  /// Not a `const` constructor: [headers] is defensively copied into an
+  /// unmodifiable view so a caller mutating their map afterwards cannot
+  /// silently change this value object.
+  HttpUpgradeTransport({this.host, this.path, Map<String, String>? headers})
+    : headers = headers == null
+          ? null
+          : Map<String, String>.unmodifiable(headers);
 
   /// Optional host header value.
   final String? host;

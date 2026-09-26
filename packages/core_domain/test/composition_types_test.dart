@@ -8,7 +8,7 @@ const _utls = UtlsSettings(enabled: true, fingerprint: 'chrome');
 const _fragment = TlsFragmentSettings(enabled: true, size: '10-30');
 
 /// Fully-populated TLS block reused by equality and serialization tests.
-const _tlsFull = TlsSettings(
+final _tlsFull = TlsSettings(
   enabled: true,
   serverName: 'example.com',
   alpn: ['h2', 'http/1.1'],
@@ -113,7 +113,7 @@ void main() {
 
   group('TlsSettings', () {
     test('should be value-equal including structurally-equal alpn lists', () {
-      const other = TlsSettings(
+      final other = TlsSettings(
         enabled: true,
         serverName: 'example.com',
         alpn: ['h2', 'http/1.1'],
@@ -121,7 +121,7 @@ void main() {
         reality: _reality,
         fragment: _fragment,
       );
-      const original = TlsSettings(
+      final original = TlsSettings(
         enabled: true,
         serverName: 'example.com',
         alpn: ['h2', 'http/1.1'],
@@ -134,12 +134,12 @@ void main() {
     });
 
     test('should not be equal when alpn lists differ', () {
-      const other = TlsSettings(enabled: true, alpn: ['h3']);
-      expect(const TlsSettings(enabled: true, alpn: ['h2']), isNot(other));
+      final other = TlsSettings(enabled: true, alpn: ['h3']);
+      expect(TlsSettings(enabled: true, alpn: ['h2']), isNot(other));
     });
 
     test('should default insecure to false', () {
-      expect(const TlsSettings(enabled: true).insecure, isFalse);
+      expect(TlsSettings(enabled: true).insecure, isFalse);
     });
 
     test('should serialize nested blocks with snake_case keys', () {
@@ -155,7 +155,7 @@ void main() {
     });
 
     test('should omit every null optional field when minimal', () {
-      expect(const TlsSettings(enabled: true).toJson(), {
+      expect(TlsSettings(enabled: true).toJson(), {
         'enabled': true,
         'insecure': false,
       });
@@ -164,33 +164,33 @@ void main() {
 
   group('TransportSettings exhaustiveness', () {
     test('should switch over all four transports without a default clause', () {
-      expect(transportLabel(const WebSocketTransport(path: '/')), 'ws');
+      expect(transportLabel(WebSocketTransport(path: '/')), 'ws');
       expect(transportLabel(const GrpcTransport(serviceName: 'g')), 'grpc');
-      expect(transportLabel(const HttpTransport()), 'http');
-      expect(transportLabel(const HttpUpgradeTransport()), 'httpupgrade');
+      expect(transportLabel(HttpTransport()), 'http');
+      expect(transportLabel(HttpUpgradeTransport()), 'httpupgrade');
     });
 
     test('transports of different subtypes are never equal', () {
       expect(
-        const WebSocketTransport(path: '/'),
+        WebSocketTransport(path: '/'),
         isNot(const GrpcTransport(serviceName: 'g')),
       );
       expect(
-        transportLabel(const WebSocketTransport(path: '/')),
-        isNot(transportLabel(const HttpUpgradeTransport())),
+        transportLabel(WebSocketTransport(path: '/')),
+        isNot(transportLabel(HttpUpgradeTransport())),
       );
     });
   });
 
   group('WebSocketTransport', () {
     test('should be value-equal including structurally-equal header maps', () {
-      const other = WebSocketTransport(
+      final other = WebSocketTransport(
         path: '/ray',
         headers: {'Host': 'example.com'},
         maxEarlyData: 2048,
         earlyDataHeaderName: 'sec-websocket-protocol',
       );
-      const original = WebSocketTransport(
+      final original = WebSocketTransport(
         path: '/ray',
         headers: {'Host': 'example.com'},
         maxEarlyData: 2048,
@@ -201,7 +201,7 @@ void main() {
     });
 
     test('should serialize snake_case keys under the ws discriminator', () {
-      const transport = WebSocketTransport(
+      final transport = WebSocketTransport(
         path: '/ray',
         headers: {'Host': 'example.com'},
         maxEarlyData: 2048,
@@ -249,13 +249,13 @@ void main() {
 
   group('HttpTransport', () {
     test('should be value-equal including host lists and header maps', () {
-      const other = HttpTransport(
+      final other = HttpTransport(
         host: ['example.com'],
         path: '/h2',
         method: 'GET',
         headers: {'Host': 'example.com'},
       );
-      const original = HttpTransport(
+      final original = HttpTransport(
         host: ['example.com'],
         path: '/h2',
         method: 'GET',
@@ -266,7 +266,7 @@ void main() {
     });
 
     test('should serialize snake_case keys under the http discriminator', () {
-      const transport = HttpTransport(
+      final transport = HttpTransport(
         host: ['example.com'],
         path: '/h2',
         method: 'GET',
@@ -282,12 +282,12 @@ void main() {
 
   group('HttpUpgradeTransport', () {
     test('should be value-equal and serialize with its own discriminator', () {
-      const other = HttpUpgradeTransport(
+      final other = HttpUpgradeTransport(
         host: 'example.com',
         path: '/up',
         headers: {'Host': 'example.com'},
       );
-      const original = HttpUpgradeTransport(
+      final original = HttpUpgradeTransport(
         host: 'example.com',
         path: '/up',
         headers: {'Host': 'example.com'},

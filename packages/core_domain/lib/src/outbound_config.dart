@@ -523,7 +523,11 @@ sealed class QuicBasedOutbound extends OutboundConfig {
 
 /// Hysteria2 outbound (QUIC-based).
 final class Hysteria2Outbound extends QuicBasedOutbound {
-  const Hysteria2Outbound({
+  /// Creates an immutable Hysteria2 outbound.
+  ///
+  /// Not a `const` constructor: the obfs pairing check below is a runtime
+  /// validation, and a const constructor cannot run one.
+  Hysteria2Outbound({
     required super.server,
     required super.serverPort,
     required super.tls,
@@ -536,7 +540,23 @@ final class Hysteria2Outbound extends QuicBasedOutbound {
     this.bbrProfile,
     super.quic,
     super.extraParams,
-  });
+  }) {
+    // Why a real `throw` and not `assert`: Dart strips `assert` entirely
+    // from release builds, so a debug-only check would let a half-configured
+    // obfs block reach production and be rejected (or silently misread) by
+    // sing-box. This is an unconditional, loud failure — the same pattern
+    // `MockVpnEngine._transitionTo` uses for its own invariant checks.
+    // Emitting `{"obfs": {"type": null, "password": "..."}}` is a config
+    // integrity bug that must never reach a Phase 3 sing-box JSON payload.
+    if ((obfsType == null) != (obfsPassword == null)) {
+      throw ArgumentError(
+        'Hysteria2Outbound: obfsType and obfsPassword must both be null or '
+        'both be non-null; a partially-set obfs block would serialize to an '
+        'invalid sing-box config. Got obfsType=$obfsType, '
+        'obfsPassword=${obfsPassword == null ? null : '<redacted>'}.',
+      );
+    }
+  }
 
   /// Hysteria2 authentication password — credential material.
   final String password;

@@ -63,7 +63,7 @@ void main() {
 
     test('Hysteria2Outbound keeps extraParams null', () {
       expect(
-        const Hysteria2Outbound(
+        Hysteria2Outbound(
           server: 'h',
           serverPort: 443,
           password: 'p',
@@ -75,7 +75,7 @@ void main() {
 
     test('TuicOutbound keeps extraParams null', () {
       expect(
-        const TuicOutbound(
+        TuicOutbound(
           server: 'q',
           serverPort: 443,
           uuid: 'u',
