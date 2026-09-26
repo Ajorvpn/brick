@@ -28,7 +28,16 @@ environment:
 # dependencies can be manually updated by changing the version numbers below to
 # the latest version available on pub.dev. To see which dependencies have newer
 # versions available, run `flutter pub outdated`.
+# `core_domain` and `core_vpn_engine` are workspace siblings the app consumes
+# DIRECTLY. They are declared explicitly here (rather than being left to resolve
+# transitively through the Dart workspace) so that importing them from this app
+# is a declared, reviewable dependency, and so `depend_on_referenced_packages`
+# in very_good_analysis stays satisfied. Both are pure Dart with no Flutter
+# dependency, so depending on them never drags Flutter into the pure-Dart
+# packages.
 dependencies:
+  core_domain:
+  core_vpn_engine:
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class in your code.
   cupertino_icons: ^1.0.8
