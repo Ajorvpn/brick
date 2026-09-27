@@ -49,11 +49,30 @@ the subscription decoder / `Subscription-Userinfo` parser with fault-tolerant bu
 names and accepted values were verified against the live sing-box documentation rather than
 training data.
 
+Two further capabilities were added after the original P2 plan was written, and are recorded in
+`ROADMAP.md` as **P2-T13** and **P2-T14** (deliberately *not* renumbered onto P2-T6/P2-T7, which
+are the Hysteria2 and TUIC entries and retain their own acceptance criteria):
+- **WireGuard / AmneziaWG** — `ProtocolType.wireguard` / `.amneziawg`, the `WireGuardOutbound` and
+  `AmneziaWgOutbound` domain types, `wireguard://` / `wg://` / `amneziawg://` / `awg://` URI parsers
+  and Sing-Box JSON mapping. Requires `core_domain` to be unfrozen, and it must be **re-frozen**
+  after this work.
+- **Smart content router** — `parseConfigContent` detects and routes pasted input (deep link →
+  single URI → raw JSON → subscription) and returns a uniform `SmartParseResult`, with
+  `readSingBoxOutboundJson` as the inverse of the Sing-Box serializer.
+
+Both are uncommitted and awaiting human review. Open items carried into review: the sing-box
+WireGuard outbound is deprecated (removed in 1.13.0); sing-box has no AmneziaWG schema so the nine
+obfuscation parameters cannot be serialized for runtime use; `AmneziaWgOutbound` still lacks
+`==`/`hashCode` covering those parameters; the AWG numeric ranges are not yet cited to an
+authoritative source; and `brick://` has no Android intent-filter registered yet.
+
 **Closeout measurements (2026-09-26, all re-run at audit time):**
-- **346 tests pass monorepo-wide (322 pure-Dart + 24 Flutter).** Pure-Dart: `shared_utils` 15,
-  `core_domain` 94, `core_vpn_engine` 43, `config_parser` 170. Flutter: `mobile` 23, `ui_theme` 1.
-  (Supersedes the earlier "175 tests / 152 pure-Dart" Phase-1 closeout figure and the "258
-  pure-Dart" figure quoted in Phase-2 handoffs; both were stale.)
+- **417 tests pass monorepo-wide (393 pure-Dart + 24 Flutter), re-run 2026-09-27 after the
+  P2-T13/P2-T14 work.** Pure-Dart: `shared_utils` 15, `core_domain` 107, `core_vpn_engine` 43,
+  `config_parser` 228. Flutter: `mobile` 23, `ui_theme` 1.
+  (Supersedes the earlier "175 tests / 152 pure-Dart" Phase-1 closeout figure, the "258 pure-Dart"
+  figure quoted in Phase-2 handoffs, and the intermediate "346 tests / `core_domain` 94 /
+  `config_parser` 170" figure; all were stale.)
 - `flutter analyze .` — 0 errors, 0 warnings, 0 lints across all 6 packages.
 - `dart format --set-exit-if-changed` — 0 changed files across all 6 packages.
 - **Pure-Dart isolation re-verified:** 0 `package:flutter/*` and 0 `dart:ui` imports in

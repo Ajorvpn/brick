@@ -450,4 +450,56 @@ void main() {
       );
     });
   });
+
+  group('private key transport forms (regression)', () {
+    // A base64 key contains '+', '/' and '='. A raw key in the userinfo
+    // position corrupts the URI authority, so real clients percent-encode
+    // it. Both that and a `private_key` query parameter must work.
+    test('accepts a percent-encoded key in the userinfo', () {
+      final uri = _wgUri(
+        userInfo: Uri.encodeComponent(_privKey),
+        query: {'peer_public_key': _pubKey, 'ip': '10.0.0.2/32'},
+      );
+      final result = parseWireguardUri(uri);
+      expect(result.isOk, isTrue, reason: 'encoded userinfo must parse');
+      final wg = (result as Ok<OutboundConfig, ConfigParseError>).value
+          as WireGuardOutbound;
+      expect(wg.privateKey, _privKey);
+    });
+
+    test('accepts a private_key query parameter instead', () {
+      final uri =
+          'wireguard://vpn.example.com:51820?private_key=${Uri.encodeQueryComponent(_privKey)}'
+          '&peer_public_key=${Uri.encodeQueryComponent(_pubKey)}&ip=10.0.0.2/32';
+      final result = parseWireguardUri(uri);
+      expect(result.isOk, isTrue, reason: 'query-param key must parse');
+      final wg = (result as Ok<OutboundConfig, ConfigParseError>).value
+          as WireGuardOutbound;
+      expect(wg.privateKey, _privKey);
+    });
+
+    test('the query parameter wins over a conflicting userinfo', () {
+      final other = base64.encode(List<int>.generate(32, (i) => 200 - i));
+      final uri =
+          'wireguard://${Uri.encodeComponent(other)}@vpn.example.com:51820'
+          '?private_key=${Uri.encodeQueryComponent(_privKey)}'
+          '&peer_public_key=${Uri.encodeQueryComponent(_pubKey)}&ip=10.0.0.2/32';
+      final wg = (parseWireguardUri(uri) as Ok<OutboundConfig, ConfigParseError>)
+          .value as WireGuardOutbound;
+      expect(wg.privateKey, _privKey);
+    });
+
+    test('amneziawg also accepts both key forms', () {
+      final encoded = _wgUri(
+        scheme: 'amneziawg',
+        userInfo: Uri.encodeComponent(_privKey),
+        query: {'peer_public_key': _pubKey, 'ip': '10.0.0.2/32'},
+      );
+      expect(parseAmneziaWgUri(encoded).isOk, isTrue);
+      final viaQuery =
+          'amneziawg://vpn.example.com:51820?private_key=${Uri.encodeQueryComponent(_privKey)}'
+          '&peer_public_key=${Uri.encodeQueryComponent(_pubKey)}&ip=10.0.0.2/32';
+      expect(parseAmneziaWgUri(viaQuery).isOk, isTrue);
+    });
+  });
 }

@@ -1313,9 +1313,93 @@ rest of the app (UI "add server" flow, subscription parser) actually calls.
 
 ---
 
+### P2-T13 — WireGuard / AmneziaWG outbounds, URI parsers and JSON mapping
+
+**Status:** Completed ✅ (uncommitted; bundled with the P2-T14 work, pending human review)
+**Depends On:** P2-T1, P2-T8
+
+> **Numbering note.** The task brief called this "P2-T6", but P2-T6 in this roadmap is the
+> Hysteria2 parser and has its own, separately-satisfied acceptance criteria. Renumbering
+> it would destroy that record, so this work is recorded as a **new** task instead. The
+> P2-T6/P2-T7 entries below are untouched and remain Hysteria2 and TUIC.
+
+**Objective:** Add `ProtocolType.wireguard` / `.amneziawg`, the `WireGuardOutbound` and
+`AmneziaWgOutbound` domain types, `wireguard://` / `wg://` / `amneziawg://` / `awg://`
+URI parsers, and Sing-Box 1.10+ JSON serialization.
+
+**Acceptance Criteria:**
+- [x] `packages/core_domain` unfrozen only for this change and **re-frozen afterwards**;
+          no unrelated edits to the frozen package.
+- [x] Both keys validated as exactly 32 bytes of base64, with typed secret-safe errors
+          that never echo the key material.
+- [x] Standard WireGuard parameters parsed (peer key, address, pre-shared key, reserved,
+          MTU, workers) and the nine AmneziaWG obfuscation parameters (`jc`, `jmin`, `jmax`,
+          `s1`, `s2`, `h1`–`h4`) range-validated.
+- [x] Sing-Box JSON follows the official 1.10/1.11 schema; AWG parameters are namespaced
+          under `amneziawg_obfuscation` by `toJson()` and **not** emitted as unsupported
+          top-level keys.
+- [x] Zero `throw` statements in the parsers; everything is `Result<T, ConfigParseError>`.
+- [x] `melos run analyze` and `melos run test` pass.
+
+**Known deviations requiring human sign-off (see README "Known limitations"):**
+- The sing-box WireGuard **outbound** is deprecated in 1.11.0 and removed in 1.13.0; at
+  that point WireGuard must be modelled as an `endpoint`, not an outbound.
+- sing-box has **no** AmneziaWG schema, so the nine obfuscation parameters are retained on
+  the domain object but cannot be serialized for runtime use.
+- **Open:** `AmneziaWgOutbound` does not yet override `==`/`hashCode`, so two instances
+  differing only in obfuscation parameters compare equal. Should be fixed.
+- **Open:** the AWG numeric ranges were implemented without a cited live AmneziaWG source;
+  they need checking against authoritative documentation.
+
+---
+
+### P2-T14 — Smart content router for pasted / deep-linked config input
+
+**Status:** Completed ✅ (uncommitted, pending human review)
+**Depends On:** P2-T8, P2-T9
+
+> **Numbering note.** As with P2-T13, the task brief called this "P2-T7", which is the
+> TUIC parser in this roadmap. It is recorded as a new task rather than renumbering.
+
+**Objective:** One entry point — `parseConfigContent(String)` — that detects and routes
+arbitrary pasted input: deep link, single protocol URI, raw sing-box JSON, or subscription
+body, returning a uniform `SmartParseResult`.
+
+**Acceptance Criteria:**
+- [x] Detection order is deep link → single URI → raw JSON → subscription, each step cheap
+          and ruling out the previous one.
+- [x] `brick://import?url=…` and `?config=…` are percent-decoded and re-routed; the result
+          reports `SmartContentType.deepLink` (the outer shape).
+- [x] Deep-link recursion is depth-bounded, so a self-referential link cannot loop.
+- [x] Input trimmed, UTF-8 BOM stripped, `maxSubscriptionLength` enforced before parsing.
+- [x] `SmartParseResult` carries `outbounds`, `userInfo`, `warnings` and `detectedType`;
+          a partially-valid subscription keeps good entries and reports the bad ones.
+- [x] Raw JSON handled as an outbound object, an array, or a full config with an
+          `outbounds` array, via the new `readSingBoxOutboundJson` inverse of the serializer.
+- [x] No input text echoed into any error or warning — canary leak tests included.
+- [x] Zero `throw` statements; malformed, oversized and empty input all return typed errors.
+- [x] `melos run analyze` and `melos run test` pass.
+
+**Notes for human review:**
+- **`brick://` is not registered with the OS.** The parser fixes and tests the contract, but
+  `AndroidManifest.xml` has no intent-filter for the scheme, so Android will not route a
+  link to the app until that Android wiring is added. Reachable from clipboard/in-app paste
+  only for now.
+- `readSingBoxOutboundJson` covers only the protocols that can be rebuilt losslessly;
+  anything else returns `UnsupportedProtocolError` rather than a lossy approximation.
+
+---
+
 ### P2-T9 — Subscription content parser
 
-**Status:** Not Started
+**Status:** Implemented, AC verification outstanding — the previous "Not Started" line was
+**stale and wrong**: `subscription_parser.dart`, `subscription_decoder.dart` and
+`subscription_user_info.dart` exist and are covered by 23 tests in
+`packages/config_parser/test/subscription_parser_test.dart` (base64 and plain bodies,
+`Subscription-Userinfo`, fault tolerance, sing-box serialisability). Marked complete in an
+earlier uncommitted session, but the six ACs below were **not** walked one-by-one, so the
+checkboxes are deliberately left unticked. A human AC pass is required before this is
+treated as closed.
 **Depends On:** P2-T8
 
 **Objective:** Implement parsing of subscription **content** (not fetching — fetching over the

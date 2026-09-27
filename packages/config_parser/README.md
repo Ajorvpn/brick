@@ -31,6 +31,10 @@ compromised provider. Therefore:
 | `vmess://` | base64(v2rayN JSON), or a URL-style link | `parseVmessUri` |
 | `trojan://` | `<password>@<host>:<port>?<query>#<remark>` | `parseTrojanUri` |
 | `ss://` | SIP002 (`base64(method:password)@host:port`) and legacy (fully base64) | `parseShadowsocksUri` |
+| `hy2://`, `hysteria2://` | `<password>@<host>:<port>?<query>#<remark>` | `parseHysteria2Uri` |
+| `tuic://` | `<uuid>:<password>@<host>:<port>?<query>#<remark>` | `parseTuicUri` |
+| `wireguard://`, `wg://` | `<private_key>@<host>:<port>?<query>#<remark>` | `parseWireguardUri` |
+| `amneziawg://`, `awg://` | same as WireGuard plus the nine obfuscation parameters | `parseAmneziaWgUri` |
 | any | dispatches on scheme | `parseUri` |
 
 Supported VLESS/VMess query parameters: `type` (tcp/ws/grpc/splithttp/xhttp),
@@ -108,7 +112,92 @@ future protocol, not for any protocol currently in `core_domain`.
   `amneziawg_obfuscation`) but are deliberately **not** emitted as top-level sing-box keys,
   because doing so would produce a config sing-box refuses to load. Runtime AmneziaWG support
   needs either a patched sing-box or a different outbound construct.
-  URIs (no common URI convention exists for them yet).
+- **No stable AWG URI convention exists.** The `amneziawg://` / `awg://` scheme is this
+  project's own; it follows the WireGuard link shape and is not yet standardised.
+## Smart content router (`parseConfigContent`)
+
+`parseConfigContent(String input, {String? userInfoHeaderValue, int depth = 0})`
+accepts *whatever the user pasted* and returns one uniform result:
+
+```dart
+final result = parseConfigContent(clipboardText);
+if (result case Ok(:final value)) {
+  for (final outbound in value.outbounds) {
+    /* ... */
+  }
+  if (!value.isComplete) {
+    for (final warning in value.warnings) {
+      /* per-entry failures */
+    }
+  }
+} else {
+  // a typed ConfigParseError; nothing from the input is echoed
+}
+```
+
+### Detection order
+
+Each step is cheap and rules the previous one out:
+
+1. **Deep link** — `brick://import?url=...` or `?config=...`. The inner payload is
+   percent-decoded and re-routed through the same function. The result reports
+   `SmartContentType.deepLink` (the *outer* shape), because that is what the
+   caller handed us and it is the useful thing to report. Recursion is bounded to
+   `_maxDeepLinkDepth` (3), so a self-referential link cannot loop.
+2. **Single protocol URI** — anything `parseUri` recognises.
+3. **Raw JSON** — a `{...}` object, a `[...]` array, or a full sing-box config with
+   an `outbounds` array. This branch is **authoritative**: a subscription body is
+   never `{`/`[`-prefixed, so its error is the most specific one available and is
+   not masked by a generic subscription failure.
+4. **Subscription** — newline-separated and/or base64 multi-entry body, routed
+   through `parseSubscription`.
+
+Input is trimmed, a leading UTF-8 BOM is stripped, and `maxSubscriptionLength` is
+enforced *before* any parsing so an oversized paste is rejected cheaply.
+
+### `SmartParseResult`
+
+| Field | Type | Meaning |
+|---|---|---|
+| `outbounds` | `List<OutboundConfig>` | everything that parsed, in input order |
+| `userInfo` | `SubscriptionUserInfo?` | quota/expiry metadata, when present |
+| `warnings` | `List<ConfigParseError>` | non-fatal per-entry failures from a bulk body |
+| `detectedType` | `SmartContentType` | `singleUri` \| `subscription` \| `json` \| `deepLink` |
+
+`parsedCount` and `isComplete` are convenience getters. `warnings` is what makes a
+partially-valid subscription salvageable: good entries are kept and the bad ones
+are reported, rather than the whole body being discarded.
+
+### Raw JSON reading
+
+`readSingBoxOutboundJson(Map<String, dynamic>)` is the inverse of
+`buildSingBoxOutbound`. Coverage is deliberately bounded to what can be rebuilt
+losslessly — shadowsocks, trojan, vmess, vless, hysteria2, tuic and wireguard.
+Anything else returns `UnsupportedProtocolError` rather than a lossy
+approximation. The unknown-type check runs *before* shared-field validation so the
+error names the real reason instead of a misleading `server_port`.
+
+An `amneziawg_obfuscation` object (this project's own namespacing, see above) is
+recovered back into `AmneziaWgOutbound` when present.
+
+### Security
+
+No input text is ever echoed into an error message or warning, so a pasted private
+key, password or UUID cannot reach a log. Deep-link payloads are bounded and
+errors are typed. See `test/smart_config_parser_test.dart` for the canary-string
+leak tests.
+
+### Known limitations
+
+- **`brick://` is not registered with the OS yet.** This parser fixes and tests the
+  contract, but `apps/mobile/android/app/src/main/AndroidManifest.xml` has no
+  intent-filter for the scheme, so Android will not route a link here until that is
+  added. Registering it is Android wiring and belongs to a later phase — until then
+  this path is reachable from clipboard and in-app paste only.
+- **Multi-entry detection is newline-based.** A body of several URIs joined by
+  something other than a newline will be routed as a single URI and fail with a
+  syntax error rather than being split.
+
 ## API conventions
 
 - Parsers return `Result<OutboundConfig, ConfigParseError>`.

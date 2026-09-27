@@ -21,6 +21,8 @@ export 'src/defensive_parser_utils.dart';
 export 'src/parsers/amneziawg_parser.dart';
 export 'src/parsers/hysteria2_parser.dart';
 export 'src/parsers/shadowsocks_parser.dart';
+export 'src/parsers/singbox_json_reader.dart';
+export 'src/parsers/smart_config_parser.dart';
 export 'src/parsers/trojan_parser.dart';
 export 'src/parsers/tuic_parser.dart';
 export 'src/parsers/uri_parser.dart';

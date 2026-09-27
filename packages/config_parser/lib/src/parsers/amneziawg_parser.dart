@@ -45,7 +45,14 @@ Result<OutboundConfig, ConfigParseError> parseAmneziaWgUri(String uri) {
     return Err(UnsupportedSchemeError(value.scheme));
   }
 
-  final privateKey = _percentDecode(value.userInfo);
+  // A base64 key contains '+', '/' and '=' which corrupt a URI's
+  // authority component, so a well-formed link percent-encodes it and
+  // `Uri.parse` hands it back decoded. Providers that cannot encode the
+  // userinfo put the key in a query parameter instead, so accept both
+  // and prefer the explicit query form.
+  final keyFromQuery =
+      value.queryParameters['private_key'] ?? value.queryParameters['privatekey'];
+  final privateKey = (keyFromQuery ?? _percentDecode(value.userInfo)).trim();
   if (privateKey.isEmpty) {
     return Err(MissingRequiredFieldError('private_key'));
   }
