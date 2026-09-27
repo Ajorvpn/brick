@@ -81,6 +81,8 @@ All six domain protocols are now covered end to end — parser and Sing-Box seri
 | Shadowsocks | `parseShadowsocksUri` | yes |
 | Hysteria2 | `parseHysteria2Uri` | yes (added in P2-T5) |
 | TUIC | `parseTuicUri` | yes (added in P2-T5) |
+| WireGuard | `parseWireguardUri` (`wireguard://`, `wg://`) | yes (added in P2-T6) |
+| AmneziaWG | `parseAmneziaWgUri` (`amneziawg://`, `awg://`) | yes (added in P2-T6) |
 
 `SingBoxOutboundSerializer.tryBuild` therefore succeeds for every `OutboundConfig`
 variant; the `UnsupportedProtocolError` path remains as a forward-compatibility guard for a
@@ -94,6 +96,18 @@ future protocol, not for any protocol currently in `core_domain`.
 - Shadowsocks cipher validation covers the 18 values sing-box documents. A future sing-box
   release adding a cipher would need this list updated.
 - `Hysteria2` `server_ports` / `hop_interval` and the Hysteria Realm fields are not parsed from
+- **sing-box deprecated the WireGuard *outbound* in 1.11.0 and documents its removal in
+  1.13.0** (Migration: "Migrate WireGuard outbound to endpoint"). The JSON emitted here is
+  correct for the 1.10/1.11 schema this client targets, but that schema is scheduled for
+  deletion. When the client moves to sing-box >= 1.13, WireGuard must be modelled as an
+  `endpoint`, not an outbound.
+- **sing-box has no AmneziaWG support.** Its WireGuard schema documents none of
+  `jc`/`jmin`/`jmax`/`s1`/`s2`/`h1`..`h4`, and sing-box rejects unknown top-level keys. The
+  parameters are parsed and range-validated into `AmneziaWgOutbound` and preserved on the
+  domain object (`obfuscationParams`; `toJson()` namespaces them under
+  `amneziawg_obfuscation`) but are deliberately **not** emitted as top-level sing-box keys,
+  because doing so would produce a config sing-box refuses to load. Runtime AmneziaWG support
+  needs either a patched sing-box or a different outbound construct.
   URIs (no common URI convention exists for them yet).
 ## API conventions
 

@@ -21,6 +21,9 @@ String outboundLabel(OutboundConfig config) => switch (config) {
   ShadowsocksOutbound() => 'ss',
   Hysteria2Outbound() => 'hysteria2',
   TuicOutbound() => 'tuic',
+  // AmneziaWgOutbound extends WireGuardOutbound, so it is matched here too;
+  // a separate case would be unreachable.
+  WireGuardOutbound() => 'wireguard',
 };
 
 /// One instance of every concrete outbound, in protocol order.

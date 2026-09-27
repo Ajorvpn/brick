@@ -18,6 +18,7 @@ library config_parser;
 
 export 'src/config_parse_error.dart';
 export 'src/defensive_parser_utils.dart';
+export 'src/parsers/amneziawg_parser.dart';
 export 'src/parsers/hysteria2_parser.dart';
 export 'src/parsers/shadowsocks_parser.dart';
 export 'src/parsers/trojan_parser.dart';
@@ -25,6 +26,7 @@ export 'src/parsers/tuic_parser.dart';
 export 'src/parsers/uri_parser.dart';
 export 'src/parsers/vless_parser.dart';
 export 'src/parsers/vmess_parser.dart';
+export 'src/parsers/wireguard_parser.dart';
 export 'src/serializers/singbox_serializer.dart';
 export 'src/subscription/subscription_decoder.dart';
 export 'src/subscription/subscription_parser.dart';

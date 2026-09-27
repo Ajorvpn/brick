@@ -5,10 +5,12 @@ import 'package:shared_utils/shared_utils.dart' show Err, Result;
 
 import '../config_parse_error.dart';
 import '../defensive_parser_utils.dart';
+import 'amneziawg_parser.dart';
 import 'hysteria2_parser.dart';
 import 'shadowsocks_parser.dart';
 import 'trojan_parser.dart';
 import 'tuic_parser.dart';
+import 'wireguard_parser.dart';
 import 'vless_parser.dart';
 import 'vmess_parser.dart';
 
@@ -43,6 +45,8 @@ Result<OutboundConfig, ConfigParseError> parseUri(String uri) {
     'ss' => parseShadowsocksUri(uri),
     'hy2' || 'hysteria2' => parseHysteria2Uri(uri),
     'tuic' => parseTuicUri(uri),
+    'wireguard' || 'wg' => parseWireguardUri(uri),
+    'amneziawg' || 'awg' => parseAmneziaWgUri(uri),
     _ => Err(UnsupportedSchemeError(scheme)),
   };
 }
@@ -64,6 +68,8 @@ String parseUriRemark(String uri) {
     'ss' => parseShadowsocksRemark(uri),
     'hy2' || 'hysteria2' => parseHysteria2Remark(uri),
     'tuic' => parseTuicRemark(uri),
+    'wireguard' || 'wg' => parseWireguardRemark(uri),
+    'amneziawg' || 'awg' => parseAmneziaWgRemark(uri),
     _ => '',
   };
 }

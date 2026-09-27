@@ -71,6 +71,10 @@ class SingBoxOutboundSerializer {
         map = _hysteria2(config);
       case TuicOutbound():
         map = _tuic(config);
+      // AmneziaWgOutbound extends WireGuardOutbound, so the WireGuard
+      // pattern below also matches it; that is intentional.
+      case WireGuardOutbound():
+        map = _wireGuard(config);
     }
 
     final out = <String, dynamic>{'type': config.protocol.name};
@@ -119,6 +123,30 @@ class SingBoxOutboundSerializer {
     if (c.udpOverTcp) 'udp_over_tcp': c.udpOverTcp,
     ..._network(c.network),
     ..._multiplex(c.multiplex),
+  };
+
+  /// Sing-Box `type` for a WireGuard outbound.
+  ///
+  /// sing-box deprecated the WireGuard *outbound* in 1.11.0 and documents
+  /// removal in 1.13.0 (Migration: "Migrate WireGuard outbound to
+  /// endpoint"). The JSON below is correct for the 1.10/1.11 schema, which
+  /// is the schema this client targets today.
+  static const String wireGuardType = 'wireguard';
+
+  Map<String, dynamic> _wireGuard(WireGuardOutbound c) => <String, dynamic>{
+    'type': wireGuardType,
+    'server': c.server,
+    'server_port': c.serverPort,
+    // App-level TUN is how a mobile client runs a tunnel; the system
+    // interface path requires privileges a phone app does not have.
+    'system_interface': false,
+    'local_address': c.localAddresses,
+    'private_key': c.privateKey,
+    'peer_public_key': c.peerPublicKey,
+    if (c.presharedKey != null) 'pre_shared_key': c.presharedKey,
+    if (c.reserved != null) 'reserved': c.reserved,
+    if (c.mtu != null) 'mtu': c.mtu,
+    if (c.workers != null) 'workers': c.workers,
   };
 
   Map<String, dynamic> _hysteria2(Hysteria2Outbound c) => <String, dynamic>{

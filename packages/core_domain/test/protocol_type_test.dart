@@ -5,7 +5,9 @@ import 'package:test/test.dart';
 
 void main() {
   group('values and order', () {
-    test('declares exactly the six supported protocols in canonical order', () {
+    test('declares exactly the eight supported protocols in canonical order',
+        () {
+      // Extended from six to eight in P2-T6 (WireGuard + AmneziaWG).
       expect(ProtocolType.values, [
         ProtocolType.vless,
         ProtocolType.vmess,
@@ -13,6 +15,8 @@ void main() {
         ProtocolType.shadowsocks,
         ProtocolType.hysteria2,
         ProtocolType.tuic,
+        ProtocolType.wireguard,
+        ProtocolType.amneziawg,
       ]);
     });
   });

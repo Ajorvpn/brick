@@ -741,3 +741,242 @@ final class TuicOutbound extends QuicBasedOutbound {
     return json;
   }
 }
+
+/// WireGuard outbound.
+///
+/// IMPORTANT — sing-box lifecycle note (verified 2026-09-27 against
+/// <https://sing-box.sagernet.org/configuration/outbound/wireguard/>):
+/// the WireGuard *outbound* is marked **"Deprecated in sing-box 1.11.0"**
+/// and the docs state it **"will be removed in sing-box 1.13.0"**, with a
+/// Migration entry *"Migrate WireGuard outbound to endpoint"* under 1.11.0.
+/// The JSON this class serializes to is therefore correct for sing-box
+/// 1.10/1.11 but targets a schema scheduled for deletion. See the
+/// serializer and the package README for the migration implications.
+///
+/// Not `const`-constructible: [localAddresses], [reserved] and
+/// [dnsServers] are defensively copied into unmodifiable views so a caller
+/// mutating a list afterwards cannot change a value object sitting in a
+/// `Set`/`Map` with a shifting `hashCode`.
+final class WireGuardOutbound extends OutboundConfig {
+  /// Creates a WireGuard outbound.
+  WireGuardOutbound({
+    required super.server,
+    required super.serverPort,
+    required this.privateKey,
+    required this.peerPublicKey,
+    required List<String> localAddresses,
+    this.presharedKey,
+    List<int>? reserved,
+    this.mtu,
+    this.workers,
+    List<String>? dnsServers,
+    this.tls,
+    super.extraParams,
+  }) : localAddresses = List<String>.unmodifiable(localAddresses),
+       reserved = reserved == null ? null : List<int>.unmodifiable(reserved),
+       dnsServers = dnsServers == null
+           ? null
+           : List<String>.unmodifiable(dnsServers);
+
+  /// WireGuard private key (base64) — credential material.
+  final String privateKey;
+
+  /// Peer's WireGuard public key (base64).
+  final String peerPublicKey;
+
+  /// Local interface addresses, e.g. `['10.0.0.2/32']`.
+  final List<String> localAddresses;
+
+  /// Optional pre-shared key — credential material.
+  final String? presharedKey;
+
+  /// Optional `reserved` field bytes.
+  final List<int>? reserved;
+
+  /// Optional MTU override (sing-box defaults to 1408).
+  final int? mtu;
+
+  /// Optional worker/thread count.
+  final int? workers;
+
+  /// Optional DNS servers the tunnel should use.
+  final List<String>? dnsServers;
+
+  /// Present for schema symmetry with the other outbounds. WireGuard is a
+  /// raw UDP transport and does not negotiate TLS, so this is normally
+  /// `null`; it exists so a caller can express a future TLS-wrapped variant
+  /// without another type change.
+  final TlsSettings? tls;
+
+  @override
+  ProtocolType get protocol => ProtocolType.wireguard;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is WireGuardOutbound &&
+          other.runtimeType == runtimeType &&
+          other.server == server &&
+          other.serverPort == serverPort &&
+          other.privateKey == privateKey &&
+          other.peerPublicKey == peerPublicKey &&
+          _listEquals(other.localAddresses, localAddresses) &&
+          other.presharedKey == presharedKey &&
+          _listEquals(other.reserved, reserved) &&
+          other.mtu == mtu &&
+          other.workers == workers &&
+          _listEquals(other.dnsServers, dnsServers) &&
+          other.tls == tls;
+
+  @override
+  int get hashCode => Object.hash(
+    runtimeType,
+    server,
+    serverPort,
+    privateKey,
+    peerPublicKey,
+    Object.hashAll(localAddresses),
+    presharedKey,
+    reserved == null ? null : Object.hashAll(reserved!),
+    mtu,
+    workers,
+    dnsServers == null ? null : Object.hashAll(dnsServers!),
+    tls,
+  );
+
+  @override
+  Map<String, dynamic> toJson() {
+    final json = outboundJson();
+    json['local_address'] = localAddresses;
+    json['private_key'] = privateKey;
+    json['peer_public_key'] = peerPublicKey;
+    if (presharedKey != null) {
+      json['pre_shared_key'] = presharedKey;
+    }
+    if (reserved != null) {
+      json['reserved'] = reserved;
+    }
+    if (mtu != null) {
+      json['mtu'] = mtu;
+    }
+    if (workers != null) {
+      json['workers'] = workers;
+    }
+    if (dnsServers != null) {
+      json['dns_servers'] = dnsServers;
+    }
+    return json;
+  }
+}
+
+/// AmneziaWG outbound: a WireGuard fork that adds junk-packet and
+/// special-header obfuscation parameters.
+///
+/// sing-box has **no** native AmneziaWG support — its WireGuard outbound
+/// schema documents none of `jc`/`jmin`/`jmax`/`s1`/`s2`/`h1`..`h4`
+/// (verified 2026-09-27). The parameters are modelled here so a link can be
+/// parsed and round-tripped losslessly, and are carried on [extraParams]
+/// when serialized rather than being invented into the sing-box outbound
+/// schema, where an unknown key would be rejected at config load.
+final class AmneziaWgOutbound extends WireGuardOutbound {
+  /// Creates an AmneziaWG outbound.
+  AmneziaWgOutbound({
+    required super.server,
+    required super.serverPort,
+    required super.privateKey,
+    required super.peerPublicKey,
+    required super.localAddresses,
+    super.presharedKey,
+    super.reserved,
+    super.mtu,
+    super.workers,
+    super.dnsServers,
+    super.tls,
+    super.extraParams,
+    this.jc,
+    this.jmin,
+    this.jmax,
+    this.s1,
+    this.s2,
+    this.h1,
+    this.h2,
+    this.h3,
+    this.h4,
+  });
+
+  /// Junk-packet count.
+  final int? jc;
+
+  /// Minimum junk-packet size.
+  final int? jmin;
+
+  /// Maximum junk-packet size.
+  final int? jmax;
+
+  /// Init packet junk prefix length.
+  final int? s1;
+
+  /// Init packet junk prefix size.
+  final int? s2;
+
+  /// Init packet magic header value (H1).
+  final int? h1;
+
+  /// Init packet magic header value (H2).
+  final int? h2;
+
+  /// Init packet magic header value (H3).
+  final int? h3;
+
+  /// Init packet magic header value (H4).
+  final int? h4;
+
+  /// The obfuscation parameters, omitting any that were not set.
+  Map<String, int> get obfuscationParams => <String, int>{
+    if (jc != null) 'jc': jc!,
+    if (jmin != null) 'jmin': jmin!,
+    if (jmax != null) 'jmax': jmax!,
+    if (s1 != null) 's1': s1!,
+    if (s2 != null) 's2': s2!,
+    if (h1 != null) 'h1': h1!,
+    if (h2 != null) 'h2': h2!,
+    if (h3 != null) 'h3': h3!,
+    if (h4 != null) 'h4': h4!,
+  };
+
+  @override
+  ProtocolType get protocol => ProtocolType.amneziawg;
+
+  @override
+  Map<String, dynamic> toJson() {
+    final json = outboundJson();
+    json['local_address'] = localAddresses;
+    json['private_key'] = privateKey;
+    json['peer_public_key'] = peerPublicKey;
+    if (presharedKey != null) {
+      json['pre_shared_key'] = presharedKey;
+    }
+    if (reserved != null) {
+      json['reserved'] = reserved;
+    }
+    if (mtu != null) {
+      json['mtu'] = mtu;
+    }
+    if (workers != null) {
+      json['workers'] = workers;
+    }
+    if (dnsServers != null) {
+      json['dns_servers'] = dnsServers;
+    }
+    // Obfuscation parameters are deliberately NOT emitted as top-level
+    // sing-box keys: the WireGuard outbound schema has no such fields, and
+    // sing-box rejects unknown keys. They are namespaced under
+    // `amneziawg_obfuscation` so the document round-trips without
+    // pretending sing-box understands it.
+    final obfuscation = obfuscationParams;
+    if (obfuscation.isNotEmpty) {
+      json['amneziawg_obfuscation'] = obfuscation;
+    }
+    return json;
+  }
+}

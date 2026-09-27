@@ -17,7 +17,9 @@ enum ProtocolType {
   trojan('trojan'),
   shadowsocks('ss'),
   hysteria2('hysteria2'),
-  tuic('tuic');
+  tuic('tuic'),
+  wireguard('wireguard'),
+  amneziawg('amneziawg');
 
   const ProtocolType(this.scheme);
 
