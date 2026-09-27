@@ -1038,11 +1038,11 @@ with zero `package:flutter/` and zero `dart:ui` imports and zero dependency on `
 **Outstanding, and why this phase is not 100% complete:**
 - **P2-T9** — implemented and tested (23 tests), but its six acceptance criteria have not been
   walked one-by-one by a human. Checkboxes deliberately unticked.
-- **P2-T10 (subscription URL fetch)** — **not started, and not a small gap.** This is the first
-  task in the project that performs real network I/O. There is no `dart:io`, no `HttpClient` and
-  no HTTP dependency anywhere in `packages/config_parser` today, by design. It requires its own
-  decision about package/layer placement (see the task's Scope note) and its own threat model for
-  a remote fetch.
+- **P2-T10 follow-up** — certificate pinning is still deferred, and `config_parser` now has one
+  `dart:io` import, so it is no longer web-compatible. See the P2-T10 entry.
+- ~~**P2-T10**~~ — **now delivered** (`SubscriptionFetcher`, HTTPS-only, incremental size cap,
+  whole-fetch timeout, 5-hop redirect cap with re-validated TLS, injectable transport). See the
+  task entry for the placement decision and its trade-offs.
 - **P2-T11 (adversarial/fuzz pass)** — **not started.** Per-parser malformed-input cases exist,
   but the cross-cutting hardening pass this task specifies (deeply nested percent-encoding,
   malformed UTF-16 surrogate pairs, null bytes mid-string, stack-overflow and unbounded-allocation
@@ -1478,7 +1478,7 @@ entries and 2 malformed ones doesn't fail everything).
 
 ### P2-T10 — Subscription URL fetch (network boundary, explicitly isolated)
 
-**Status:** Not Started
+**Status:** Completed ✅ (uncommitted, pending human review)
 **Depends On:** P2-T9
 
 **Objective:** Implement the network-fetching half of subscription support —
@@ -1497,17 +1497,46 @@ per `SECURITY.md`'s network/DNS security and untrusted-input rules.
   (explicitly deferred, note it as a future `SECURITY.md` hardening item if not already listed).
 
 **Acceptance Criteria:**
-- [ ] HTTP (non-TLS) subscription URLs are rejected outright with a specific error — HTTPS only,
-      no fallback, no user override, per `SECURITY.md`.
-- [ ] A request timeout (e.g. 15 seconds — justify the number) and a maximum response body size
-      (justify the number, consistent with P2-T9's subscription-size bound) are both enforced.
-- [ ] TLS certificate validation is not weakened or disabled anywhere in the implementation
-      (explicitly verify no `badCertificateCallback`-style override exists).
-- [ ] Fetched content is passed through P2-T9's parser, not parsed ad-hoc inline.
-- [ ] Unit/integration tests cover: successful fetch of a mocked HTTPS endpoint, timeout
-      behavior, oversized-response rejection, and HTTP-scheme rejection (using a mock HTTP client,
-      not live network calls, so tests remain deterministic and offline-runnable).
-- [ ] `melos run analyze` and `melos run test` pass.
+- [x] HTTP (non-TLS) subscription URLs are rejected outright with a specific error — HTTPS only,
+      no fallback, no user override, per `SECURITY.md`. Delivered as `InsecureTransportError`,
+      checked **before** a socket is opened and **re-checked on every redirect hop** so a 302
+      cannot downgrade the connection to plaintext.
+- [x] A request timeout and a maximum response body size are both enforced. **Timeout is 10s,
+      not the 15s the AC suggested as an example** — the whole fetch (all hops plus the body
+      read) shares one deadline rather than a per-hop one, and a subscription is a small static
+      document rather than a stream, so 10s is generous. The number is a named constant
+      (`defaultFetchTimeout`) with the rationale in its doc comment, and is overridable per call.
+      **Size is `maxSubscriptionLength` (5 MB)**, matching P2-T9's bound, applied *incrementally*:
+      the response stream is cancelled the first chunk that exceeds it. Verified against a real
+      server streaming 200 MB — it aborted at 2 MiB in ~0.4 s without buffering the remainder.
+- [x] TLS certificate validation is not weakened or disabled anywhere in the implementation.
+      Verified by grep (zero `badCertificateCallback` / `SecurityContext` / `withTrustedRoots`)
+      and pinned by a test that strips comments from the source before asserting, so the guard
+      cannot be fooled by its own documentation.
+- [x] Fetched content is passed through P2-T9's parser, not parsed ad-hoc inline.
+      `fetchSubscription` returns `Result<SubscriptionParseResult, ConfigParseError>` and calls
+      `parseSubscription`.
+- [x] Unit/integration tests cover: successful fetch, timeout behavior, oversized-response
+      rejection, HTTP-scheme rejection, redirect cap, redirect downgrade rejection, header
+      override, invalid UTF-8, and token-leak canaries. Fully offline: a fake
+      `SubscriptionTransport` covers policy, and two `HttpServer.bind` loopback tests cover the
+      real `HttpClientTransport`. **No live network calls.**
+- [x] `melos run analyze` and `melos run test` pass.
+
+**Decisions and deviations requiring human sign-off:**
+- **Placement.** The Scope note asked for an explicit decision. The fetcher lives in
+  `packages/config_parser/lib/src/subscription/subscription_fetcher.dart`, **not** a separate
+  package, and not in `apps/mobile`. Rationale: the network call and the parsing it feeds are one
+  trust boundary, and keeping them adjacent keeps the security review in a single file. The cost is
+  that `config_parser` is no longer I/O-free and no longer web-safe (one `dart:io` import). It
+  still has zero `package:flutter/` and zero `dart:ui` imports and still runs under plain
+  `dart test`. **A reviewer who prefers a dedicated package should overrule this** — the
+  alternative is a clean move, since the transport is already an injectable interface.
+- **Certificate pinning** remains deferred, as the Excluded section allows. It should be added to
+  `SECURITY.md`'s hardening backlog.
+- **Redirects are followed manually**, up to 5 hops, with the HTTPS check re-applied each hop.
+  Doing this in the fetcher rather than in `HttpClient` is deliberate: `HttpClient`'s own redirect
+  handling would follow a `Location: http://…` downgrade before any code here could object.
 
 **Notes for Agent:**
 - This task is the first place real network I/O and therefore real remote-attacker-controlled

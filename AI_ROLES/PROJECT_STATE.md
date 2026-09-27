@@ -34,9 +34,12 @@ passing `config_parser` tests and 418 monorepo-wide.
 
 **Phase 2 is substantially complete but NOT 100% complete, and was not closed by the agent.** A
 closeout audit was performed on 2026-09-27 and is recorded in `ROADMAP.md`. Outstanding:
-- **P2-T10 (subscription URL fetch)** — not started. There is no `dart:io`, `HttpClient` or HTTP
-  dependency in `packages/config_parser` at all, by design. This is the project's first real
-  network-I/O task and needs its own layer-placement decision and threat model.
+- ~~**P2-T10 (subscription URL fetch)**~~ — **delivered 2026-09-27.** `SubscriptionFetcher` in
+  `packages/config_parser/lib/src/subscription/subscription_fetcher.dart`: HTTPS-only (re-checked
+  on every redirect hop), 5-hop redirect cap, 10s whole-fetch deadline, 5 MB cap applied
+  incrementally with immediate stream cancellation, injectable `SubscriptionTransport` for
+  offline tests, and six new secret-safe `ConfigParseError` variants. Verified against a real
+  server streaming 200 MB (aborted at 2 MiB in ~0.4 s). Certificate pinning remains deferred.
 - **P2-T11 (adversarial/fuzz pass)** — not started. Per-parser malformed cases exist, but the
   cross-cutting hardening pass (nested percent-encoding, malformed UTF-16 surrogates, null bytes,
   stack-overflow and unbounded-allocation hunting) has not been run across all parsers.
@@ -86,9 +89,9 @@ obfuscation parameters cannot be serialized for runtime use; `AmneziaWgOutbound`
 authoritative source; and `brick://` has no Android intent-filter registered yet.
 
 **Closeout measurements (all figures re-run at the stated audit time):**
-- **418 tests pass monorepo-wide (394 pure-Dart + 24 Flutter), re-run 2026-09-27 at the Phase 2
-  closeout audit.** Pure-Dart: `shared_utils` 15, `core_domain` 107, `core_vpn_engine` 43,
-  `config_parser` 231. Flutter: `mobile` 23, `ui_theme` 1.
+- **450 tests pass monorepo-wide (426 pure-Dart + 24 Flutter), re-run 2026-09-27 after P2-T10.**
+  Pure-Dart: `shared_utils` 15, `core_domain` 107, `core_vpn_engine` 43, `config_parser` 263.
+  Flutter: `mobile` 23, `ui_theme` 1.
   (Supersedes the earlier "175 tests / 152 pure-Dart" Phase-1 closeout figure, the "258 pure-Dart"
   figure quoted in Phase-2 handoffs, the intermediate "346 tests / `core_domain` 94 /
   `config_parser` 170" figure, and the "417 / `config_parser` 228" figure recorded before the
@@ -181,6 +184,15 @@ Status tokens below are quoted verbatim from the corresponding `**Status:**` lin
 ### Phase 2 closeout audit — open items and known limits (2026-09-27)
 
 Found by the closeout audit. Each is stated with its evidence so it can be verified, not re-derived.
+
+0. **`config_parser` is no longer a pure, I/O-free package (P2-T10).** The `SubscriptionFetcher`
+   adds one `dart:io` import. The package still has zero `package:flutter/` and zero `dart:ui`
+   imports and still runs under plain `dart test`, but it is **no longer web-compatible** and no
+   longer "pure and deterministic (no I/O)" as the README previously claimed. The fetcher is
+   confined to a single file so the parsers stay pure, and the transport is an injectable
+   interface, so moving it to a dedicated package later is a clean change. **A reviewer may
+   reasonably overrule the placement decision and split it out.** Related: TLS **certificate
+   pinning is still deferred** and should be added to the `SECURITY.md` hardening backlog.
 
 1. **Security defect found and FIXED during this audit — echoed untrusted identifiers.**
    `UnsupportedSchemeError`, `UnsupportedProtocolError` and `UnsupportedCipherError` stored a

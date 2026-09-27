@@ -2,11 +2,19 @@
 
 Pure-Dart parsing and serialization for Brick VPN server configurations.
 
-**This package must never gain a Flutter dependency.** Every function here is
-pure and deterministic (no clock, no randomness, no I/O) and is unit-tested
-with plain `dart test`. That property is enforced by the Melos routing in the
-root `pubspec.yaml`: this package is in the `test:dart` allowlist and the
+**This package must never gain a Flutter dependency.** Every parser here is pure
+and deterministic (no clock, no randomness, no I/O) and is unit-tested with
+plain `dart test`. That property is enforced by the Melos routing in the root
+`pubspec.yaml`: this package is in the `test:dart` allowlist and the
 `test:flutter` denylist.
+
+**One documented exception to "no I/O":** `SubscriptionFetcher`
+(`subscription/subscription_fetcher.dart`) performs HTTPS requests. It is the
+only networked code here, it is confined to that single file so the parsers stay
+pure, and it is covered by the same `dart test` suite. See "Fetching a
+subscription over the network" below. The package still has zero
+`package:flutter/` and zero `dart:ui` imports, but it is no longer web-safe
+because of the `dart:io` import in that one file.
 
 ## Security posture (SECURITY.md)
 
@@ -162,9 +170,71 @@ if (result case Ok(:final value)) {
 (`upload=…; download=…; total=…; expire=…`) into `uploadBytes`, `downloadBytes`,
 `totalBytes` and `expiresAt`.
 
-> **This package does no networking.** It has no `dart:io`, no `HttpClient` and
-> no HTTP dependency, by design — the body must be fetched elsewhere and passed
-> in. Fetching a subscription URL is roadmap task P2-T10 and is not started.
+### Fetching a subscription over the network
+
+`SubscriptionFetcher` is the **only** code in this package that performs I/O, and
+it lives in its own file (`subscription/subscription_fetcher.dart`) precisely so
+the parsers above stay pure and trivially fuzz-testable (`SECURITY.md` §5).
+
+```dart
+final fetcher = SubscriptionFetcher();
+final result = await fetcher.fetchSubscription(
+  Uri.parse(subscriptionUrl),
+  headers: {'Accept-Encoding': 'gzip'},
+  timeout: const Duration(seconds: 10),
+  maxBytes: 5 * 1024 * 1024,
+);
+fetcher.close(); // release the underlying HttpClient
+
+if (result case Ok(:final value)) {
+  for (final outbound in value.configs) { /* … */ }
+} else {
+  // switch (error.code) to tell 'network_timeout' from 'insecure_transport', etc.
+}
+```
+
+Returns `Result<SubscriptionParseResult, ConfigParseError>`; the fetched body is
+handed to `parseSubscription` rather than parsed inline.
+
+#### Security properties, and why each is here
+
+| Control | Behaviour |
+|---|---|
+| **HTTPS only** | An `http://` (or any non-HTTPS) URL is rejected with `InsecureTransportError` **before** any socket is opened. No fallback, no user override. |
+| **Re-checked on every redirect** | A `302` pointing at `http://` is rejected. A transport that followed redirects internally would silently downgrade TLS before the fetcher saw it, so `HttpClientTransport` is configured with `followRedirects = false`. |
+| **Redirect cap** | At most `maxRedirects` (5) hops; more gives `TooManyRedirectsError`. The chain is entirely server-controlled, so it is a loop vector. |
+| **Whole-fetch timeout** | `defaultFetchTimeout` is 10s, covering *all* hops and the body read combined — not per hop, which would let a 5-redirect chain take 5× as long. |
+| **Incremental size cap** | The response is consumed chunk-by-chunk and the stream is **cancelled** the moment the total exceeds `maxBytes` (default `maxSubscriptionLength`, 5 MB). Verified against a real server streaming 200 MB: it aborts at 2 MiB in ~0.4 s without buffering the rest. |
+| **No TLS weakening** | Certificate validation is left entirely at the platform default. There is no `badCertificateCallback`, no `SecurityContext`, no `withTrustedRoots` anywhere in the package, and a test asserts this by reading the source. |
+| **No credential in errors** | A subscription URL normally embeds an access token, so no error stores a URL, host, header value or response byte. Even a thrown `SocketException` — whose message embeds the host — is replaced with a generic `NetworkFailureError`. |
+
+#### Errors
+
+Six network-specific `ConfigParseError` variants were added, each carrying only
+structural metadata: `NetworkTimeoutError`, `InsecureTransportError`,
+`HttpStatusError` (the numeric code only — a failing endpoint's body may echo the
+request URL back), `TooManyRedirectsError`, `NetworkFailureError`, and
+`ResponseDecodingError`.
+
+#### Testing without a network
+
+`SubscriptionTransport` is an injectable interface. The production
+`HttpClientTransport` uses `dart:io`'s `HttpClient`; tests supply a fake, so the
+suite is deterministic and offline:
+
+```dart
+final fetcher = SubscriptionFetcher(transport: myFake);
+```
+
+`HttpClientTransport` itself is covered by two loopback (`HttpServer.bind` on
+`127.0.0.1`) tests, which need no internet access.
+
+> **Note:** `config_parser` now imports `dart:io` in that one file. It remains
+> free of `package:flutter/` and `dart:ui`, and still runs under plain
+> `dart test`, but it is no longer web-compatible. That was a deliberate
+> trade-off: the alternative was a separate package, and keeping the fetcher
+> next to its parser keeps the trust boundary in one reviewable file. Flagged
+> for human confirmation.
 
 ## Smart content router (`parseConfigContent`)
 

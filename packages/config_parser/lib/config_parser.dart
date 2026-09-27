@@ -31,6 +31,7 @@ export 'src/parsers/vmess_parser.dart';
 export 'src/parsers/wireguard_parser.dart';
 export 'src/serializers/singbox_serializer.dart';
 export 'src/subscription/subscription_decoder.dart';
+export 'src/subscription/subscription_fetcher.dart';
 export 'src/subscription/subscription_parser.dart';
 export 'src/subscription/subscription_user_info.dart';
 export 'src/server_profile_conversion.dart';

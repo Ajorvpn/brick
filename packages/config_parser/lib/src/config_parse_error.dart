@@ -255,3 +255,122 @@ String sanitiseEchoedIdentifier(String raw) {
   });
   return isIdentifier ? raw : '(unprintable)';
 }
+
+/// A network operation exceeded its deadline.
+///
+/// `SECURITY.md` requires bounded resource usage on untrusted input, and a
+/// network request to a hostile or merely broken provider is unbounded by
+/// nature. No URL, host or header value is stored: a subscription URL usually
+/// embeds an access token, so it must never reach a log through an error.
+final class NetworkTimeoutError extends ConfigParseError {
+  /// Creates a timeout error for [operation], which took [timeout].
+  const NetworkTimeoutError(this.operation, this.timeout);
+
+  /// A developer-authored label for what timed out, e.g. `'subscription fetch'`.
+  final String operation;
+
+  /// The deadline that was exceeded.
+  final Duration timeout;
+
+  @override
+  String get code => 'network_timeout';
+
+  @override
+  String get message => 'Timed out after ${timeout.inSeconds}s: $operation';
+}
+
+/// The subscription URL was not HTTPS.
+///
+/// HTTPS is mandatory with no fallback and no user override
+/// (`SECURITY.md` §6). The [scheme] is echoed through
+/// [sanitiseEchoedIdentifier]; the host and path are deliberately **not**
+/// stored, because a subscription URL typically embeds an access token.
+final class InsecureTransportError extends ConfigParseError {
+  /// Creates an insecure-transport error for [scheme].
+  const InsecureTransportError(this.scheme);
+
+  /// The rejected URL scheme, e.g. `'http'`.
+  final String scheme;
+
+  @override
+  String get code => 'insecure_transport';
+
+  @override
+  String get message =>
+      'Subscription URLs must use HTTPS; got '
+      '${sanitiseEchoedIdentifier(scheme)}.';
+}
+
+/// The server returned a non-success HTTP status.
+///
+/// Only the numeric [statusCode] is stored. Response bodies from a failing
+/// endpoint are untrusted and may echo the request URL (and therefore its
+/// token) back at us, so the body is never retained.
+final class HttpStatusError extends ConfigParseError {
+  /// Creates an HTTP-status error for [statusCode].
+  const HttpStatusError(this.statusCode);
+
+  /// The HTTP status code returned, e.g. `403`.
+  final int statusCode;
+
+  @override
+  String get code => 'http_status';
+
+  @override
+  String get message => 'Subscription request failed with HTTP $statusCode';
+}
+
+/// The server redirected more times than allowed.
+///
+/// A redirect chain is an attacker-controlled loop; bounding it is a
+/// resource-safety requirement, not a nicety.
+final class TooManyRedirectsError extends ConfigParseError {
+  /// Creates a redirect-limit error for [limit] hops.
+  const TooManyRedirectsError(this.limit);
+
+  /// The maximum number of redirects that was permitted.
+  final int limit;
+
+  @override
+  String get code => 'too_many_redirects';
+
+  @override
+  String get message =>
+      'Subscription request exceeded the redirect limit of $limit';
+}
+
+/// The transport failed for a reason other than a timeout or a bad status.
+///
+/// [reason] is a developer-authored category, never a raw exception message:
+/// `dart:io` exception strings can embed the host, and therefore the
+/// subscription token.
+final class NetworkFailureError extends ConfigParseError {
+  /// Creates a network-failure error of category [reason].
+  const NetworkFailureError(this.reason);
+
+  /// A short, developer-authored category, e.g. `'connection refused'`.
+  final String reason;
+
+  @override
+  String get code => 'network_failure';
+
+  @override
+  String get message => 'Subscription request failed: $reason';
+}
+
+/// The fetched bytes were not valid UTF-8.
+///
+/// The body is not stored and not echoed: a hostile provider controls it.
+final class ResponseDecodingError extends ConfigParseError {
+  /// Creates a decoding error for [what].
+  const ResponseDecodingError(this.what);
+
+  /// What could not be decoded, e.g. `'subscription body'`.
+  final String what;
+
+  @override
+  String get code => 'response_decoding';
+
+  @override
+  String get message => 'Could not decode the $what as UTF-8 text';
+}
