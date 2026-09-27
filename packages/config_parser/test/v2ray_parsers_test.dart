@@ -44,7 +44,6 @@ void main() {
       expect(vless.network, isNull);
       expect(vless.transport, isA<WebSocketTransport>());
       expect((vless.transport! as WebSocketTransport).path, '/ray');
-      expect((vless.transport! as WebSocketTransport).path, '/ray');
       expect(
         (vless.transport! as WebSocketTransport).headers?['Host'],
         'cdn.example.com',
@@ -403,14 +402,16 @@ void main() {
     });
 
     test('returns UnsupportedSchemeError for an unknown scheme', () {
-      final result = parseUri('hysteria2://pw@example.com:443');
+      // hysteria2 is now a supported scheme (P2-T5); use a genuinely
+      // unknown scheme here.
+      final result = parseUri('notarealprotocol://pw@example.com:443');
       expect(result.isErr, isTrue);
       expect(
         (result as Err<OutboundConfig, ConfigParseError>).error,
         isA<UnsupportedSchemeError>().having(
           (e) => e.scheme,
           'scheme',
-          'hysteria2',
+          'notarealprotocol',
         ),
       );
     });

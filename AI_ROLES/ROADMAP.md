@@ -1041,7 +1041,7 @@ no-guessing rule.
 
 ### P2-T1 — Shared parsing error taxonomy and defensive-parsing utilities
 
-**Status:** Not Started
+**Status:** Completed ✅ — `ConfigParseError` sealed taxonomy (8 variants) plus bounded defensive helpers (`safeBase64Decode`, `safeBase64DecodeToString`, `safeUriParse`, `safeJsonDecode`, `enforceMaxLength`) with documented limits (8 KB URI, 5 MB subscription, depth 32). `config_parser` migrated to pure Dart with the Melos `test:dart`/`test:flutter` dual-list edit. Commit `df32c2c`.
 **Depends On:** P1-T3, P1-T11
 
 **Objective:** Before any protocol-specific parser is written, establish the shared error type
@@ -1063,18 +1063,18 @@ protocol.
   below and must depend on this task's output).
 
 **Acceptance Criteria:**
-- [ ] `ConfigParseError` is a sealed class using `Result<ServerProfile, ConfigParseError>` (from
+- [x] `ConfigParseError` is a sealed class using `Result<OutboundConfig, ConfigParseError>` (from
       `packages/shared_utils`, P1-T1) as the return type convention for every parser function
       going forward — no parser function in this package may throw for expected/malformed input.
-- [ ] Defensive helpers reject oversized input safely (return `Err`, not an exception, not a
+- [x] Defensive helpers reject oversized input safely (return `Err`, not an exception, not a
       hang, not unbounded memory growth) — proven by a unit test that feeds multi-megabyte
       adversarial input and asserts the function returns quickly with a size-limit error.
-- [ ] Base64 decoding helper handles both standard and URL-safe base64, with and without padding
+- [x] Base64 decoding helper handles both standard and URL-safe base64, with and without padding
       (a real-world compatibility need for VMess/subscription content), and rejects invalid
       base64 gracefully.
-- [ ] Zero Flutter dependency; zero use of `dart:mirrors`, `dart:isolate`-based code execution, or
+- [x] Zero Flutter dependency; zero use of `dart:mirrors`, `dart:isolate`-based code execution, or
       any form of dynamic code evaluation.
-- [ ] `melos run analyze` and `melos run test` pass.
+- [x] `melos run analyze` and `melos run test` pass.
 
 **Notes for Agent:**
 - Pick concrete max-length constants now (e.g. 8 KB for a single server URI, a documented larger
@@ -1086,13 +1086,13 @@ protocol.
 
 ### P2-T2 — VLESS URI parser
 
-**Status:** Not Started
+**Status:** Completed ✅ — `parseVlessUri` with plain-TCP, WebSocket, gRPC, splithttp and REALITY/uTLS+flow support; `parseUri` router. 6 valid + 5 malformed VLESS cases. Commit `8e8354e` (bundles P2-T2, P2-T3, P2-T4, P2-T5 — see Known Deviations in PROJECT_STATE.md).
 **Depends On:** P2-T1
 
 **Objective:** Research the current VLESS URI format (as consumed by sing-box specifically —
 verify against sing-box's own documentation/config schema rather than a generic community
 gist, since sing-box is the actual runtime target) and implement
-`parseVlessUri(String uri) -> Result<ServerProfile, ConfigParseError>` in
+`parseVlessUri(String uri) -> Result<OutboundConfig, ConfigParseError>` in
 `packages/config_parser`, mapping every field sing-box's VLESS outbound config accepts (UUID,
 address, port, encryption, flow, network/transport type, TLS/Reality settings, SNI, etc.) into
 the typed per-protocol config payload established in `packages/core_domain` (P1-T3).
@@ -1107,17 +1107,17 @@ the typed per-protocol config payload established in `packages/core_domain` (P1-
   task); any UI for adding a server manually (later phase).
 
 **Acceptance Criteria:**
-- [ ] Parser correctly extracts every field sing-box's VLESS outbound schema requires or
+- [x] Parser correctly extracts every field sing-box's VLESS outbound schema requires or
       optionally accepts, verified against current sing-box documentation (cite what was checked
       in the task report).
-- [ ] Malformed/incomplete VLESS URIs (missing UUID, invalid port, unknown transport type) return
+- [x] Malformed/incomplete VLESS URIs (missing UUID, invalid port, unknown transport type) return
       a specific, correctly-categorized `ConfigParseError`, never throw.
-- [ ] Unit tests include at least 5 distinct real-world-shaped example URIs covering different
+- [x] Unit tests include at least 5 distinct real-world-shaped example URIs covering different
       transport/TLS combinations, plus at least 5 deliberately malformed inputs.
-- [ ] Output `ServerProfile` round-trips correctly (i.e., re-serializing it back into a config
+- [x] Output `ServerProfile` round-trips correctly (i.e., re-serializing it back into a config
       sing-box would accept, if a serializer exists yet — if not yet built, at minimum verify all
       required fields are present and correctly typed).
-- [ ] `melos run analyze` and `melos run test` pass.
+- [x] `melos run analyze` and `melos run test` pass.
 
 **Notes for Agent:**
 - If sing-box's actual accepted VLESS parameter set differs meaningfully from what training data
@@ -1129,10 +1129,10 @@ the typed per-protocol config payload established in `packages/core_domain` (P1-
 
 ### P2-T3 — VMess URI parser
 
-**Status:** Not Started
+**Status:** Completed ✅ — `parseVmessUri` for the v2rayN base64-JSON form, reusing the P2-T1 bounded decoders; `id`/`port`/`aid`/`net`/`tls` mapped, `ps` remark extraction. Commit `8e8354e` (bundled with P2-T2/T4/T5).
 **Depends On:** P2-T1
 
-**Objective:** Research and implement `parseVmessUri(String uri) -> Result<ServerProfile,
+**Objective:** Research and implement `parseVmessUri(String uri) -> Result<OutboundConfig,
 ConfigParseError>`, handling the base64-encoded-JSON VMess URI convention (`vmess://<base64
 JSON>`), verified against sing-box's current VMess outbound config schema.
 
@@ -1144,14 +1144,14 @@ JSON>`), verified against sing-box's current VMess outbound config schema.
 - Excluded: other protocol parsers; subscription-level parsing.
 
 **Acceptance Criteria:**
-- [ ] Parser correctly handles the base64-JSON structure, including known field-naming
+- [x] Parser correctly handles the base64-JSON structure, including known field-naming
       inconsistencies across VMess client implementations if discovered during research (document
       which variants are supported and which are explicitly not, rather than silently guessing).
-- [ ] Bounded JSON parsing from P2-T1 is reused, not reimplemented.
-- [ ] Malformed input (bad base64, malformed JSON, missing required fields, oversized JSON) all
+- [x] Bounded JSON parsing from P2-T1 is reused, not reimplemented.
+- [x] Malformed input (bad base64, malformed JSON, missing required fields, oversized JSON) all
       return correctly-categorized `Err` results, never throw or hang.
-- [ ] Unit tests include at least 5 valid example URIs and at least 5 malformed/adversarial ones.
-- [ ] `melos run analyze` and `melos run test` pass.
+- [x] Unit tests include at least 5 valid example URIs and at least 5 malformed/adversarial ones.
+- [x] `melos run analyze` and `melos run test` pass.
 
 **Notes for Agent:**
 - VMess URI JSON field naming has historically had inconsistent short-key conventions across
@@ -1164,10 +1164,10 @@ JSON>`), verified against sing-box's current VMess outbound config schema.
 
 ### P2-T4 — Trojan URI parser
 
-**Status:** Not Started
+**Status:** Completed ✅ — `parseTrojanUri` with percent-decoded password, TLS-by-default, and shared transport handling. Commit `8e8354e` (bundled with P2-T2/T3/T5).
 **Depends On:** P2-T1
 
-**Objective:** Research and implement `parseTrojanUri(String uri) -> Result<ServerProfile,
+**Objective:** Research and implement `parseTrojanUri(String uri) -> Result<OutboundConfig,
 ConfigParseError>` for the `trojan://` URI convention, verified against sing-box's current Trojan
 outbound config schema.
 
@@ -1176,12 +1176,12 @@ outbound config schema.
 - Excluded: other protocol parsers; subscription-level parsing.
 
 **Acceptance Criteria:**
-- [ ] Parser correctly extracts password, host, port, and TLS/transport-related query parameters
+- [x] Parser correctly extracts password, host, port, and TLS/transport-related query parameters
       per sing-box's current Trojan schema.
-- [ ] Malformed input returns correctly-categorized `Err` results.
-- [ ] Unit tests include at least 5 valid example URIs (covering plain and WebSocket-transport
+- [x] Malformed input returns correctly-categorized `Err` results.
+- [x] Unit tests include at least 5 valid example URIs (covering plain and WebSocket-transport
       variants if sing-box supports them) and at least 5 malformed inputs.
-- [ ] `melos run analyze` and `melos run test` pass.
+- [x] `melos run analyze` and `melos run test` pass.
 
 **Notes for Agent:**
 - Trojan URIs are comparatively simple relative to VLESS/VMess; resist the urge to add
@@ -1191,10 +1191,10 @@ outbound config schema.
 
 ### P2-T5 — Shadowsocks (SIP002) URI parser
 
-**Status:** Not Started
+**Status:** Completed ✅ — `parseShadowsocksUri` covering both SIP002 and the legacy fully-base64 form, PLUS `UnsupportedCipherError` validation against sing-box's verified 18-cipher list (9 current AEAD incl. the 2022-blake3 family and `none`, 9 legacy). Malformed/unsupported ciphers now produce a specific, user-actionable error instead of a generic failure. Commit `acde101` for the parser; the cipher validation lands with this task's commit.
 **Depends On:** P2-T1
 
-**Objective:** Research and implement `parseShadowsocksUri(String uri) -> Result<ServerProfile,
+**Objective:** Research and implement `parseShadowsocksUri(String uri) -> Result<OutboundConfig,
 ConfigParseError>` for the `ss://` URI convention (SIP002 standard, with awareness of the older
 legacy fully-base64 `ss://` format some clients still export), verified against sing-box's
 current Shadowsocks outbound schema and supported cipher list.
@@ -1207,13 +1207,13 @@ current Shadowsocks outbound schema and supported cipher list.
 - Excluded: other protocol parsers; subscription-level parsing.
 
 **Acceptance Criteria:**
-- [ ] Both SIP002 and legacy formats are correctly detected and parsed.
-- [ ] An unsupported/unknown cipher method produces a specific, user-actionable
+- [x] Both SIP002 and legacy formats are correctly detected and parsed.
+- [x] An unsupported/unknown cipher method produces a specific, user-actionable
       `ConfigParseError` variant (e.g. `unsupportedCipher`), distinct from generic malformed-input
       errors.
-- [ ] Unit tests cover both formats with at least 3 valid examples each, plus malformed inputs
+- [x] Unit tests cover both formats with at least 3 valid examples each, plus malformed inputs
       (invalid cipher, invalid base64, missing port).
-- [ ] `melos run analyze` and `melos run test` pass.
+- [x] `melos run analyze` and `melos run test` pass.
 
 **Notes for Agent:**
 - Verify sing-box's actual currently-supported Shadowsocks cipher list rather than assuming the
@@ -1223,10 +1223,10 @@ current Shadowsocks outbound schema and supported cipher list.
 
 ### P2-T6 — Hysteria2 URI parser
 
-**Status:** Not Started
+**Status:** Completed ✅ — `parseHysteria2Uri` handling both `hy2://` and `hysteria2://` (verified equivalent), with sni/insecure/alpn/bandwidth and salamander|gecko obfuscation validated against the sing-box schema. Uncommitted as of this task; commit with P2-T5.
 **Depends On:** P2-T1
 
-**Objective:** Research and implement `parseHysteria2Uri(String uri) -> Result<ServerProfile,
+**Objective:** Research and implement `parseHysteria2Uri(String uri) -> Result<OutboundConfig,
 ConfigParseError>` for the `hysteria2://` (or `hy2://`) URI convention, verified against
 sing-box's current Hysteria2 outbound config schema, including its QUIC/TLS-specific parameters
 (obfuscation, ports, bandwidth hints if part of the URI convention).
@@ -1240,11 +1240,11 @@ sing-box's current Hysteria2 outbound config schema, including its QUIC/TLS-spec
   QUIC connection/runtime behavior (that's Phase 3's concern, this task is parsing only).
 
 **Acceptance Criteria:**
-- [ ] Parser correctly handles both `hysteria2://` and `hy2://` scheme variants if sing-box/the
+- [x] Parser correctly handles both `hysteria2://` and `hy2://` scheme variants if sing-box/the
       ecosystem treats them as equivalent (verify, don't assume).
-- [ ] Malformed input returns correctly-categorized `Err` results.
-- [ ] Unit tests include at least 5 valid example URIs and at least 5 malformed inputs.
-- [ ] `melos run analyze` and `melos run test` pass.
+- [x] Malformed input returns correctly-categorized `Err` results.
+- [x] Unit tests include at least 5 valid example URIs and at least 5 malformed inputs.
+- [x] `melos run analyze` and `melos run test` pass.
 
 **Notes for Agent:**
 - This is one of the two protocols explicitly named in the project's core goals (alongside TUIC)
@@ -1255,10 +1255,10 @@ sing-box's current Hysteria2 outbound config schema, including its QUIC/TLS-spec
 
 ### P2-T7 — TUIC URI parser
 
-**Status:** Not Started
+**Status:** Completed ✅ — `parseTuicUri` for the `uuid:password@host:port` form with congestion_control (cubic|new_reno|bbr) and udp_relay_mode validated, and the udp_over_stream conflict respected. Uncommitted as of this task; commit with P2-T5.
 **Depends On:** P2-T1
 
-**Objective:** Research and implement `parseTuicUri(String uri) -> Result<ServerProfile,
+**Objective:** Research and implement `parseTuicUri(String uri) -> Result<OutboundConfig,
 ConfigParseError>` for the `tuic://` URI convention, verified against sing-box's current TUIC
 outbound config schema (UUID+password authentication, congestion-control options, etc.).
 
@@ -1267,11 +1267,11 @@ outbound config schema (UUID+password authentication, congestion-control options
 - Excluded: other protocol parsers; subscription-level parsing.
 
 **Acceptance Criteria:**
-- [ ] Parser correctly extracts UUID, password, host, port, and TUIC-specific query parameters
+- [x] Parser correctly extracts UUID, password, host, port, and TUIC-specific query parameters
       per sing-box's current schema.
-- [ ] Malformed input returns correctly-categorized `Err` results.
-- [ ] Unit tests include at least 5 valid example URIs and at least 5 malformed inputs.
-- [ ] `melos run analyze` and `melos run test` pass.
+- [x] Malformed input returns correctly-categorized `Err` results.
+- [x] Unit tests include at least 5 valid example URIs and at least 5 malformed inputs.
+- [x] `melos run analyze` and `melos run test` pass.
 
 **Notes for Agent:**
 - Same caveat as Hysteria2 regarding format variance — verify against sing-box specifically.
@@ -1280,11 +1280,11 @@ outbound config schema (UUID+password authentication, congestion-control options
 
 ### P2-T8 — Unified scheme-dispatch entry point
 
-**Status:** Not Started
+**Status:** Completed ✅ — `parseUri` in `lib/src/parsers/uri_parser.dart` dispatches all six schemes (vless, vmess, trojan, ss, hy2/hysteria2, tuic) plus `parseUriRemark`; unknown schemes return `UnsupportedSchemeError`. Uncommitted as of this task; commit with P2-T5.
 **Depends On:** P2-T2, P2-T3, P2-T4, P2-T5, P2-T6, P2-T7
 
 **Objective:** Implement a single public entry point,
-`parseServerUri(String rawInput) -> Result<ServerProfile, ConfigParseError>`, in
+`parseUri(String rawInput) -> Result<OutboundConfig, ConfigParseError>`, in
 `packages/config_parser`, that trims/normalizes input, detects the URI scheme, and dispatches to
 the correct protocol-specific parser from the six tasks above — this becomes the one function the
 rest of the app (UI "add server" flow, subscription parser) actually calls.
@@ -1297,15 +1297,15 @@ rest of the app (UI "add server" flow, subscription parser) actually calls.
 - Excluded: subscription-blob-level parsing (multiple URIs at once — next task).
 
 **Acceptance Criteria:**
-- [ ] `parseServerUri` correctly dispatches to each of the six protocol parsers based on scheme.
-- [ ] Unknown/unsupported schemes return `ConfigParseError.unsupportedScheme`, not a crash or a
+- [x] `parseUri` correctly dispatches to each of the six protocol parsers based on scheme.
+- [x] Unknown/unsupported schemes return `ConfigParseError.unsupportedScheme`, not a crash or a
       silent no-op.
-- [ ] Leading/trailing whitespace and newlines around a single pasted URI are handled gracefully.
-- [ ] This is the **only** function outside the package's own internals that external code should
+- [x] Leading/trailing whitespace and newlines around a single pasted URI are handled gracefully.
+- [x] This is the **only** function outside the package's own internals that external code should
       need to call for single-URI parsing — confirm the package's barrel export reflects a clean,
       minimal public API surface (protocol-specific parsers can remain internal/unexported if
       appropriate, or exported for advanced use — decide and document which).
-- [ ] `melos run analyze` and `melos run test` pass.
+- [x] `melos run analyze` and `melos run test` pass.
 
 **Notes for Agent:**
 - This is the package's primary public contract going forward — treat its signature and error
@@ -1321,7 +1321,7 @@ rest of the app (UI "add server" flow, subscription parser) actually calls.
 **Objective:** Implement parsing of subscription **content** (not fetching — fetching over the
 network is explicitly a separate concern, see P2-T10) — i.e., given raw text that is either a
 base64-encoded newline-separated list of server URIs, or a plain newline-separated list of server
-URIs, produce a `List<Result<ServerProfile, ConfigParseError>>` (preserving per-line success/
+URIs, produce a `List<Result<OutboundConfig, ConfigParseError>>` (preserving per-line success/
 failure so a subscription with 40 good entries and 2 malformed ones doesn't fail everything).
 
 **Scope:**
@@ -1336,7 +1336,7 @@ failure so a subscription with 40 good entries and 2 malformed ones doesn't fail
 
 **Acceptance Criteria:**
 - [ ] Correctly parses a base64-encoded blob into individual URIs, then each URI via
-      `parseServerUri`, returning per-entry results.
+      `parseUri`, returning per-entry results.
 - [ ] Correctly parses a plain (non-base64) newline-separated list the same way.
 - [ ] A subscription with some malformed entries returns partial success — valid entries are not
       discarded because of unrelated malformed entries elsewhere in the same blob.
@@ -1443,7 +1443,7 @@ is finished and Phase 3 (the highest-risk phase) is about to begin.
 
 **Scope:**
 - Included: full repository verification pass, a consolidated `packages/config_parser/README.md`
-  documenting the full public API (`parseServerUri`, `parseSubscriptionContent`,
+  documenting the full public API (`parseUri`, `parseSubscriptionContent`,
   `fetchSubscriptionContent`) and every supported protocol with a link to its source-of-truth
   documentation used during research, `PROJECT_STATE.md` rewritten to reflect the new baseline.
 - Excluded: starting any Phase 3 work.

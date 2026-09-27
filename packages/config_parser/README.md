@@ -69,13 +69,32 @@ Transport" and "TLS" pages) rather than training data.
    `httpupgrade`. The parser accepts both, the serializer emits the
    sing-box spelling.
 
-### Not yet implemented
+### Protocol coverage
 
-`Hysteria2Outbound` and `TuicOutbound` have **no** serializer yet; they throw
-`UnsupportedError` from `build` and return an `Err` from `tryBuild`. Use
-`tryBuild` when parsing a mixed subscription so unsupported entries can be
-skipped rather than crashing.
+All six domain protocols are now covered end to end — parser and Sing-Box serializer:
 
+| Protocol | Parser | Serializer |
+|---|---|---|
+| VLESS | `parseVlessUri` | yes |
+| VMess | `parseVmessUri` | yes |
+| Trojan | `parseTrojanUri` | yes |
+| Shadowsocks | `parseShadowsocksUri` | yes |
+| Hysteria2 | `parseHysteria2Uri` | yes (added in P2-T5) |
+| TUIC | `parseTuicUri` | yes (added in P2-T5) |
+
+`SingBoxOutboundSerializer.tryBuild` therefore succeeds for every `OutboundConfig`
+variant; the `UnsupportedProtocolError` path remains as a forward-compatibility guard for a
+future protocol, not for any protocol currently in `core_domain`.
+
+### Known limitations
+
+- `disable_sni` is a real sing-box TLS key but has no field on the domain `TlsSettings` type,
+  which is frozen. The TUIC parser carries it through `extraParams` and the serializer emits
+  it; a proper `disableSni` field should be added upstream.
+- Shadowsocks cipher validation covers the 18 values sing-box documents. A future sing-box
+  release adding a cipher would need this list updated.
+- `Hysteria2` `server_ports` / `hop_interval` and the Hysteria Realm fields are not parsed from
+  URIs (no common URI convention exists for them yet).
 ## API conventions
 
 - Parsers return `Result<OutboundConfig, ConfigParseError>`.

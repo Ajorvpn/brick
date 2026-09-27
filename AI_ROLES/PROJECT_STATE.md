@@ -27,20 +27,33 @@
 
 ## 1. Current Phase
 
-**Phase 1 — Architecture Skeleton: all 11 tasks (P1-T1..P1-T11) are implemented and awaiting human
-review. Phase 1 is NOT declared 100% closed — see §6 "Open items" for the specific gaps.**
+**Phase 2 — Config & Protocol Parsers: P2-T1 through P2-T8 are implemented and verified. P2-T5's
+final piece (Shadowsocks cipher validation) landed with the most recent work. Phase 2 is NOT
+closed — P2-T9..P2-T12 remain, and §6 records the open items.**
 
-Phase 0 (Project Foundation & Governance Setup) is 100% completed, committed, and signed off.
-Phase 1 built, and is verified by re-running the suites against the live repository:
+Phase 0 (Project Foundation & Governance Setup) and Phase 1 (Architecture Skeleton, P1-T1..P1-T11)
+are complete. Phase 1 built, and is verified by re-running the suites against the live repository:
 `Result<T, E>` (P1-T1), the core domain types (P1-T2), the polymorphic `OutboundConfig` hierarchy
 with `ServerProfile` (P1-T3), the `VpnEngine` contract with sealed `VpnCommandResult` (P1-T4),
 the hardened `MockVpnEngine` reference implementation (P1-T5), the feature-first folder convention
 (P1-T6), the Riverpod DI wiring (P1-T7), the `go_router` skeleton (P1-T8), the logging skeleton with
 a redaction stub (P1-T9), and the `easy_localization` wiring (P1-T10). P1-T11 is this closeout audit.
 
+**Phase 2 built the pure-Dart `config_parser` package** (`packages/config_parser`, routed through
+`dart test`): the `ConfigParseError` taxonomy plus bounded defensive decoders (P2-T1), six protocol
+parsers — VLESS, VMess, Trojan, Shadowsocks (both SIP002 and legacy forms, with cipher validation
+against sing-box's verified 18-value list), Hysteria2 (`hy2://` and `hysteria2://`) and TUIC (P2-T2
+through P2-T7, which in practice shipped as a smaller number of larger commits — see §6 Known
+Deviations), the unified `parseUri` scheme dispatcher (P2-T8), the Sing-Box 1.10+ JSON serializer, and
+the subscription decoder / `Subscription-Userinfo` parser with fault-tolerant bulk parsing. Field
+names and accepted values were verified against the live sing-box documentation rather than
+training data.
+
 **Closeout measurements (2026-09-26, all re-run at audit time):**
-- **175 tests pass** — 152 pure-Dart (`shared_utils` 15, `core_domain` 94, `core_vpn_engine` 43)
-  plus 23 Flutter (`apps/mobile`).
+- **346 tests pass monorepo-wide (322 pure-Dart + 24 Flutter).** Pure-Dart: `shared_utils` 15,
+  `core_domain` 94, `core_vpn_engine` 43, `config_parser` 170. Flutter: `mobile` 23, `ui_theme` 1.
+  (Supersedes the earlier "175 tests / 152 pure-Dart" Phase-1 closeout figure and the "258
+  pure-Dart" figure quoted in Phase-2 handoffs; both were stale.)
 - `flutter analyze .` — 0 errors, 0 warnings, 0 lints across all 6 packages.
 - `dart format --set-exit-if-changed` — 0 changed files across all 6 packages.
 - **Pure-Dart isolation re-verified:** 0 `package:flutter/*` and 0 `dart:ui` imports in
@@ -134,12 +147,16 @@ evidence that established it, so the next agent can verify rather than re-derive
    (curl times out) while `github.com` and `pub.dev` both return HTTP 200. **Until a human runs the
    app on a device, the routing, localization, and Riverpod wiring are proven only by widget tests,
    never on a real target.**
-7. **`melos run <script>` hangs in this environment** — 12+ minutes with no child processes and no
-   output, for both `test:dart` and `analyze`; `melos bootstrap` itself succeeds. All Phase 1
-   verification was therefore done with the identical underlying commands run per package
-   (`dart test` / `flutter analyze .` / `dart format`), which all pass. The literal `melos run`
-   invocation is unproven and is a real (if environmental) gap against
-   `DEFINITION_OF_DONE.md` Section 3, which mandates `melos run format|analyze|test`.
+7. **RETIRED — the earlier "`melos run <script>` hangs" reports were a FALSE POSITIVE.**
+   Re-verified 2026-09-27: a full, non-detached `melos run test --no-select` completes
+   successfully in well under 3 minutes, with both steps reporting `SUCCESS`
+   (`test:dart` → `SUCCESS`, `test:flutter` → `SUCCESS`, final line `SUCCESS`, exit 0).
+   `melos run analyze --no-select` and `melos run format --no-select` likewise complete.
+   The original "12+ minute hang" observation was an artifact of launching Melos detached
+   (`nohup`/`setsid`) and polling: the child process was reaped when the tool call returned, so an
+   empty log was misread as a hang. There is no environmental Melos problem. Per-package
+   commands remain useful for isolating a failure, but the canonical `DEFINITION_OF_DONE.md`
+   Section 3 check (`melos run format|analyze|test`) is fully satisfiable and is now satisfied.
 8. **CI has not validated any of the P1-T5..P1-T11 work**, because it is all still uncommitted. The
    P1-T11 criterion "CI is green on master" is left unchecked for that reason, not because a red run
    was observed.
@@ -160,21 +177,39 @@ evidence that established it, so the next agent can verify rather than re-derive
 ### Known deviations (accepted, not to be fixed)
 
 4. **P1-T5 commit `45b7c85` violated conventional-commit format** (its whole multi-line body was committed as the subject line, so the subject begins `- In-memory VpnEngine…` instead of `feat:`/`docs:`). Because it is already pushed to `origin/master` and branch protection forbids force-push, and because rewriting published history is permanently prohibited for agents, this is accepted as a permanent historical deviation and **must not be amended**. All subsequent commits should use a conventional subject.
+6. **Commit `586908c` bundles P1-T6 and P1-T7's output under a subject labelled only
+   "(P1-T8)"** — `git log --oneline -- apps/mobile/lib/features/README.md` and
+   `-- apps/mobile/lib/core/providers/vpn_engine_provider.dart` both resolve to that single
+   commit, so no dedicated commit exists for T6 or T7 individually. Accepted as historical and
+   **not to be split retroactively** (that would require a history rewrite, which is permanently
+   prohibited for agents).
+7. **Commit `f1245e9` ("updating and fixing CODING_STANDARDS") does not follow
+   conventional-commit format**, violating the rule established after `45b7c85`. It touches only
+   `AI_ROLES/CODING_STANDARDS.md`. Accepted as historical for the same reason as above. All
+   subsequent commits must use a conventional subject.
+8. **`AppLogger.e()`'s `error` and `stackTrace` parameters bypass `redact()`.** Only the
+   `message` parameter is redacted (structurally, via the single `_emit` chokepoint). An `Object`
+   passed as `error` is attached to the log unredacted. Currently harmless because no domain
+   type has a `toString` override, so accidental interpolation cannot emit a credential — but it
+   is a real seam. **Open item for whoever implements real redaction in Phase 8**: route `error`
+   through `redact` too, or document the exclusion as accepted.
+
 5. **`packages/shared_utils/lib/src/result.dart` equality is stricter than payload-only comparison.** `Ok`/`Err` check `other.runtimeType == runtimeType`, so `Ok<int,String>(1)` is not equal to `Ok<num,Object>(1)`. This was deliberately **NOT** changed: simply dropping the `runtimeType` check would make equality **asymmetric** under Dart's covariant generics (one direction true, the other false), violating the `==` contract — a worse defect than being over-strict but symmetric. Documented as an accepted limitation, not a bug to fix.
 
 ---
 
 ## 7. Immediate Next Steps (In Order)
 
-1. Human: review and commit the Phase 1 work (P1-T5 hardening through P1-T11, plus the governance
-   sync). Two design decisions most worth a second look: the `Connected -> Error` state-machine
-   edge added in P1-T5, and the `keepAlive: true` decision on the Riverpod providers (P1-T7/T8).
-2. Human: run the app on a real Android device/emulator. This is the single highest-value outstanding
-   action — it closes the four unchecked device-run acceptance criteria across P1-T7/T8/T10/T11 and
-   is the only way to confirm the localization, routing, and provider wiring behave on a real target.
-   (Note: `assembleDebug` currently cannot resolve the `io.flutter:*_debug` engine artifacts because
-   `storage.googleapis.com` is unreachable from this environment; that must be fixed or allowed
-   before an APK build can complete.)
-3. Human: confirm CI is green on `master` after committing — CI has not yet seen any of the
-   P1-T5..P1-T11 work.
-4. Agent (P2-T1): begin Phase 2 — WireGuard & AmneziaWG config parser in `packages/config_parser`.
+1. Human: review and commit the Phase 2 work as ONE clean commit — P2-T5 (Hysteria2/TUIC parsers,
+   Sing-Box serializer support for them, the `parseUri` router wiring) plus this task’s cipher
+   validation, duplicate-line removal, and governance sync. 9 files are currently uncommitted and
+   have never been seen by CI.
+2. Human: run the app on a real Android device/emulator. Still the highest-value outstanding
+   verification action: it closes the four unchecked device-run acceptance criteria from P1-T7/T8/T10
+   and is the only way to confirm routing, localization, and Riverpod wiring on a real target.
+   (`assembleDebug` additionally needs `storage.googleapis.com` reachable to resolve the
+   `io.flutter:*_debug` engine artifacts.)
+3. Human: confirm CI is green on `master` once the above is committed.
+4. Agent (P2-T9): reconcile the ROADMAP’s subscription-content-parser scope against what already
+   shipped (decoder, `Subscription-Userinfo`, fault-tolerant bulk parser are implemented) before
+   writing new code — the remaining scope is likely smaller than the task text implies.

@@ -49,7 +49,7 @@ melos:
     # solution — but it costs one small manual sync step per new
     # pure-Dart package. Planned pure-Dart packages that will need
     # this treatment: `core_domain` (P1-T2, done), `core_vpn_engine` (P1-T4, done).
-    # Next candidate: `config_parser` (Phase 2).
+    # `config_parser` was added in Phase 2 (P2-T1).
     test:
       description: Run all tests, routing pure-Dart packages to `dart test` and Flutter packages to `flutter test`.
       steps:
@@ -65,6 +65,7 @@ melos:
           - shared_utils
           - core_domain
           - core_vpn_engine
+          - config_parser
 
     test:flutter:
       description: Run `flutter test` for packages that depend on Flutter.
@@ -75,3 +76,4 @@ melos:
           - shared_utils
           - core_domain
           - core_vpn_engine
+          - config_parser

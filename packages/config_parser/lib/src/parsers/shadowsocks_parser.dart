@@ -7,6 +7,59 @@ import '../config_parse_error.dart';
 import '../defensive_parser_utils.dart';
 import 'uri_parsing_support.dart';
 
+/// Ciphers sing-box's Shadowsocks outbound accepts in its `method` field.
+///
+/// Verified against the official sing-box Shadowsocks outbound
+/// documentation (<https://sing-box.sagernet.org/configuration/outbound/shadowsocks/>)
+/// on 2026-09-27, which lists:
+///
+/// "Encryption methods: 2022-blake3-aes-128-gcm 2022-blake3-aes-256-gcm
+/// 2022-blake3-chacha20-poly1305 none aes-128-gcm aes-192-gcm aes-256-gcm
+/// chacha20-ietf-poly1305 xchacha20-ietf-poly1305"
+///
+/// and, separately:
+///
+/// "Legacy encryption methods: aes-128-ctr aes-192-ctr aes-256-ctr aes-128-cfb
+/// aes-192-cfb aes-256-cfb rc4-md5 chacha20-ietf xchacha20"
+///
+/// A link naming anything else cannot be dialled by this client, so it is
+/// rejected with [UnsupportedCipherError] rather than silently accepted and
+/// failing later inside sing-box with an opaque error.
+const Set<String> supportedCiphers = {
+  // Current AEAD (incl. the 2022-blake3 family).
+  '2022-blake3-aes-128-gcm',
+  '2022-blake3-aes-256-gcm',
+  '2022-blake3-chacha20-poly1305',
+  'none',
+  'aes-128-gcm',
+  'aes-192-gcm',
+  'aes-256-gcm',
+  'chacha20-ietf-poly1305',
+  'xchacha20-ietf-poly1305',
+  // Legacy, still accepted by sing-box.
+  'aes-128-ctr',
+  'aes-192-ctr',
+  'aes-256-ctr',
+  'aes-128-cfb',
+  'aes-192-cfb',
+  'aes-256-cfb',
+  'rc4-md5',
+  'chacha20-ietf',
+  'xchacha20',
+};
+
+/// Validates [method] against [supportedCiphers].
+///
+/// Matching is case-insensitive because providers are inconsistent about
+/// casing, but the value is otherwise taken verbatim.
+Result<String, ConfigParseError> validateCipher(String method) {
+  final normalised = method.toLowerCase();
+  if (!supportedCiphers.contains(normalised)) {
+    return Err(UnsupportedCipherError(normalised));
+  }
+  return Ok<String, ConfigParseError>(normalised);
+}
+
 /// Parses an `ss://` link into a [ShadowsocksOutbound].
 ///
 /// Supports both forms still seen in the wild:
@@ -136,6 +189,11 @@ Result<OutboundConfig, ConfigParseError> _build(
   String hostPort,
   Map<String, String> query,
 ) {
+  // Both SIP002 and legacy funnel through here, so one check covers both.
+  final cipher = validateCipher(method);
+  if (cipher case Err(:final error)) {
+    return Err(error);
+  }
   final hostResult = _splitHostPort(hostPort);
   if (hostResult case Err(:final error)) {
     return Err(error);
@@ -148,7 +206,7 @@ Result<OutboundConfig, ConfigParseError> _build(
     ShadowsocksOutbound(
       server: host,
       serverPort: port,
-      method: method,
+      method: (cipher as Ok<String, ConfigParseError>).value,
       password: password,
       plugin: (plugin != null && plugin.isNotEmpty) ? plugin : null,
     ),

@@ -5,8 +5,10 @@ import 'package:shared_utils/shared_utils.dart' show Err, Result;
 
 import '../config_parse_error.dart';
 import '../defensive_parser_utils.dart';
+import 'hysteria2_parser.dart';
 import 'shadowsocks_parser.dart';
 import 'trojan_parser.dart';
+import 'tuic_parser.dart';
 import 'vless_parser.dart';
 import 'vmess_parser.dart';
 
@@ -39,6 +41,8 @@ Result<OutboundConfig, ConfigParseError> parseUri(String uri) {
     'vmess' => parseVmessUri(uri),
     'trojan' => parseTrojanUri(uri),
     'ss' => parseShadowsocksUri(uri),
+    'hy2' || 'hysteria2' => parseHysteria2Uri(uri),
+    'tuic' => parseTuicUri(uri),
     _ => Err(UnsupportedSchemeError(scheme)),
   };
 }
@@ -58,6 +62,8 @@ String parseUriRemark(String uri) {
     'vmess' => parseVmessRemark(uri),
     'trojan' => parseTrojanRemark(uri),
     'ss' => parseShadowsocksRemark(uri),
+    'hy2' || 'hysteria2' => parseHysteria2Remark(uri),
+    'tuic' => parseTuicRemark(uri),
     _ => '',
   };
 }

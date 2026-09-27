@@ -67,11 +67,10 @@ class SingBoxOutboundSerializer {
         map = _trojan(config);
       case ShadowsocksOutbound():
         map = _shadowsocks(config);
-      // Hysteria2 / TUIC are QUIC-based and intentionally not wired up yet
-      // (their Phase 2 parser tasks have not landed). Returned as `Err` so a
-      // mixed subscription can skip them instead of crashing.
-      case Hysteria2Outbound() || TuicOutbound():
-        return Err(UnsupportedProtocolError(config.protocol.name));
+      case Hysteria2Outbound():
+        map = _hysteria2(config);
+      case TuicOutbound():
+        map = _tuic(config);
     }
 
     final out = <String, dynamic>{'type': config.protocol.name};
@@ -122,6 +121,32 @@ class SingBoxOutboundSerializer {
     ..._multiplex(c.multiplex),
   };
 
+  Map<String, dynamic> _hysteria2(Hysteria2Outbound c) => <String, dynamic>{
+    'server': c.server,
+    'server_port': c.serverPort,
+    'password': c.password,
+    if (c.upMbps != null) 'up_mbps': c.upMbps,
+    if (c.downMbps != null) 'down_mbps': c.downMbps,
+    // obfs is only emitted as a complete pair: sing-box requires the
+    // password whenever a type is set, and a half-configured obfs block
+    // makes it reject the whole outbound.
+    if (c.obfsType != null && c.obfsPassword != null)
+      'obfs': <String, dynamic>{'type': c.obfsType, 'password': c.obfsPassword},
+    ..._tlsWithExtras(c.tls, c.extraParams),
+  };
+
+  Map<String, dynamic> _tuic(TuicOutbound c) => <String, dynamic>{
+    'server': c.server,
+    'server_port': c.serverPort,
+    'uuid': c.uuid,
+    'password': c.password,
+    'congestion_control': c.congestionControl,
+    if (c.udpRelayMode != null) 'udp_relay_mode': c.udpRelayMode,
+    if (c.udpOverStream) 'udp_over_stream': c.udpOverStream,
+    if (c.zeroRttHandshake) 'zero_rtt_handshake': c.zeroRttHandshake,
+    ..._tlsWithExtras(c.tls, c.extraParams),
+  };
+
   /// Fields shared by every TCP-based outbound.
   Map<String, dynamic> _shared(TcpBasedOutbound c) => <String, dynamic>{
     ..._network(c.network),
@@ -140,6 +165,19 @@ class SingBoxOutboundSerializer {
     }
     return const <String, dynamic>{};
   }
+
+  /// Emits the `tls` object, then merges any schema keys a parser parked in
+  /// [extraParams] (currently only `disable_sni`, which has no field on the
+  /// domain `TlsSettings` type yet).
+  Map<String, dynamic> _tlsWithExtras(
+    TlsSettings tls,
+    Map<String, dynamic>? extraParams,
+  ) => <String, dynamic>{
+    'tls': <String, dynamic>{
+      ..._tls(tls),
+      if (extraParams != null) ...extraParams,
+    },
+  };
 
   Map<String, dynamic> _tls(TlsSettings tls) => <String, dynamic>{
     'enabled': tls.enabled,

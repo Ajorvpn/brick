@@ -187,3 +187,27 @@ final class UnknownParseError extends ConfigParseError {
   @override
   String get message => 'Could not parse config: $reason';
 }
+
+/// A Shadowsocks cipher/method that sing-box does not support.
+///
+/// Unlike a password or UUID, a cipher name is **not** secret — it is a
+/// public algorithm identifier — so including it in [message] is safe and
+/// makes the error user-actionable (the user can pick a different server
+/// or cipher). What is deliberately excluded is the password, which
+/// accompanies the method in the same URI and must never appear here.
+final class UnsupportedCipherError extends ConfigParseError {
+  /// Creates an unsupported-cipher error naming [method].
+  const UnsupportedCipherError(this.method);
+
+  /// The rejected cipher/method name, verbatim from the link. Public
+  /// algorithm identifier, not a credential.
+  final String method;
+
+  @override
+  String get code => 'unsupported_cipher';
+
+  @override
+  String get message =>
+      'Unsupported Shadowsocks cipher: $method. This server may require a '
+      'cipher this client does not support.';
+}

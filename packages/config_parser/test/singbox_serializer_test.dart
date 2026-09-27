@@ -2,7 +2,7 @@
 
 import 'package:config_parser/config_parser.dart';
 import 'package:core_domain/core_domain.dart';
-import 'package:shared_utils/shared_utils.dart' show Err, Ok;
+import 'package:shared_utils/shared_utils.dart' show Ok;
 import 'package:test/test.dart';
 
 const _uuid = 'b831381d-6324-4d53-ad4f-8cda48b30811';
@@ -278,8 +278,9 @@ void main() {
     });
   });
 
-  group('unimplemented protocols', () {
-    test('tryBuild returns Err for hysteria2 instead of throwing', () {
+  group('QUIC-based protocols', () {
+    // P2-T5 added Hysteria2 and TUIC, so every domain protocol serializes.
+    test('tryBuild succeeds for hysteria2', () {
       final result = const SingBoxOutboundSerializer().tryBuild(
         Hysteria2Outbound(
           server: 'e.com',
@@ -288,29 +289,27 @@ void main() {
           tls: TlsSettings(enabled: true),
         ),
       );
-      expect(result.isErr, isTrue);
+      expect(result.isOk, isTrue);
       expect(
-        (result as Err<Map<String, dynamic>, ConfigParseError>).error,
-        isA<UnsupportedProtocolError>().having(
-          (e) => e.protocol,
-          'protocol',
-          'hysteria2',
-        ),
+        (result as Ok<Map<String, dynamic>, ConfigParseError>).value['type'],
+        'hysteria2',
       );
     });
 
-    test('build throws a clear UnsupportedError', () {
-      expect(
-        () => buildSingBoxOutbound(
-          TuicOutbound(
-            server: 'e.com',
-            serverPort: 443,
-            uuid: _uuid,
-            password: 'pw',
-            tls: TlsSettings(enabled: true),
-          ),
+    test('tryBuild succeeds for tuic', () {
+      final result = const SingBoxOutboundSerializer().tryBuild(
+        TuicOutbound(
+          server: 'e.com',
+          serverPort: 443,
+          uuid: 'b831381d-6324-4d53-ad4f-8cda48b30811',
+          password: 'pw',
+          tls: TlsSettings(enabled: true),
         ),
-        throwsUnsupportedError,
+      );
+      expect(result.isOk, isTrue);
+      expect(
+        (result as Ok<Map<String, dynamic>, ConfigParseError>).value['type'],
+        'tuic',
       );
     });
   });
