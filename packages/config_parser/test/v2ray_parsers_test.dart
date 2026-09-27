@@ -39,8 +39,11 @@ void main() {
       final vless =
           (result as Ok<OutboundConfig, ConfigParseError>).value
               as VlessOutbound;
-      expect(vless.network, 'ws');
+      // `network` is the L4 network in sing-box, never the transport name.
+      // 'ws' belongs to the transport block (P2-T4 fix).
+      expect(vless.network, isNull);
       expect(vless.transport, isA<WebSocketTransport>());
+      expect((vless.transport! as WebSocketTransport).path, '/ray');
       expect((vless.transport! as WebSocketTransport).path, '/ray');
       expect(
         (vless.transport! as WebSocketTransport).headers?['Host'],
@@ -176,7 +179,8 @@ void main() {
       expect(vmess.serverPort, 443);
       expect(vmess.uuid, _uuid);
       expect(vmess.alterId, 0);
-      expect(vmess.network, 'ws');
+      // `net` in v2rayN JSON is the transport, not the L4 network.
+      expect(vmess.network, isNull);
       expect(vmess.transport, isA<WebSocketTransport>());
       expect(vmess.tls, isNotNull);
       expect(vmess.protocol, ProtocolType.vmess);

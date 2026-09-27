@@ -95,10 +95,18 @@ String parseVlessRemark(String uri) {
 }
 
 /// The `network` string sing-box expects, or null to use its own default.
+/// Resolves the sing-box L4 `network` value (see ARCHITECTURE.md Phase 2).
+///
+/// `network` in sing-box selects the **layer-4** network ("tcp" or "udp") —
+/// it is NOT the V2Ray transport. The transport (ws / grpc / httpupgrade)
+/// belongs in `transport.type`. Populating `network` with a transport name
+/// produces config sing-box rejects.
+///
+/// Returns null when the link does not pin an L4 network, which is
+/// deliberate: per the sing-box schema, omitting `network` enables BOTH
+/// tcp and udp. Defaulting to the literal "tcp" here would silently disable
+/// UDP for every parsed server.
 String? _networkFor(Map<String, String> query) {
-  final type = query['type'];
-  if (type == null || type.isEmpty || type.toLowerCase() == 'tcp') {
-    return null;
-  }
-  return type.toLowerCase();
+  final network = query['network']?.toLowerCase();
+  return (network == 'tcp' || network == 'udp') ? network : null;
 }

@@ -24,4 +24,7 @@ export 'src/parsers/uri_parser.dart';
 export 'src/parsers/vless_parser.dart';
 export 'src/parsers/vmess_parser.dart';
 export 'src/serializers/singbox_serializer.dart';
+export 'src/subscription/subscription_decoder.dart';
+export 'src/subscription/subscription_parser.dart';
+export 'src/subscription/subscription_user_info.dart';
 export 'src/server_profile_conversion.dart';

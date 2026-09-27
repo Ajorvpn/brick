@@ -109,7 +109,10 @@ Result<OutboundConfig, ConfigParseError> parseVmessUri(String uri) {
       uuid: id,
       security: security,
       alterId: alterId,
-      network: (net != null && net.isNotEmpty && net != 'tcp') ? net : null,
+      // `net` is the V2Ray TRANSPORT, not the L4 network. sing-box puts
+      // transports under `transport.type`; leaving `network` null enables
+      // both tcp and udp (the schema default).
+      network: _l4Network(map['network']),
       tls: wantsTls
           ? TlsSettings(
               enabled: true,
@@ -146,6 +149,19 @@ String parseVmessRemark(String uri) {
   final add = value.cast<String, Object?>()['add'];
   final port = value.cast<String, Object?>()['port'];
   return '$add:$port';
+}
+
+/// Resolves the sing-box L4 `network` from a v2rayN JSON field.
+///
+/// Returns null unless the value is a genuine L4 network. sing-box enables
+/// both tcp and udp when `network` is absent, which is the correct default
+/// for a VPN client, so this never invents a value.
+String? _l4Network(Object? raw) {
+  if (raw is! String) {
+    return null;
+  }
+  final value = raw.toLowerCase();
+  return (value == 'tcp' || value == 'udp') ? value : null;
 }
 
 /// Reads a JSON field that may be a String or a number.
