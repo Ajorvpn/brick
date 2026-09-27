@@ -119,13 +119,17 @@ final class UnsupportedSchemeError extends ConfigParseError {
   /// The scheme that was not recognised, e.g. `'notavpn'`.
   ///
   /// The scheme is a short, non-sensitive token taken from the URI prefix.
+  /// It is stored verbatim, but [message] echoes it only through
+  /// [sanitiseEchoedIdentifier], so untrusted input cannot smuggle a
+  /// credential into a log-bound string.
   final String scheme;
 
   @override
   String get code => 'unsupported_scheme';
 
   @override
-  String get message => 'Unsupported scheme: $scheme';
+  String get message =>
+      'Unsupported scheme: ${sanitiseEchoedIdentifier(scheme)}';
 }
 
 /// The protocol family is not implemented.
@@ -134,13 +138,18 @@ final class UnsupportedProtocolError extends ConfigParseError {
   const UnsupportedProtocolError(this.protocol);
 
   /// The protocol that is not yet implemented.
+  ///
+  /// Stored verbatim, but [message] echoes it only through
+  /// [sanitiseEchoedIdentifier] — this value can originate from an untrusted
+  /// JSON `type` field, not just a curated token.
   final String protocol;
 
   @override
   String get code => 'unsupported_protocol';
 
   @override
-  String get message => 'Unsupported protocol: $protocol';
+  String get message =>
+      'Unsupported protocol: ${sanitiseEchoedIdentifier(protocol)}';
 }
 
 /// The input exceeded a configured size limit.
@@ -201,6 +210,9 @@ final class UnsupportedCipherError extends ConfigParseError {
 
   /// The rejected cipher/method name, verbatim from the link. Public
   /// algorithm identifier, not a credential.
+  ///
+  /// [message] echoes it through [sanitiseEchoedIdentifier] so a crafted
+  /// `method` value cannot smuggle a credential into a log-bound string.
   final String method;
 
   @override
@@ -208,6 +220,38 @@ final class UnsupportedCipherError extends ConfigParseError {
 
   @override
   String get message =>
-      'Unsupported Shadowsocks cipher: $method. This server may require a '
+      'Unsupported Shadowsocks cipher: ${sanitiseEchoedIdentifier(method)}. '
+      'This server may require a '
       'cipher this client does not support.';
+}
+
+/// Sanitises a caller-supplied identifier before it is echoed into an error
+/// message.
+///
+/// `UnsupportedSchemeError` and `UnsupportedProtocolError` are handed a token
+/// taken straight from untrusted pasted input. The intent is that it is a
+/// short, non-sensitive identifier, but nothing enforces that: a hostile or
+/// merely malformed payload can put a credential (or an entire base64 key) in
+/// the `type` field of a JSON object, and it would then be reproduced verbatim
+/// in a message destined for a log or a UI banner.
+///
+/// This keeps the diagnostic value of a genuine token while removing the leak:
+/// only short, identifier-shaped values survive, and anything else is reported
+/// as a shape mismatch rather than echoed.
+String sanitiseEchoedIdentifier(String raw) {
+  const maxLength = 32;
+  if (raw.isEmpty) {
+    return '(empty)';
+  }
+  if (raw.length > maxLength) {
+    return '(over $maxLength chars)';
+  }
+  // Allow only what a real scheme/protocol token can contain.
+  final isIdentifier = raw.codeUnits.every((c) {
+    final isLower = c >= 0x61 && c <= 0x7a; // a-z
+    final isDigit = c >= 0x30 && c <= 0x39; // 0-9
+    final isHyphen = c == 0x2d; // -
+    return isLower || isDigit || isHyphen;
+  });
+  return isIdentifier ? raw : '(unprintable)';
 }

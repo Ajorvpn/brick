@@ -111,9 +111,7 @@ Result<SmartParseResult, ConfigParseError> parseConfigContent(
     }
     final inner = _extractDeepLinkPayload(text);
     if (inner == null || inner.trim().isEmpty) {
-      return Err(
-        MissingRequiredFieldError('url'),
-      );
+      return Err(MissingRequiredFieldError('url'));
     }
     return parseConfigContent(
       inner,
@@ -154,10 +152,7 @@ Result<SmartParseResult, ConfigParseError> parseConfigContent(
     final fromJson = _parseJsonOutbounds(text);
     if (fromJson case Ok(:final value)) {
       return Ok(
-        SmartParseResult(
-          outbounds: value,
-          detectedType: SmartContentType.json,
-        ),
+        SmartParseResult(outbounds: value, detectedType: SmartContentType.json),
       );
     } else if (fromJson case Err(:final error)) {
       return Err(error);

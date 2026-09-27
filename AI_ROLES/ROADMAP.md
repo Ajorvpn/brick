@@ -1029,6 +1029,33 @@ resource usage (max input length, max nesting depth, max list size), and must ne
 untrusted, including subscription content from a server the user explicitly added — a malicious
 or compromised subscription source is an explicit item in `SECURITY.md`'s threat model.
 
+**Phase Status (audited 2026-09-27): SUBSTANTIALLY COMPLETE, NOT 100%.**
+Delivered and verified: P2-T1..P2-T8, P2-T13 (WireGuard/AmneziaWG), P2-T14 (smart content
+router), plus the Sing-Box 1.10+ JSON serializer and its inverse reader. All 8 protocol families
+parse and serialize; `packages/config_parser` runs 231 passing tests; the package is pure Dart
+with zero `package:flutter/` and zero `dart:ui` imports and zero dependency on `core_vpn_engine`.
+
+**Outstanding, and why this phase is not 100% complete:**
+- **P2-T9** — implemented and tested (23 tests), but its six acceptance criteria have not been
+  walked one-by-one by a human. Checkboxes deliberately unticked.
+- **P2-T10 (subscription URL fetch)** — **not started, and not a small gap.** This is the first
+  task in the project that performs real network I/O. There is no `dart:io`, no `HttpClient` and
+  no HTTP dependency anywhere in `packages/config_parser` today, by design. It requires its own
+  decision about package/layer placement (see the task's Scope note) and its own threat model for
+  a remote fetch.
+- **P2-T11 (adversarial/fuzz pass)** — **not started.** Per-parser malformed-input cases exist,
+  but the cross-cutting hardening pass this task specifies (deeply nested percent-encoding,
+  malformed UTF-16 surrogate pairs, null bytes mid-string, stack-overflow and unbounded-allocation
+  hunting across *all* parsers) has not been performed as a dedicated pass.
+- **P2-T12** — this audit was performed; the full DoD checklist walk remains outstanding.
+
+**Phase 3 readiness:** the parser layer is sufficient for Phase 3 Gate A, which is a native-only
+Kotlin `VpnService`/`libbox` lifecycle harness and does not consume subscription fetching. However
+**P3-T1 declares `Depends On: P2-T12`**, so Phase 3 is *formally* gated until a human closes
+P2-T12. See the Phase 3 header for the recorded readiness position.
+
+---
+
 **Format-research caveat (applies to every parsing task below):** VLESS/VMess/Trojan/Shadowsocks/
 Hysteria2/TUIC URI formats are **community conventions, not formal RFCs**, and have drifted/been
 extended over time across different client implementations (e.g. differing query-parameter names
@@ -1405,11 +1432,22 @@ treated as closed.
 **Objective:** Implement parsing of subscription **content** (not fetching — fetching over the
 network is explicitly a separate concern, see P2-T10) — i.e., given raw text that is either a
 base64-encoded newline-separated list of server URIs, or a plain newline-separated list of server
-URIs, produce a `List<Result<OutboundConfig, ConfigParseError>>` (preserving per-line success/
-failure so a subscription with 40 good entries and 2 malformed ones doesn't fail everything).
+URIs, produce the parsed outbounds plus the per-line failures (so a subscription with 40 good
+entries and 2 malformed ones doesn't fail everything).
+
+> **Delivered signature (differs from the original text above).** The shipped API is
+> `Result<SubscriptionParseResult, ConfigParseError> parseSubscription(String body, {String?
+> userInfoHeaderValue})` in `packages/config_parser/lib/src/subscription/subscription_parser.dart`,
+> **not** `List<Result<OutboundConfig, ConfigParseError>>` and **not** in
+> `lib/src/parse_subscription_content.dart`. `SubscriptionParseResult` carries `configs`
+> (`List<OutboundConfig>`), `userInfo` (`SubscriptionUserInfo?`) and `errors`
+> (`List<ConfigParseError>`) — a whole-body `Err` is reserved for "nothing usable at all", which
+> preserves partial success more ergonomically than a list of per-line results. Base64 detection
+> and bounded decoding live in `subscription_decoder.dart` (`decodeSubscriptionBody`), and
+> `Subscription-Userinfo` header parsing in `subscription_user_info.dart`.
 
 **Scope:**
-- Included: `packages/config_parser/lib/src/parse_subscription_content.dart`, reuse of P2-T1's
+- Included: the `subscription/` sub-library (see the delivered-signature note above), reuse of P2-T1's
   bounded base64/size-limit helpers (subscription blobs are a larger, still-bounded, size class —
   confirm/set the specific limit here explicitly), unit tests covering both base64-wrapped and
   plain-text subscription formats, mixed valid/invalid line handling, and adversarial input
@@ -1557,6 +1595,22 @@ is finished and Phase 3 (the highest-risk phase) is about to begin.
 ---
 
 ## Phase 3 — Android VPN Engine
+
+**Phase Status (recorded 2026-09-27): READY TO START, pending one human gate.**
+The Phase 2 parser layer this phase consumes is delivered and verified (231 tests, pure Dart, all
+8 protocols, smart router). Note the phase is officially titled "Android VPN Engine" — it is *not*
+the "Core Engine & Platform Integration" that some handoff notes call it.
+
+**The one gate:** P3-T1 declares `Depends On: P2-T12`, and P2-T12's DoD checklist walk is still
+outstanding, along with P2-T10 (subscription URL fetch) and P2-T11 (adversarial pass). A human must
+decide whether to close P2-T12 early and start Phase 3. My assessment of that decision:
+- Gate A is a **native-only Kotlin harness with zero Flutter involvement** and does not use
+  subscription fetching, so P2-T10 does not block it.
+- P2-T11 is the more relevant risk: it is the hardening pass that would catch the
+  unbounded-resource and uncaught-exception bugs `SECURITY.md` cares most about, and Phase 3 will
+  feed real untrusted config into this parser. Running P2-T11 before or alongside Gate A is
+  advisable.
+- This is a human call, not an agent call. I have not closed P2-T12 or started Phase 3.
 
 **Phase Goal:** a Kotlin `VpnService` implementation, driving sing-box's `libbox` Go core, proven
 correct and resilient under real lifecycle stress — **before** it is ever wired to Flutter. This

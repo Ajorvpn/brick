@@ -214,8 +214,9 @@ Result<OutboundConfig, ConfigParseError> _tuic(
       serverPort: port,
       uuid: uuid,
       password: password,
-      congestionControl:
-          (congestion is String && congestion.isNotEmpty) ? congestion : 'cubic',
+      congestionControl: (congestion is String && congestion.isNotEmpty)
+          ? congestion
+          : 'cubic',
       udpRelayMode: (udpRelayMode is String && udpRelayMode.isNotEmpty)
           ? udpRelayMode
           : null,
@@ -257,7 +258,9 @@ Result<OutboundConfig, ConfigParseError> _wireguard(
   final reserved = json['reserved'];
   List<int>? reservedBytes;
   if (reserved is List) {
-    reservedBytes = reserved.map((e) => e is int ? e : 0).toList(growable: false);
+    reservedBytes = reserved
+        .map((e) => e is int ? e : 0)
+        .toList(growable: false);
   }
   final preShared = json['pre_shared_key'];
   final mtu = json['mtu'];
@@ -334,7 +337,9 @@ TlsSettings? _tls(
   final reality = tls['reality'];
   return TlsSettings(
     enabled: tls['enabled'] == true || defaultEnabled,
-    serverName: (tls['server_name'] is String && (tls['server_name'] as String).isNotEmpty)
+    serverName:
+        (tls['server_name'] is String &&
+            (tls['server_name'] as String).isNotEmpty)
         ? tls['server_name'] as String
         : fallbackServerName,
     insecure: tls['insecure'] == true,
@@ -345,7 +350,8 @@ TlsSettings? _tls(
             fingerprint: (tls['utls'] as Map)['fingerprint'] as String,
           )
         : null,
-    reality: (reality is Map &&
+    reality:
+        (reality is Map &&
             (reality['public_key'] is String) &&
             (reality['short_id'] is String))
         ? RealitySettings(

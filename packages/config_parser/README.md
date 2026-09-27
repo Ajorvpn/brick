@@ -20,6 +20,13 @@ compromised provider. Therefore:
 - Errors **never carry the offending value**. A `ConfigParseError` stores
   only developer-authored metadata (field names, sizes, reasons), so a
   UUID, password, or key cannot reach a log through an error message.
+- A few errors name a *token* taken from the input (the URI scheme, the JSON
+  `type`, the Shadowsocks cipher). Those are echoed through
+  `sanitiseEchoedIdentifier`, which passes only short, identifier-shaped
+  values (`[a-z0-9-]`, <= 32 chars) and otherwise reports a shape mismatch.
+  This matters: a payload like `{"type":"<credential>", ...}` would otherwise
+  reproduce the credential in a log-bound message. See
+  `test/error_redaction_test.dart`.
 - Base64 decoding tolerates standard and URL-safe alphabets, with or without
   padding, and validates decoded length (e.g. exactly 32 bytes for a key).
 
@@ -114,6 +121,51 @@ future protocol, not for any protocol currently in `core_domain`.
   needs either a patched sing-box or a different outbound construct.
 - **No stable AWG URI convention exists.** The `amneziawg://` / `awg://` scheme is this
   project's own; it follows the WireGuard link shape and is not yet standardised.
+## Subscription parsing
+
+`parseSubscription(String body, {String? userInfoHeaderValue})` handles the
+two body formats a provider can serve, without any network access:
+
+- a **base64**-encoded blob (standard or URL-safe alphabet, padded or not), or
+- a **plain newline-separated** list of server URIs.
+
+It returns `Result<SubscriptionParseResult, ConfigParseError>`, where
+`SubscriptionParseResult` carries `configs`, `errors`, `totalLineCount` and
+`skippedLineCount`. The parsed `Subscription-Userinfo` header is folded into
+`SmartParseResult.userInfo` by `parseConfigContent` (see below).
+
+**Partial success is the point.** A subscription with 40 good entries and 2
+malformed ones must not fail as a whole, so per-entry failures land in
+`errors` while the good entries are kept. A whole-body `Err` is reserved for
+"nothing usable was found at all".
+
+```dart
+final result = parseSubscription(
+  body,
+  userInfoHeaderValue: headers.value('subscription-userinfo'),
+);
+if (result case Ok(:final value)) {
+  for (final outbound in value.configs) {
+    /* … */
+  }
+  for (final failure in value.errors) {
+    /* report the bad entry, without echoing its contents */
+  }
+  // Diagnostics for the subscription as a whole.
+  // ignore: avoid_print
+  print('${value.configs.length}/${value.totalLineCount} usable, '
+      '${value.skippedLineCount} blank/comment lines skipped');
+}
+```
+
+`SubscriptionUserInfo.parse` reads the `Subscription-Userinfo` header
+(`upload=…; download=…; total=…; expire=…`) into `uploadBytes`, `downloadBytes`,
+`totalBytes` and `expiresAt`.
+
+> **This package does no networking.** It has no `dart:io`, no `HttpClient` and
+> no HTTP dependency, by design — the body must be fetched elsewhere and passed
+> in. Fetching a subscription URL is roadmap task P2-T10 and is not started.
+
 ## Smart content router (`parseConfigContent`)
 
 `parseConfigContent(String input, {String? userInfoHeaderValue, int depth = 0})`

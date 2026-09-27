@@ -51,7 +51,8 @@ Result<OutboundConfig, ConfigParseError> parseAmneziaWgUri(String uri) {
   // userinfo put the key in a query parameter instead, so accept both
   // and prefer the explicit query form.
   final keyFromQuery =
-      value.queryParameters['private_key'] ?? value.queryParameters['privatekey'];
+      value.queryParameters['private_key'] ??
+      value.queryParameters['privatekey'];
   final privateKey = (keyFromQuery ?? _percentDecode(value.userInfo)).trim();
   if (privateKey.isEmpty) {
     return Err(MissingRequiredFieldError('private_key'));

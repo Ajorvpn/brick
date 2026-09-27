@@ -46,8 +46,7 @@ void main() {
       test('$scheme is detected as a single URI', () {
         final result = parseConfigContent(uri);
         expect(result.isOk, isTrue, reason: '$scheme should parse');
-        final parsed =
-            (result as Ok<SmartParseResult, ConfigParseError>).value;
+        final parsed = (result as Ok<SmartParseResult, ConfigParseError>).value;
         expect(parsed.detectedType, SmartContentType.singleUri);
         expect(parsed.parsedCount, 1);
         expect(parsed.isComplete, isTrue);
@@ -66,7 +65,11 @@ void main() {
       protocols.forEach((uri, expected) {
         final parsed = parseConfigContent(uri);
         expect(
-          (parsed as Ok<SmartParseResult, ConfigParseError>).value.outbounds.first.protocol,
+          (parsed as Ok<SmartParseResult, ConfigParseError>)
+              .value
+              .outbounds
+              .first
+              .protocol,
           expected,
         );
       });
@@ -76,22 +79,20 @@ void main() {
   group('deep link extraction', () {
     test('brick://import?url=<vless> unwraps and reports deepLink', () {
       final inner = _vless();
-      final link =
-          'brick://import?url=${Uri.encodeComponent(inner)}';
+      final link = 'brick://import?url=${Uri.encodeComponent(inner)}';
       final result = parseConfigContent(link);
       expect(result.isOk, isTrue);
-      final parsed =
-          (result as Ok<SmartParseResult, ConfigParseError>).value;
+      final parsed = (result as Ok<SmartParseResult, ConfigParseError>).value;
       expect(parsed.detectedType, SmartContentType.deepLink);
       expect(parsed.parsedCount, 1);
       expect(parsed.outbounds.first, isA<VlessOutbound>());
     });
 
     test('brick://import?config=<wireguard> also unwraps', () {
-      final link =
-          'brick://import?config=${Uri.encodeComponent(_wg())}';
-      final parsed =
-          (parseConfigContent(link) as Ok<SmartParseResult, ConfigParseError>).value;
+      final link = 'brick://import?config=${Uri.encodeComponent(_wg())}';
+      final parsed = (parseConfigContent(
+        link,
+      ) as Ok<SmartParseResult, ConfigParseError>).value;
       expect(parsed.detectedType, SmartContentType.deepLink);
       expect(parsed.outbounds.first, isA<WireGuardOutbound>());
     });
@@ -99,8 +100,9 @@ void main() {
     test('a deep link wrapping a subscription is detected as deepLink', () {
       final body = '${_vless()}\n${_trojan()}';
       final link = 'brick://import?config=${Uri.encodeComponent(body)}';
-      final parsed =
-          (parseConfigContent(link) as Ok<SmartParseResult, ConfigParseError>).value;
+      final parsed = (parseConfigContent(
+        link,
+      ) as Ok<SmartParseResult, ConfigParseError>).value;
       expect(parsed.detectedType, SmartContentType.deepLink);
       expect(parsed.parsedCount, 2);
     });
@@ -127,8 +129,7 @@ void main() {
     test('plain-text multi-URI body', () {
       final result = parseConfigContent('${_vless()}\n${_trojan()}\n${_ss()}');
       expect(result.isOk, isTrue);
-      final parsed =
-          (result as Ok<SmartParseResult, ConfigParseError>).value;
+      final parsed = (result as Ok<SmartParseResult, ConfigParseError>).value;
       expect(parsed.detectedType, SmartContentType.subscription);
       expect(parsed.parsedCount, 3);
       expect(parsed.isComplete, isTrue);
@@ -137,18 +138,18 @@ void main() {
     test('base64 subscription body', () {
       final body = '${_vless()}\n${_trojan()}';
       final encoded = base64.encode(utf8.encode(body));
-      final parsed =
-          (parseConfigContent(encoded) as Ok<SmartParseResult, ConfigParseError>).value;
+      final parsed = (parseConfigContent(
+        encoded,
+      ) as Ok<SmartParseResult, ConfigParseError>).value;
       expect(parsed.detectedType, SmartContentType.subscription);
       expect(parsed.parsedCount, 2);
     });
 
     test('carries Subscription-Userinfo when supplied', () {
-      final parsed =
-          (parseConfigContent(
-            _vless(),
-            userInfoHeaderValue: 'upload=10; download=20; total=100',
-          ) as Ok<SmartParseResult, ConfigParseError>).value;
+      final parsed = (parseConfigContent(
+        _vless(),
+        userInfoHeaderValue: 'upload=10; download=20; total=100',
+      ) as Ok<SmartParseResult, ConfigParseError>).value;
       // A single URI has no header, so userInfo stays null but must not throw.
       expect(parsed.detectedType, SmartContentType.singleUri);
     });
@@ -159,8 +160,9 @@ void main() {
         'vless://not-a-uuid@bad.example.com:443#Bad',
         _trojan(),
       ].join('\n');
-      final parsed =
-          (parseConfigContent(body) as Ok<SmartParseResult, ConfigParseError>).value;
+      final parsed = (parseConfigContent(
+        body,
+      ) as Ok<SmartParseResult, ConfigParseError>).value;
       expect(parsed.parsedCount, 2, reason: 'good entries must survive');
       expect(parsed.warnings, isNotEmpty);
       expect(parsed.isComplete, isFalse);
@@ -176,8 +178,9 @@ void main() {
         'uuid': _uuid,
         'tls': {'enabled': true, 'server_name': 'example.com'},
       });
-      final parsed =
-          (parseConfigContent(json) as Ok<SmartParseResult, ConfigParseError>).value;
+      final parsed = (parseConfigContent(
+        json,
+      ) as Ok<SmartParseResult, ConfigParseError>).value;
       expect(parsed.detectedType, SmartContentType.json);
       expect(parsed.parsedCount, 1);
       final vless = parsed.outbounds.first as VlessOutbound;
@@ -187,11 +190,22 @@ void main() {
 
     test('an array of outbounds', () {
       final json = jsonEncode([
-        {'type': 'trojan', 'server': 'a.com', 'server_port': 443, 'password': 'p1'},
-        {'type': 'trojan', 'server': 'b.com', 'server_port': 443, 'password': 'p2'},
+        {
+          'type': 'trojan',
+          'server': 'a.com',
+          'server_port': 443,
+          'password': 'p1',
+        },
+        {
+          'type': 'trojan',
+          'server': 'b.com',
+          'server_port': 443,
+          'password': 'p2',
+        },
       ]);
-      final parsed =
-          (parseConfigContent(json) as Ok<SmartParseResult, ConfigParseError>).value;
+      final parsed = (parseConfigContent(
+        json,
+      ) as Ok<SmartParseResult, ConfigParseError>).value;
       expect(parsed.detectedType, SmartContentType.json);
       expect(parsed.parsedCount, 2);
     });
@@ -199,11 +213,17 @@ void main() {
     test('a full sing-box config with an "outbounds" array', () {
       final json = jsonEncode({
         'outbounds': [
-          {'type': 'vmess', 'server': 'a.com', 'server_port': 443, 'uuid': _uuid},
+          {
+            'type': 'vmess',
+            'server': 'a.com',
+            'server_port': 443,
+            'uuid': _uuid,
+          },
         ],
       });
-      final parsed =
-          (parseConfigContent(json) as Ok<SmartParseResult, ConfigParseError>).value;
+      final parsed = (parseConfigContent(
+        json,
+      ) as Ok<SmartParseResult, ConfigParseError>).value;
       expect(parsed.detectedType, SmartContentType.json);
       expect(parsed.parsedCount, 1);
       expect(parsed.outbounds.first, isA<VmessOutbound>());
@@ -220,8 +240,9 @@ void main() {
         'peer_public_key': _wgPub,
         'mtu': 1408,
       });
-      final parsed =
-          (parseConfigContent(json) as Ok<SmartParseResult, ConfigParseError>).value;
+      final parsed = (parseConfigContent(
+        json,
+      ) as Ok<SmartParseResult, ConfigParseError>).value;
       final wg = parsed.outbounds.first as WireGuardOutbound;
       expect(wg.server, 'vpn.example.com');
       expect(wg.localAddresses, ['10.0.0.2/32']);
@@ -247,7 +268,8 @@ void main() {
     });
 
     test('an oversized payload is rejected before parsing', () {
-      final huge = 'vless://$_uuid@example.com:443#' + ('a' * maxSubscriptionLength);
+      final huge =
+          'vless://$_uuid@example.com:443#' + ('a' * maxSubscriptionLength);
       final result = parseConfigContent(huge);
       expect(result.isErr, isTrue);
       expect(
@@ -285,9 +307,7 @@ void main() {
   group('SECURITY: no secrets leak', () {
     test('errors never echo a pasted private key', () {
       const secret = 'SUPERSECRETPRIVATEKEYMATERIAL0000000';
-      final result = parseConfigContent(
-        'vless://$secret@example.com:99999#x',
-      );
+      final result = parseConfigContent('vless://$secret@example.com:99999#x');
       expect(result.isErr, isTrue);
       final error = (result as Err<SmartParseResult, ConfigParseError>).error;
       expect(error.message.contains(secret), isFalse);
@@ -304,8 +324,9 @@ void main() {
     test('subscription warnings never echo the offending line', () {
       const secret = 'SecretHostLeakCanary.example.com';
       final body = 'vless://not-a-uuid@$secret:99999#Oops\n${_vless()}';
-      final parsed =
-          (parseConfigContent(body) as Ok<SmartParseResult, ConfigParseError>).value;
+      final parsed = (parseConfigContent(
+        body,
+      ) as Ok<SmartParseResult, ConfigParseError>).value;
       for (final warning in parsed.warnings) {
         expect(warning.message.contains(secret), isFalse);
       }

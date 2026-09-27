@@ -27,9 +27,28 @@
 
 ## 1. Current Phase
 
-**Phase 2 — Config & Protocol Parsers: P2-T1 through P2-T8 are implemented and verified. P2-T5's
-final piece (Shadowsocks cipher validation) landed with the most recent work. Phase 2 is NOT
-closed — P2-T9..P2-T12 remain, and §6 records the open items.**
+**Phase 3 — Android VPN Engine: READY TO START, pending one human gate.** The Phase 2 parser
+layer this phase consumes is delivered and verified: all 8 protocol families, the subscription
+decoder, the smart content router, and the Sing-Box serializer and its inverse reader, at 231
+passing `config_parser` tests and 418 monorepo-wide.
+
+**Phase 2 is substantially complete but NOT 100% complete, and was not closed by the agent.** A
+closeout audit was performed on 2026-09-27 and is recorded in `ROADMAP.md`. Outstanding:
+- **P2-T10 (subscription URL fetch)** — not started. There is no `dart:io`, `HttpClient` or HTTP
+  dependency in `packages/config_parser` at all, by design. This is the project's first real
+  network-I/O task and needs its own layer-placement decision and threat model.
+- **P2-T11 (adversarial/fuzz pass)** — not started. Per-parser malformed cases exist, but the
+  cross-cutting hardening pass (nested percent-encoding, malformed UTF-16 surrogates, null bytes,
+  stack-overflow and unbounded-allocation hunting) has not been run across all parsers.
+- **P2-T9** — implemented and tested, but its acceptance criteria have not been human-verified
+  one-by-one; checkboxes left unticked on purpose.
+- **P2-T12** — this audit was performed; the full DoD checklist walk is outstanding.
+
+**The gate:** `P3-T1` declares `Depends On: P2-T12`, so Phase 3 is formally gated until a human
+closes P2-T12. Gate A is a native-only Kotlin harness with zero Flutter involvement and does not
+use subscription fetching, so P2-T10 does not block it; P2-T11 is the more relevant risk to
+schedule early, because Phase 3 will feed real untrusted config into this parser. Phase 3 is
+officially titled "Android VPN Engine", not "Core Engine & Platform Integration".
 
 Phase 0 (Project Foundation & Governance Setup) and Phase 1 (Architecture Skeleton, P1-T1..P1-T11)
 are complete. Phase 1 built, and is verified by re-running the suites against the live repository:
@@ -66,13 +85,20 @@ obfuscation parameters cannot be serialized for runtime use; `AmneziaWgOutbound`
 `==`/`hashCode` covering those parameters; the AWG numeric ranges are not yet cited to an
 authoritative source; and `brick://` has no Android intent-filter registered yet.
 
-**Closeout measurements (2026-09-26, all re-run at audit time):**
-- **417 tests pass monorepo-wide (393 pure-Dart + 24 Flutter), re-run 2026-09-27 after the
-  P2-T13/P2-T14 work.** Pure-Dart: `shared_utils` 15, `core_domain` 107, `core_vpn_engine` 43,
-  `config_parser` 228. Flutter: `mobile` 23, `ui_theme` 1.
+**Closeout measurements (all figures re-run at the stated audit time):**
+- **418 tests pass monorepo-wide (394 pure-Dart + 24 Flutter), re-run 2026-09-27 at the Phase 2
+  closeout audit.** Pure-Dart: `shared_utils` 15, `core_domain` 107, `core_vpn_engine` 43,
+  `config_parser` 231. Flutter: `mobile` 23, `ui_theme` 1.
   (Supersedes the earlier "175 tests / 152 pure-Dart" Phase-1 closeout figure, the "258 pure-Dart"
-  figure quoted in Phase-2 handoffs, and the intermediate "346 tests / `core_domain` 94 /
-  `config_parser` 170" figure; all were stale.)
+  figure quoted in Phase-2 handoffs, the intermediate "346 tests / `core_domain` 94 /
+  `config_parser` 170" figure, and the "417 / `config_parser` 228" figure recorded before the
+  redaction fix; all were stale.)
+- **Pure Dart isolation verified 2026-09-27:** 0 `package:flutter/` and 0 `dart:ui` imports in
+  `shared_utils`, `core_domain`, `core_vpn_engine` and `config_parser`; 0 references to
+  `core_vpn_engine` in `config_parser`'s `pubspec.yaml` or barrel.
+- **Redaction:** 0 `toString()` overrides on any config or domain type (so no accidental default
+  dump of a secret-bearing object), and a canary-based sweep across 19 hostile inputs confirms no
+  parser error message echoes input secrets. See §6 for the one leak this audit found and fixed.
 - `flutter analyze .` — 0 errors, 0 warnings, 0 lints across all 6 packages.
 - `dart format --set-exit-if-changed` — 0 changed files across all 6 packages.
 - **Pure-Dart isolation re-verified:** 0 `package:flutter/*` and 0 `dart:ui` imports in
@@ -151,6 +177,71 @@ Status tokens below are quoted verbatim from the corresponding `**Status:**` lin
 ---
 
 ## 6. Open Questions / Pending Human Decisions
+
+### Phase 2 closeout audit — open items and known limits (2026-09-27)
+
+Found by the closeout audit. Each is stated with its evidence so it can be verified, not re-derived.
+
+1. **Security defect found and FIXED during this audit — echoed untrusted identifiers.**
+   `UnsupportedSchemeError`, `UnsupportedProtocolError` and `UnsupportedCipherError` stored a
+   caller-supplied token and reproduced it verbatim in `message`. The doc comments assumed the
+   token was "a short, non-sensitive token", but nothing enforced that: a payload such as
+   `{"type":"<credential>","server":...}` produced `Unsupported protocol: <credential>`, putting a
+   secret into a log-bound string (`SECURITY.md` §4 forbids credentials in logs). Fixed by routing
+   all three through `sanitiseEchoedIdentifier`, which passes only short, identifier-shaped values
+   (`[a-z0-9-]`, <= 32 chars) and otherwise reports a shape mismatch. Covered by
+   `packages/config_parser/test/error_redaction_test.dart`. **The underlying assumption — that a
+   token field is safe to echo — should be re-checked anywhere else it is made.**
+
+2. **`AmneziaWgOutbound` does not override `==`/`hashCode` — DEFERRED.**
+   It inherits identity semantics from `WireGuardOutbound`, so two instances differing *only* in
+   obfuscation parameters (`jc`, `jmin`, `jmax`, `s1`, `s2`, `h1`–`h4`) compare equal. This is a
+   real correctness bug for any future deduplication or profile-diffing logic. It was **not** fixed
+   because the fix requires adding fields or an override to `packages/core_domain`, which is
+   strictly frozen. Needs a deliberate unfreeze.
+
+3. **Sing-Box WireGuard outbound is deprecated; an endpoint migration is planned.**
+   sing-box deprecated the WireGuard *outbound* in 1.11.0 and documents removal in 1.13.0
+   ("Migrate WireGuard outbound to endpoint"). The JSON emitted here is correct for the 1.10/1.11
+   schema this client targets. When the client moves to sing-box >= 1.13, WireGuard must be
+   modelled as an `endpoint`, not an outbound — a `core_domain` shape change, so it needs its own
+   task and an unfreeze.
+
+4. **sing-box has no AmneziaWG schema — runtime AmneziaWG is not supported.**
+   None of the nine obfuscation parameters exist in sing-box's WireGuard schema and it rejects
+   unknown top-level keys. They are parsed, range-validated and preserved on the domain object
+   (`toJson()` namespaces them under `amneziawg_obfuscation`) but are **not** emitted for runtime
+   use, because doing so yields a config sing-box refuses to load. Real AWG support needs a patched
+   sing-box or a different outbound construct. The `amneziawg://` / `awg://` URI scheme is also
+   this project's own invention — no stable AWG link convention exists.
+
+5. **AWG numeric ranges are uncited.** The `jc`/`jmin`/`jmax`/`s1`/`s2`/`h1`–`h4` bounds were
+   implemented without a cited live AmneziaWG source during this work. They need checking against
+   authoritative AmneziaWG documentation before being relied on.
+
+6. **WireGuard private-key transport had to be handled defensively.** A base64 key contains
+   `+`, `/` and `=`, any of which corrupts a URI's authority component, so a raw key in the
+   userinfo position makes the link unparseable. The parsers accept either a percent-encoded
+   userinfo or a `private_key` query parameter (query wins). Real-world clients are inconsistent
+   here, so both forms are supported deliberately.
+
+7. **`brick://` deep links are not registered with the OS.** `parseConfigContent` implements and
+   tests the `brick://import?url=...` / `?config=...` contract, but
+   `apps/mobile/android/app/src/main/AndroidManifest.xml` has no intent-filter for the scheme, so
+   Android will not route such a link into the app. It is reachable from clipboard / in-app paste
+   only until that Android wiring is added.
+
+8. **Smart-router multi-entry detection is newline-based.** A body of several URIs joined by any
+   separator other than a newline is routed as a single URI and fails with a syntax error instead
+   of being split. Base64 bodies (no `://` at all) are handled correctly by falling through to the
+   subscription decoder.
+
+9. **The Sing-Box serializer's AmneziaWG handling is order-dependent.** `tryBuild` sets
+   `'type': config.protocol.name` (which is `amneziawg` for an AWG outbound) and then
+   `out.addAll(map)`, where the WireGuard branch supplies `'type': 'wireguard'`, which overwrites
+   it. The result is correct, but the correctness depends on that overwrite order. There is a test
+   pinning `json['type'] == 'wireguard'`; a future refactor that reorders these lines would
+   silently emit `"type": "amneziawg"`, which sing-box would reject.
 
 ### Phase 1 closeout — open items (2026-09-26)
 

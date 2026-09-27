@@ -462,8 +462,9 @@ void main() {
       );
       final result = parseWireguardUri(uri);
       expect(result.isOk, isTrue, reason: 'encoded userinfo must parse');
-      final wg = (result as Ok<OutboundConfig, ConfigParseError>).value
-          as WireGuardOutbound;
+      final wg =
+          (result as Ok<OutboundConfig, ConfigParseError>).value
+              as WireGuardOutbound;
       expect(wg.privateKey, _privKey);
     });
 
@@ -473,8 +474,9 @@ void main() {
           '&peer_public_key=${Uri.encodeQueryComponent(_pubKey)}&ip=10.0.0.2/32';
       final result = parseWireguardUri(uri);
       expect(result.isOk, isTrue, reason: 'query-param key must parse');
-      final wg = (result as Ok<OutboundConfig, ConfigParseError>).value
-          as WireGuardOutbound;
+      final wg =
+          (result as Ok<OutboundConfig, ConfigParseError>).value
+              as WireGuardOutbound;
       expect(wg.privateKey, _privKey);
     });
 
@@ -484,8 +486,9 @@ void main() {
           'wireguard://${Uri.encodeComponent(other)}@vpn.example.com:51820'
           '?private_key=${Uri.encodeQueryComponent(_privKey)}'
           '&peer_public_key=${Uri.encodeQueryComponent(_pubKey)}&ip=10.0.0.2/32';
-      final wg = (parseWireguardUri(uri) as Ok<OutboundConfig, ConfigParseError>)
-          .value as WireGuardOutbound;
+      final wg =
+          (parseWireguardUri(uri) as Ok<OutboundConfig, ConfigParseError>).value
+              as WireGuardOutbound;
       expect(wg.privateKey, _privKey);
     });
 
