@@ -84,8 +84,7 @@ abstract interface class SubscriptionTransport {
 /// deliberately no `badCertificateCallback` override anywhere in this file.
 final class HttpClientTransport implements SubscriptionTransport {
   /// Creates a transport, optionally over an injected [client] (for tests).
-  HttpClientTransport({HttpClient? client})
-    : _client = client ?? HttpClient() {
+  HttpClientTransport({HttpClient? client}) : _client = client ?? HttpClient() {
     // Do not let the OS pool connections indefinitely for a client that is
     // used once per fetch.
     _client.connectionTimeout = defaultFetchTimeout;
@@ -164,9 +163,8 @@ final class SubscriptionFetcher {
     final requestHeaders = <String, String>{
       'user-agent': defaultSubscriptionUserAgent,
       'accept': '*/*',
-      if (headers != null) ...headers.map(
-        (k, v) => MapEntry(k.toLowerCase(), v),
-      ),
+      if (headers != null)
+        ...headers.map((k, v) => MapEntry(k.toLowerCase(), v)),
     };
 
     try {
@@ -175,7 +173,8 @@ final class SubscriptionFetcher {
         if (sent case Err(:final error)) {
           return Err(error);
         }
-        final response = (sent as Ok<TransportResponse, ConfigParseError>).value;
+        final response =
+            (sent as Ok<TransportResponse, ConfigParseError>).value;
 
         if (_isRedirect(response.statusCode)) {
           final location = response.location;
@@ -211,8 +210,7 @@ final class SubscriptionFetcher {
         if (bodyResult case Err(:final error)) {
           return Err(error);
         }
-        final text =
-            (bodyResult as Ok<String, ConfigParseError>).value;
+        final text = (bodyResult as Ok<String, ConfigParseError>).value;
         return parseSubscription(
           text,
           userInfoHeaderValue:
@@ -226,9 +224,7 @@ final class SubscriptionFetcher {
     } on Object {
       // Deliberately discard the exception object: `dart:io` messages embed
       // the host, and a host is part of a credential-bearing URL.
-      return Err(
-        NetworkFailureError('the request could not be completed'),
-      );
+      return Err(NetworkFailureError('the request could not be completed'));
     }
 
     return Err(TooManyRedirectsError(maxRedirects));
@@ -257,15 +253,11 @@ final class SubscriptionFetcher {
     Duration timeout,
   ) async {
     try {
-      return Ok(
-        await _transport.send(url, headers).timeout(timeout),
-      );
+      return Ok(await _transport.send(url, headers).timeout(timeout));
     } on TimeoutException {
       return Err(NetworkTimeoutError('subscription fetch', timeout));
     } on Object {
-      return Err(
-        NetworkFailureError('the request could not be completed'),
-      );
+      return Err(NetworkFailureError('the request could not be completed'));
     }
   }
 
@@ -307,9 +299,7 @@ final class SubscriptionFetcher {
         if (!completer.isCompleted) {
           // Response body bytes are untrusted and may echo the request URL.
           completer.complete(
-            Err(
-              NetworkFailureError('the response stream failed'),
-            ),
+            Err(NetworkFailureError('the response stream failed')),
           );
         }
       },
@@ -317,14 +307,10 @@ final class SubscriptionFetcher {
         if (completer.isCompleted) return;
         try {
           final bytes = builder.takeBytes();
-          completer.complete(
-            Ok<String, ConfigParseError>(_decodeUtf8(bytes)),
-          );
+          completer.complete(Ok<String, ConfigParseError>(_decodeUtf8(bytes)));
         } on FormatException {
           completer.complete(
-            const Err(
-              ResponseDecodingError('subscription body'),
-            ),
+            const Err(ResponseDecodingError('subscription body')),
           );
         }
       },
@@ -362,4 +348,3 @@ final class SubscriptionFetcher {
   /// Closes the underlying transport.
   void close() => _transport.close();
 }
-

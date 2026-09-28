@@ -70,10 +70,60 @@ String decodeRemark(Uri uri) {
   if (fragment.isEmpty) {
     return '';
   }
+  return percentDecodeOrRaw(fragment);
+}
+
+/// Reads [uri]'s query parameters without ever throwing.
+///
+/// `Uri.queryParameters` calls `Uri.decodeQueryComponent` on every value, and
+/// that throws a `FormatException` for a well-formed percent-escape that is
+/// not valid UTF-8 (e.g. `?x=%C3%28`). Parsing an attacker-supplied link must
+/// never throw, so every parser reads the query through this helper instead.
+///
+/// On malformed input the parameters are decoded leniently: values that
+/// cannot be decoded are kept as their raw (still-encoded) text rather than
+/// aborting the parse, and key/value decoding is otherwise unchanged. A
+/// parser that needs a strictly valid value will reject it downstream.
+Map<String, String> safeQueryParameters(Uri uri) {
   try {
-    return Uri.decodeComponent(fragment);
+    return uri.queryParameters;
+  } on FormatException {
+    // Re-parse leniently, preserving whatever the decoder can handle.
+    final out = <String, String>{};
+    final query = uri.query;
+    if (query.isEmpty) return out;
+    for (final pair in query.split('&')) {
+      if (pair.isEmpty) continue;
+      final eq = pair.indexOf('=');
+      final rawKey = eq == -1 ? pair : pair.substring(0, eq);
+      final rawValue = eq == -1 ? '' : pair.substring(eq + 1);
+      out[percentDecodeOrRaw(rawKey)] = percentDecodeOrRaw(rawValue);
+    }
+    return out;
+  }
+}
+
+/// Percent-decodes [input], falling back to the raw value on malformed input.
+///
+/// **This is the single implementation every parser must use.** It used to be
+/// duplicated as a private `_percentDecode` in six parser files, each of which
+/// caught only `ArgumentError`. That was incomplete: `Uri.decodeComponent`
+/// throws **`FormatException`** for a syntactically well-formed escape that
+/// decodes to invalid UTF-8 (e.g. `%C3%28`), so inputs like
+/// `trojan://%C3%28@host:443` escaped five public parsers as an unhandled
+/// `FormatException`, violating the "zero unhandled throws" contract.
+///
+/// Both exception types are now caught, so this function is **total**: it
+/// returns a `String` for every possible input and can never throw.
+String percentDecodeOrRaw(String input) {
+  try {
+    return Uri.decodeComponent(input);
   } on ArgumentError {
-    return fragment;
+    // Malformed escape (e.g. `%`, `%zz`, truncated `%A4`).
+    return input;
+  } on FormatException {
+    // Well-formed escape that is not valid UTF-8 (e.g. `%C3%28`).
+    return input;
   }
 }
 

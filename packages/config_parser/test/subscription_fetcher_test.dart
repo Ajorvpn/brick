@@ -26,14 +26,16 @@ class FakeTransport implements SubscriptionTransport {
   );
 
   /// Builds a single 200 response carrying [body].
-  factory FakeTransport.ok(String body, {Map<String, String> headers = const {}}) =>
-      FakeTransport(
-        (uri, headers) async => TransportResponse(
-          statusCode: 200,
-          headers: headers,
-          body: Stream<List<int>>.value(utf8.encode(body)),
-        ),
-      );
+  factory FakeTransport.ok(
+    String body, {
+    Map<String, String> headers = const {},
+  }) => FakeTransport(
+    (uri, headers) async => TransportResponse(
+      statusCode: 200,
+      headers: headers,
+      body: Stream<List<int>>.value(utf8.encode(body)),
+    ),
+  );
 
   /// Responds with a fixed status code.
   factory FakeTransport.status(int code) => FakeTransport(
@@ -55,8 +57,9 @@ class FakeTransport implements SubscriptionTransport {
   });
 
   /// Throws, simulating a DNS/socket failure.
-  factory FakeTransport.throws() =>
-      FakeTransport((uri, headers) async => throw const SocketException('boom'));
+  factory FakeTransport.throws() => FakeTransport(
+    (uri, headers) async => throw const SocketException('boom'),
+  );
 
   final Future<TransportResponse> Function(Uri, Map<String, String>) _respond;
 
@@ -124,7 +127,9 @@ class ChunkedTransport implements SubscriptionTransport {
 void main() {
   group('successful fetch', () {
     test('a 200 body is fetched and parsed', () async {
-      final transport = FakeTransport.ok('${_vless('a.com')}\n${_vless('b.com')}');
+      final transport = FakeTransport.ok(
+        '${_vless('a.com')}\n${_vless('b.com')}',
+      );
       final fetcher = SubscriptionFetcher(transport: transport);
 
       final result = await fetcher.fetchSubscription(
@@ -143,9 +148,7 @@ void main() {
       final body = base64.encode(
         utf8.encode('${_vless('a.com')}\n${_vless('b.com')}'),
       );
-      final fetcher = SubscriptionFetcher(
-        transport: FakeTransport.ok(body),
-      );
+      final fetcher = SubscriptionFetcher(transport: FakeTransport.ok(body));
       final result = await fetcher.fetchSubscription(
         Uri.parse('https://sub.example.com/list'),
       );
@@ -156,24 +159,27 @@ void main() {
       );
     });
 
-    test('Subscription-Userinfo is carried through to the parse result', () async {
-      final fetcher = SubscriptionFetcher(
-        transport: FakeTransport.ok(
-          _vless('a.com'),
-          headers: {
-            'subscription-userinfo':
-                'upload=10; download=20; total=100; expire=1700000000',
-          },
-        ),
-      );
-      final result = await fetcher.fetchSubscription(
-        Uri.parse('https://sub.example.com/list'),
-      );
-      final parsed =
-          (result as Ok<SubscriptionParseResult, ConfigParseError>).value;
-      // The header reaches the parser; the value itself is not echoed.
-      expect(parsed.configs, hasLength(1));
-    });
+    test(
+      'Subscription-Userinfo is carried through to the parse result',
+      () async {
+        final fetcher = SubscriptionFetcher(
+          transport: FakeTransport.ok(
+            _vless('a.com'),
+            headers: {
+              'subscription-userinfo':
+                  'upload=10; download=20; total=100; expire=1700000000',
+            },
+          ),
+        );
+        final result = await fetcher.fetchSubscription(
+          Uri.parse('https://sub.example.com/list'),
+        );
+        final parsed =
+            (result as Ok<SubscriptionParseResult, ConfigParseError>).value;
+        // The header reaches the parser; the value itself is not echoed.
+        expect(parsed.configs, hasLength(1));
+      },
+    );
   });
 
   group('HTTPS enforcement', () {
@@ -203,51 +209,53 @@ void main() {
   });
 
   group('size limit', () {
-    test('an oversized body returns InputTooLargeError and cancels the stream',
-        () async {
-      // 1 KiB chunks; a 4 KiB cap trips after 5 chunks.
-      final transport = ChunkedTransport(1024, 1000);
-      final fetcher = SubscriptionFetcher(transport: transport);
+    test(
+      'an oversized body returns InputTooLargeError and cancels the stream',
+      () async {
+        // 1 KiB chunks; a 4 KiB cap trips after 5 chunks.
+        final transport = ChunkedTransport(1024, 1000);
+        final fetcher = SubscriptionFetcher(transport: transport);
 
-      final result = await fetcher.fetchSubscription(
-        Uri.parse('https://sub.example.com/list'),
-        maxBytes: 4096,
-      );
+        final result = await fetcher.fetchSubscription(
+          Uri.parse('https://sub.example.com/list'),
+          maxBytes: 4096,
+        );
 
-      expect(result.isErr, isTrue);
-      final error =
-          (result as Err<SubscriptionParseResult, ConfigParseError>).error;
-      expect(error, isA<InputTooLargeError>());
-      expect((error as InputTooLargeError).maxLength, 4096);
-      // Proves the cap aborts the stream rather than buffering everything.
-      expect(transport.cancelledEarly, isTrue);
-      expect(
-        transport.chunksDelivered,
-        lessThan(1000),
-        reason: 'must not read the whole oversized body',
-      );
-    });
+        expect(result.isErr, isTrue);
+        final error =
+            (result as Err<SubscriptionParseResult, ConfigParseError>).error;
+        expect(error, isA<InputTooLargeError>());
+        expect((error as InputTooLargeError).maxLength, 4096);
+        // Proves the cap aborts the stream rather than buffering everything.
+        expect(transport.cancelledEarly, isTrue);
+        expect(
+          transport.chunksDelivered,
+          lessThan(1000),
+          reason: 'must not read the whole oversized body',
+        );
+      },
+    );
 
     test('a body exactly at the cap is accepted', () async {
       // Boundary: the cap is inclusive, so length == maxBytes must pass.
       final body = _vless('a.com');
-      final result = await SubscriptionFetcher(
-        transport: FakeTransport.ok(body),
-      ).fetchSubscription(
-        Uri.parse('https://sub.example.com/list'),
-        maxBytes: utf8.encode(body).length,
-      );
+      final result =
+          await SubscriptionFetcher(transport: FakeTransport.ok(body))
+              .fetchSubscription(
+                Uri.parse('https://sub.example.com/list'),
+                maxBytes: utf8.encode(body).length,
+              );
       expect(result.isOk, isTrue);
     });
 
     test('one byte over the cap is rejected', () async {
       final body = _vless('a.com');
-      final result = await SubscriptionFetcher(
-        transport: FakeTransport.ok(body),
-      ).fetchSubscription(
-        Uri.parse('https://sub.example.com/list'),
-        maxBytes: utf8.encode(body).length - 1,
-      );
+      final result =
+          await SubscriptionFetcher(transport: FakeTransport.ok(body))
+              .fetchSubscription(
+                Uri.parse('https://sub.example.com/list'),
+                maxBytes: utf8.encode(body).length - 1,
+              );
       expect(result.isErr, isTrue);
       expect(
         (result as Err<SubscriptionParseResult, ConfigParseError>).error,
@@ -305,11 +313,13 @@ void main() {
   group('redirects', () {
     RedirectTransport chain(List<String> locations) => RedirectTransport(
       locations
-          .map((l) => TransportResponse(
-                statusCode: 302,
-                headers: {'location': l},
-                body: const Stream<List<int>>.empty(),
-              ))
+          .map(
+            (l) => TransportResponse(
+              statusCode: 302,
+              headers: {'location': l},
+              body: const Stream<List<int>>.empty(),
+            ),
+          )
           .toList(),
     );
 
@@ -324,8 +334,10 @@ void main() {
       final result = await SubscriptionFetcher(transport: transport)
           .fetchSubscription(Uri.parse('https://sub.example.com/list'));
       expect(result.isOk, isTrue);
-      expect(transport.requestedUris.map((u) => u.host),
-          ['sub.example.com', 'cdn.example.com']);
+      expect(transport.requestedUris.map((u) => u.host), [
+        'sub.example.com',
+        'cdn.example.com',
+      ]);
     });
 
     test('caps the redirect chain at maxRedirects', () async {
@@ -359,23 +371,25 @@ void main() {
       );
     });
 
-    test('a relative redirect Location resolves against the current URL',
-        () async {
-      final transport = RedirectTransport([
-        TransportResponse(
-          statusCode: 302,
-          headers: {'location': '/v2/list'},
-          body: const Stream<List<int>>.empty(),
-        ),
-      ], finalBody: _vless('a.com'));
-      final result = await SubscriptionFetcher(transport: transport)
-          .fetchSubscription(Uri.parse('https://sub.example.com/v1/list'));
-      expect(result.isOk, isTrue);
-      expect(
-        transport.requestedUris.last.toString(),
-        'https://sub.example.com/v2/list',
-      );
-    });
+    test(
+      'a relative redirect Location resolves against the current URL',
+      () async {
+        final transport = RedirectTransport([
+          TransportResponse(
+            statusCode: 302,
+            headers: {'location': '/v2/list'},
+            body: const Stream<List<int>>.empty(),
+          ),
+        ], finalBody: _vless('a.com'));
+        final result = await SubscriptionFetcher(transport: transport)
+            .fetchSubscription(Uri.parse('https://sub.example.com/v1/list'));
+        expect(result.isOk, isTrue);
+        expect(
+          transport.requestedUris.last.toString(),
+          'https://sub.example.com/v2/list',
+        );
+      },
+    );
   });
 
   group('headers', () {
@@ -451,8 +465,11 @@ void main() {
         expect(result.isErr, isTrue, reason: 'expected an error');
         final error =
             (result as Err<SubscriptionParseResult, ConfigParseError>).error;
-        expect(error.message.contains(token), isFalse,
-            reason: 'token leaked via ${error.code}');
+        expect(
+          error.message.contains(token),
+          isFalse,
+          reason: 'token leaked via ${error.code}',
+        );
         expect(error.code.contains(token), isFalse);
       }
     });
@@ -460,21 +477,23 @@ void main() {
     test('a token in the host never reaches an error message', () async {
       final result = await SubscriptionFetcher(
         transport: FakeTransport.status(403),
-      ).fetchSubscription(
-        Uri.parse('http://$token.example.com/list'),
-      );
-      final error = (result as Err<SubscriptionParseResult, ConfigParseError>).error;
+      ).fetchSubscription(Uri.parse('http://$token.example.com/list'));
+      final error =
+          (result as Err<SubscriptionParseResult, ConfigParseError>).error;
       expect(error.message.contains(token), isFalse);
     });
 
     test('an exception message from the transport is not propagated', () async {
       // The real SocketException message includes the host.
-      final transport = ThrowingTransport(const SocketException(
-        'Connection failed: sub.example.com, token=$token',
-      ));
+      final transport = ThrowingTransport(
+        const SocketException(
+          'Connection failed: sub.example.com, token=$token',
+        ),
+      );
       final result = await SubscriptionFetcher(transport: transport)
           .fetchSubscription(Uri.parse('https://sub.example.com/list'));
-      final error = (result as Err<SubscriptionParseResult, ConfigParseError>).error;
+      final error =
+          (result as Err<SubscriptionParseResult, ConfigParseError>).error;
       expect(error.message.contains(token), isFalse);
       expect(error.message.contains('sub.example.com'), isFalse);
     });
@@ -483,9 +502,8 @@ void main() {
       // Guards against a future edit weakening certificate validation.
       // Comments and doc comments are stripped first, otherwise this guard
       // would match its own explanatory prose.
-      final source = File(
-        'lib/src/subscription/subscription_fetcher.dart',
-      ).readAsStringSync();
+      final source = File('lib/src/subscription/subscription_fetcher.dart')
+          .readAsStringSync();
       final code = source
           .replaceAll(RegExp(r'/\*.*?\*/', dotAll: true), '')
           .replaceAll(RegExp(r'//.*'), '');
@@ -498,9 +516,7 @@ void main() {
   group('HttpClientTransport against a real loopback server', () {
     late HttpServer server;
 
-    Future<void> serve(
-      Future<void> Function(HttpRequest) handler,
-    ) async {
+    Future<void> serve(Future<void> Function(HttpRequest) handler) async {
       server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
       server.listen((req) async {
         try {
@@ -535,24 +551,26 @@ void main() {
       expect(utf8.decode(bytes), 'hello from loopback');
     });
 
-    test('does NOT follow redirects itself (policy stays in the fetcher)',
-        () async {
-      await serve((req) async {
-        req.response
-          ..statusCode = 302
-          ..headers.set('location', 'http://127.0.0.1:${server.port}/final');
-        await req.response.close();
-      });
+    test(
+      'does NOT follow redirects itself (policy stays in the fetcher)',
+      () async {
+        await serve((req) async {
+          req.response
+            ..statusCode = 302
+            ..headers.set('location', 'http://127.0.0.1:${server.port}/final');
+          await req.response.close();
+        });
 
-      final transport = HttpClientTransport();
-      addTearDown(transport.close);
-      final response = await transport.send(
-        Uri.parse('http://127.0.0.1:${server.port}/'),
-        const {},
-      );
-      expect(response.statusCode, 302);
-      expect(response.location, isNotNull);
-    });
+        final transport = HttpClientTransport();
+        addTearDown(transport.close);
+        final response = await transport.send(
+          Uri.parse('http://127.0.0.1:${server.port}/'),
+          const {},
+        );
+        expect(response.statusCode, 302);
+        expect(response.location, isNotNull);
+      },
+    );
   });
 }
 
@@ -609,5 +627,3 @@ class ThrowingTransport implements SubscriptionTransport {
   @override
   void close() {}
 }
-
-

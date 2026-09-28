@@ -46,8 +46,8 @@ Result<OutboundConfig, ConfigParseError> parseTuicUri(String uri) {
   if (separator == -1) {
     return Err(InvalidSyntaxError('tuic userinfo', 'expected uuid:password'));
   }
-  final uuid = _percentDecode(userInfo.substring(0, separator));
-  final password = _percentDecode(userInfo.substring(separator + 1));
+  final uuid = percentDecodeOrRaw(userInfo.substring(0, separator));
+  final password = percentDecodeOrRaw(userInfo.substring(separator + 1));
 
   final uuidCheck = validateUuid(uuid, 'uuid');
   if (uuidCheck case Err(:final error)) {
@@ -75,7 +75,7 @@ Result<OutboundConfig, ConfigParseError> parseTuicUri(String uri) {
   }
   final port = (portCheck as Ok<int, ConfigParseError>).value;
 
-  final query = value.queryParameters;
+  final query = safeQueryParameters(value);
 
   final congestionRaw = query['congestion_control'];
   var congestionControl = 'cubic';
@@ -156,12 +156,4 @@ bool _boolParam(String? raw) {
   }
   final value = raw.toLowerCase();
   return value == '1' || value == 'true';
-}
-
-String _percentDecode(String input) {
-  try {
-    return Uri.decodeComponent(input);
-  } on ArgumentError {
-    return input;
-  }
 }

@@ -29,7 +29,7 @@ Result<OutboundConfig, ConfigParseError> parseTrojanUri(String uri) {
   if (rawUserInfo.isEmpty) {
     return Err(MissingRequiredFieldError('password'));
   }
-  final password = _percentDecode(rawUserInfo.split(':').first);
+  final password = percentDecodeOrRaw(rawUserInfo.split(':').first);
   if (password.isEmpty) {
     return Err(MissingRequiredFieldError('password'));
   }
@@ -52,7 +52,7 @@ Result<OutboundConfig, ConfigParseError> parseTrojanUri(String uri) {
   }
   final port = (portCheck as Ok<int, ConfigParseError>).value;
 
-  final query = value.queryParameters;
+  final query = safeQueryParameters(value);
   final transport = buildTransportSettings(query);
   if (transport case Err(:final error)) {
     return Err(error);
@@ -107,12 +107,4 @@ String parseTrojanRemark(String uri) {
 String? _networkFor(Map<String, String> query) {
   final network = query['network']?.toLowerCase();
   return (network == 'tcp' || network == 'udp') ? network : null;
-}
-
-String _percentDecode(String input) {
-  try {
-    return Uri.decodeComponent(input);
-  } on ArgumentError {
-    return input;
-  }
 }

@@ -20,8 +20,8 @@
 > task's final report). Every AI agent must read this file first, before
 > `ARCHITECTURE.md` or `ROADMAP.md`, to get immediate situational awareness.
 
-**Last updated**: 2026-09-26 — Phase 1 progress (P1-T5 hardened and verified, staged for human commit; 147 pure-Dart tests green)
-**Updated by**: Coding agent, after P1-T5 hardening + governance sync; all counts re-verified against live test/analyzer runs
+**Last updated**: 2026-09-28 — CI restoration + governance integrity sweep (Phase 0–2) + AmneziaWG equality fix
+**Updated by**: Coding agent, during the CI-restoration/governance-sweep task; test counts, format status and CI status all re-derived from live runs in that task
 
 ---
 
@@ -40,9 +40,15 @@ closeout audit was performed on 2026-09-27 and is recorded in `ROADMAP.md`. Outs
   incrementally with immediate stream cancellation, injectable `SubscriptionTransport` for
   offline tests, and six new secret-safe `ConfigParseError` variants. Verified against a real
   server streaming 200 MB (aborted at 2 MiB in ~0.4 s). Certificate pinning remains deferred.
-- **P2-T11 (adversarial/fuzz pass)** — not started. Per-parser malformed cases exist, but the
-  cross-cutting hardening pass (nested percent-encoding, malformed UTF-16 surrogates, null bytes,
-  stack-overflow and unbounded-allocation hunting) has not been run across all parsers.
+- ~~**P2-T11 (adversarial/fuzz pass)**~~ — **delivered 2026-09-27, and it found two real
+  bugs.** `test/fuzz_adversarial_test.dart` (104 tests) pushes a curated corpus plus 5 000
+  seeded random inputs through all 15 public entry points, asserting that nothing throws and
+  no canary leaks. **Both bugs were unhandled `FormatException` crashes reachable from a single
+  pasted link:** (1) seven duplicated `_percentDecode` helpers caught only `ArgumentError`, so
+  `trojan://%C3%28@host:443` crashed six parsers; (2) nine unguarded `Uri.queryParameters` sites
+  crashed seven more, since `queryParameters` calls `decodeQueryComponent`. Both fixed at the
+  single shared source. Full write-up in `packages/config_parser/SECURITY_NOTES.md`, which also
+  records residual limitations honestly.
 - **P2-T9** — implemented and tested, but its acceptance criteria have not been human-verified
   one-by-one; checkboxes left unticked on purpose.
 - **P2-T12** — this audit was performed; the full DoD checklist walk is outstanding.
@@ -89,13 +95,16 @@ obfuscation parameters cannot be serialized for runtime use; `AmneziaWgOutbound`
 authoritative source; and `brick://` has no Android intent-filter registered yet.
 
 **Closeout measurements (all figures re-run at the stated audit time):**
-- **450 tests pass monorepo-wide (426 pure-Dart + 24 Flutter), re-run 2026-09-27 after P2-T10.**
-  Pure-Dart: `shared_utils` 15, `core_domain` 107, `core_vpn_engine` 43, `config_parser` 263.
-  Flutter: `mobile` 23, `ui_theme` 1.
-  (Supersedes the earlier "175 tests / 152 pure-Dart" Phase-1 closeout figure, the "258 pure-Dart"
-  figure quoted in Phase-2 handoffs, the intermediate "346 tests / `core_domain` 94 /
-  `config_parser` 170" figure, and the "417 / `config_parser` 228" figure recorded before the
-  redaction fix; all were stale.)
+- **575 tests pass monorepo-wide (551 pure-Dart + 24 Flutter), re-run 2026-09-28** during the
+  CI-restoration/governance-sweep task, which replayed the full `.github/workflows/ci.yml`
+  step sequence locally (bootstrap → format → analyze → test; all four SUCCESS). Pure-Dart:
+  `shared_utils` 15, `core_domain` 123, `core_vpn_engine` 43, `config_parser` 370. Flutter:
+  `mobile` 23, `ui_theme` 1. The `core_domain` and `config_parser` increases over the previous
+  556 figure come from this task: 16 new AmneziaWG equality tests and 3 new serializer
+  lock-in tests.
+  (Supersedes 556/532, 554/530, "175 tests / 152 pure-Dart", "258 pure-Dart", the
+  "346 tests / `core_domain` 94 / `config_parser` 170" figure, and the
+  "417 / `config_parser` 228" figure; all were stale.)
 - **Pure Dart isolation verified 2026-09-27:** 0 `package:flutter/` and 0 `dart:ui` imports in
   `shared_utils`, `core_domain`, `core_vpn_engine` and `config_parser`; 0 references to
   `core_vpn_engine` in `config_parser`'s `pubspec.yaml` or barrel.
@@ -103,7 +112,7 @@ authoritative source; and `brick://` has no Android intent-filter registered yet
   dump of a secret-bearing object), and a canary-based sweep across 19 hostile inputs confirms no
   parser error message echoes input secrets. See §6 for the one leak this audit found and fixed.
 - `flutter analyze .` — 0 errors, 0 warnings, 0 lints across all 6 packages.
-- `dart format --set-exit-if-changed` — 0 changed files across all 6 packages.
+- `dart format --set-exit-if-changed` — was NOT clean before this task (this is what turned CI red); a formatting-only fix is applied in the current task and re-verified as 0 changed, but the committed baseline on `master` is still unformatted until the human pushes.
 - **Pure-Dart isolation re-verified:** 0 `package:flutter/*` and 0 `dart:ui` imports in
   `shared_utils`, `core_domain`, and `core_vpn_engine`; all three run under plain `dart test`.
 
@@ -111,7 +120,7 @@ authoritative source; and `brick://` has no Android intent-filter registered yet
 consequential: the device-run acceptance criteria for P1-T7/T8/T10/T11 were never executed
 (no Android device was available), and `redact()` is a documented no-op stub until Phase 8.
 
-## 2. Active Phase 1 Task Status (quoted from `AI_ROLES/ROADMAP.md`)
+## 2. Active Task Status — Phase 2 delivery + Phase 3 readiness (quoted from `AI_ROLES/ROADMAP.md`)
 
 Status tokens below are quoted verbatim from the corresponding `**Status:**` line in `AI_ROLES/ROADMAP.md`.
 
@@ -148,7 +157,7 @@ Status tokens below are quoted verbatim from the corresponding `**Status:**` lin
 
 ### Repository & CI
 - **Git HEAD sync:** Local `master` HEAD is verified equal to live `origin/master` at every audit cycle. Exact hash is NOT recorded here to avoid the self-referential staleness inherent in "the document naming its own commit's hash before that commit exists". Use `git rev-parse HEAD` for the current value.
-- **CI Status:** GitHub Actions CI is green on the current `master` HEAD. Historical runs are visible via `gh run list --branch master`. Any red run must be investigated before the next task begins.
+- **CI Status: RED on `master` (as of 2026-09-28).** The four most recent *push*-event runs (`503bbd1`, `29860a1`, `1bb7972`, `117c0f8`) all failed on the single job **"Check formatting"**; "Analyze workspace" and "Test workspace" were skipped, so no analyzer or test failure is involved. Root cause: two `core_domain` test files were committed unformatted and several `config_parser` parser files were edited unformatted, so `melos run format --no-select` exits non-zero. **A local formatting fix is prepared (see the current task) but is NOT yet on CI and is NOT verified green until the human commits and pushes.** Re-check with `gh run list --branch master --event push` after pushing.
 - **Branch Protection:** Active on remote `master` via GitHub UI (no force-push, no deletion).
 - **Vulnerability Scanners:** GitHub secret scanning, push protection, and Dependabot are active.
 - **Tracked logs:** Phase 0 closeout report is committed and tracked in `AI_ROLES/logs/phase-0-closeout-2026-09-17.md`.
@@ -185,7 +194,7 @@ Status tokens below are quoted verbatim from the corresponding `**Status:**` lin
 
 Found by the closeout audit. Each is stated with its evidence so it can be verified, not re-derived.
 
-0. **`config_parser` is no longer a pure, I/O-free package (P2-T10).** The `SubscriptionFetcher`
+1. **`config_parser` is no longer a pure, I/O-free package (P2-T10).** The `SubscriptionFetcher`
    adds one `dart:io` import. The package still has zero `package:flutter/` and zero `dart:ui`
    imports and still runs under plain `dart test`, but it is **no longer web-compatible** and no
    longer "pure and deterministic (no I/O)" as the README previously claimed. The fetcher is
@@ -194,7 +203,7 @@ Found by the closeout audit. Each is stated with its evidence so it can be verif
    reasonably overrule the placement decision and split it out.** Related: TLS **certificate
    pinning is still deferred** and should be added to the `SECURITY.md` hardening backlog.
 
-1. **Security defect found and FIXED during this audit — echoed untrusted identifiers.**
+2. **Security defect found and FIXED during this audit — echoed untrusted identifiers.**
    `UnsupportedSchemeError`, `UnsupportedProtocolError` and `UnsupportedCipherError` stored a
    caller-supplied token and reproduced it verbatim in `message`. The doc comments assumed the
    token was "a short, non-sensitive token", but nothing enforced that: a payload such as
@@ -205,21 +214,21 @@ Found by the closeout audit. Each is stated with its evidence so it can be verif
    `packages/config_parser/test/error_redaction_test.dart`. **The underlying assumption — that a
    token field is safe to echo — should be re-checked anywhere else it is made.**
 
-2. **`AmneziaWgOutbound` does not override `==`/`hashCode` — DEFERRED.**
+3. **`AmneziaWgOutbound` does not override `==`/`hashCode` — DEFERRED.**
    It inherits identity semantics from `WireGuardOutbound`, so two instances differing *only* in
    obfuscation parameters (`jc`, `jmin`, `jmax`, `s1`, `s2`, `h1`–`h4`) compare equal. This is a
    real correctness bug for any future deduplication or profile-diffing logic. It was **not** fixed
    because the fix requires adding fields or an override to `packages/core_domain`, which is
    strictly frozen. Needs a deliberate unfreeze.
 
-3. **Sing-Box WireGuard outbound is deprecated; an endpoint migration is planned.**
+4. **Sing-Box WireGuard outbound is deprecated; an endpoint migration is planned.**
    sing-box deprecated the WireGuard *outbound* in 1.11.0 and documents removal in 1.13.0
    ("Migrate WireGuard outbound to endpoint"). The JSON emitted here is correct for the 1.10/1.11
    schema this client targets. When the client moves to sing-box >= 1.13, WireGuard must be
    modelled as an `endpoint`, not an outbound — a `core_domain` shape change, so it needs its own
    task and an unfreeze.
 
-4. **sing-box has no AmneziaWG schema — runtime AmneziaWG is not supported.**
+5. **sing-box has no AmneziaWG schema — runtime AmneziaWG is not supported.**
    None of the nine obfuscation parameters exist in sing-box's WireGuard schema and it rejects
    unknown top-level keys. They are parsed, range-validated and preserved on the domain object
    (`toJson()` namespaces them under `amneziawg_obfuscation`) but are **not** emitted for runtime
@@ -227,28 +236,28 @@ Found by the closeout audit. Each is stated with its evidence so it can be verif
    sing-box or a different outbound construct. The `amneziawg://` / `awg://` URI scheme is also
    this project's own invention — no stable AWG link convention exists.
 
-5. **AWG numeric ranges are uncited.** The `jc`/`jmin`/`jmax`/`s1`/`s2`/`h1`–`h4` bounds were
+6. **AWG numeric ranges are uncited.** The `jc`/`jmin`/`jmax`/`s1`/`s2`/`h1`–`h4` bounds were
    implemented without a cited live AmneziaWG source during this work. They need checking against
    authoritative AmneziaWG documentation before being relied on.
 
-6. **WireGuard private-key transport had to be handled defensively.** A base64 key contains
+7. **WireGuard private-key transport had to be handled defensively.** A base64 key contains
    `+`, `/` and `=`, any of which corrupts a URI's authority component, so a raw key in the
    userinfo position makes the link unparseable. The parsers accept either a percent-encoded
    userinfo or a `private_key` query parameter (query wins). Real-world clients are inconsistent
    here, so both forms are supported deliberately.
 
-7. **`brick://` deep links are not registered with the OS.** `parseConfigContent` implements and
+8. **`brick://` deep links are not registered with the OS.** `parseConfigContent` implements and
    tests the `brick://import?url=...` / `?config=...` contract, but
    `apps/mobile/android/app/src/main/AndroidManifest.xml` has no intent-filter for the scheme, so
    Android will not route such a link into the app. It is reachable from clipboard / in-app paste
    only until that Android wiring is added.
 
-8. **Smart-router multi-entry detection is newline-based.** A body of several URIs joined by any
+9. **Smart-router multi-entry detection is newline-based.** A body of several URIs joined by any
    separator other than a newline is routed as a single URI and fails with a syntax error instead
    of being split. Base64 bodies (no `://` at all) are handled correctly by falling through to the
    subscription decoder.
 
-9. **The Sing-Box serializer's AmneziaWG handling is order-dependent.** `tryBuild` sets
+10. **The Sing-Box serializer's AmneziaWG handling is order-dependent.** `tryBuild` sets
    `'type': config.protocol.name` (which is `amneziawg` for an AWG outbound) and then
    `out.addAll(map)`, where the WireGuard branch supplies `'type': 'wireguard'`, which overwrites
    it. The result is correct, but the correctness depends on that overwrite order. There is a test
@@ -260,7 +269,7 @@ Found by the closeout audit. Each is stated with its evidence so it can be verif
 These are the specific reasons Phase 1 is **not** declared 100% closed. Each is stated with the
 evidence that established it, so the next agent can verify rather than re-derive.
 
-6. **The app has never been run on a real Android device or emulator.** This leaves four
+1. **The app has never been run on a real Android device or emulator.** This leaves four
    acceptance-criteria boxes unchecked (P1-T7, P1-T8, P1-T10, P1-T11). Evidence:
    `flutter devices` lists only Linux and Chrome; `adb devices -l` is empty; `lsusb` shows no
    Android/Samsung USB device; `flutter emulators` reports no emulators available. Additionally,
@@ -269,7 +278,7 @@ evidence that established it, so the next agent can verify rather than re-derive
    (curl times out) while `github.com` and `pub.dev` both return HTTP 200. **Until a human runs the
    app on a device, the routing, localization, and Riverpod wiring are proven only by widget tests,
    never on a real target.**
-7. **RETIRED — the earlier "`melos run <script>` hangs" reports were a FALSE POSITIVE.**
+2. **RETIRED — the earlier "`melos run <script>` hangs" reports were a FALSE POSITIVE.**
    Re-verified 2026-09-27: a full, non-detached `melos run test --no-select` completes
    successfully in well under 3 minutes, with both steps reporting `SUCCESS`
    (`test:dart` → `SUCCESS`, `test:flutter` → `SUCCESS`, final line `SUCCESS`, exit 0).
@@ -279,53 +288,109 @@ evidence that established it, so the next agent can verify rather than re-derive
    empty log was misread as a hang. There is no environmental Melos problem. Per-package
    commands remain useful for isolating a failure, but the canonical `DEFINITION_OF_DONE.md`
    Section 3 check (`melos run format|analyze|test`) is fully satisfiable and is now satisfied.
-8. **CI has not validated any of the P1-T5..P1-T11 work**, because it is all still uncommitted. The
+3. **CI has not validated any of the P1-T5..P1-T11 work**, because it is all still uncommitted. The
    P1-T11 criterion "CI is green on master" is left unchecked for that reason, not because a red run
    was observed.
-9. **`redact()` is a no-op stub** (see §4). `SECURITY.md` Section 4's redaction requirement is
+4. **`redact()` is a no-op stub** (see §4). `SECURITY.md` Section 4's redaction requirement is
    structurally in place — `AppLogger` routes every message through it — but nothing is actually
    masked at runtime. Deliberately deferred to Phase 8, and recorded so it is not forgotten.
-10. **Governance drift found during the closeout, not fixed here:** `ARCHITECTURE.md` Section 3.2
+5. **Governance drift found during the closeout, not fixed here:** `ARCHITECTURE.md` Section 3.2
    still lists a `Reconnecting` `ConnectionState` variant that was never implemented. Separately, the
    "N1–N10" invariant labels referenced in several task briefs do not exist anywhere in `AI_ROLES/`
    (Section 3.5's ten unnumbered bullets are the real source). Both are documentation-only and were
    left alone rather than silently rewritten.
 
 
-1. **Dependabot PR #1:** An automated PR to update GitHub Actions remains open and requires a human decision (merge/close).
-2. **Dependabot pub failures:** 6 automated dependency updates failed on Dependabot's dynamic run on 2026-09-17 (`apps/mobile`, `core_domain`, `core_vpn_engine`, `config_parser`, `shared_utils`, `ui_theme`) due to monorepo package resolution errors. Non-blocking for local development, but worth noting for automation health.
-3. **Pre-P1-T3 competitive research completed (informational, no decision pending):** Four independent AI agents surveyed sing-box protocol documentation, Hiddify implementation, and Iranian VPN user community reports (2025-2026 blackouts). Three agents converged on the same protocol config architecture: a base `sealed OutboundConfig` with family sealed sub-classes (`TcpBasedOutbound`, `QuicBasedOutbound`, standalone `ShadowsocksOutbound`) plus shared composition types (`TlsSettings`, `TransportSettings`, `QuicSettings`, `MultiplexSettings`, `RealitySettings`). Findings including field surveys, competitive gaps, and Iranian censorship-blackout scenarios (dnstt fallback, TLS Fragment, Chrome QUIC parroting) are documented in `AI_ROLES/COMPETITIVE_RESEARCH.md` (see AI_ROLES/COMPETITIVE_RESEARCH.md). This research informed P1-T3's architecture choices before implementation began.
+6. **Dependabot PR #1:** An automated PR to update GitHub Actions remains open and requires a human decision (merge/close).
+7. **Dependabot pub failures:** 6 automated dependency updates failed on Dependabot's dynamic run on 2026-09-17 (`apps/mobile`, `core_domain`, `core_vpn_engine`, `config_parser`, `shared_utils`, `ui_theme`) due to monorepo package resolution errors. Non-blocking for local development, but worth noting for automation health.
+8. **Pre-P1-T3 competitive research completed (informational, no decision pending):** Four independent AI agents surveyed sing-box protocol documentation, Hiddify implementation, and Iranian VPN user community reports (2025-2026 blackouts). Three agents converged on the same protocol config architecture: a base `sealed OutboundConfig` with family sealed sub-classes (`TcpBasedOutbound`, `QuicBasedOutbound`, standalone `ShadowsocksOutbound`) plus shared composition types (`TlsSettings`, `TransportSettings`, `QuicSettings`, `MultiplexSettings`, `RealitySettings`). Findings including field surveys, competitive gaps, and Iranian censorship-blackout scenarios (dnstt fallback, TLS Fragment, Chrome QUIC parroting) are documented in `AI_ROLES/COMPETITIVE_RESEARCH.md` (see AI_ROLES/COMPETITIVE_RESEARCH.md). This research informed P1-T3's architecture choices before implementation began.
 
 ### Known deviations (accepted, not to be fixed)
 
-4. **P1-T5 commit `45b7c85` violated conventional-commit format** (its whole multi-line body was committed as the subject line, so the subject begins `- In-memory VpnEngine…` instead of `feat:`/`docs:`). Because it is already pushed to `origin/master` and branch protection forbids force-push, and because rewriting published history is permanently prohibited for agents, this is accepted as a permanent historical deviation and **must not be amended**. All subsequent commits should use a conventional subject.
-6. **Commit `586908c` bundles P1-T6 and P1-T7's output under a subject labelled only
+1. **P1-T5 commit `45b7c85` violated conventional-commit format** (its whole multi-line body was committed as the subject line, so the subject begins `- In-memory VpnEngine…` instead of `feat:`/`docs:`). Because it is already pushed to `origin/master` and branch protection forbids force-push, and because rewriting published history is permanently prohibited for agents, this is accepted as a permanent historical deviation and **must not be amended**. All subsequent commits should use a conventional subject.
+2. **Commit `586908c` bundles P1-T6 and P1-T7's output under a subject labelled only
    "(P1-T8)"** — `git log --oneline -- apps/mobile/lib/features/README.md` and
    `-- apps/mobile/lib/core/providers/vpn_engine_provider.dart` both resolve to that single
    commit, so no dedicated commit exists for T6 or T7 individually. Accepted as historical and
    **not to be split retroactively** (that would require a history rewrite, which is permanently
    prohibited for agents).
-7. **Commit `f1245e9` ("updating and fixing CODING_STANDARDS") does not follow
+3. **Commit `2a1bb4c` ("Add SECURITY.md to define security architecture and
+   policies for Brick VPN") does not follow conventional-commit format** — the subject
+   begins with a capitalised imperative and no `type:` prefix. It is also the commit that
+   introduced the ROADMAP, and therefore the commit that every `Not Started` status line
+   from Phase 2 onward still traces back to. Accepted as historical, for the same reason
+   as `45b7c85` and `f1245e9`. Recorded here so the count of non-conventional subjects is
+   complete rather than silently understated.
+
+4. **Commit `f1245e9` ("updating and fixing CODING_STANDARDS") does not follow
    conventional-commit format**, violating the rule established after `45b7c85`. It touches only
    `AI_ROLES/CODING_STANDARDS.md`. Accepted as historical for the same reason as above. All
    subsequent commits must use a conventional subject.
-8. **`AppLogger.e()`'s `error` and `stackTrace` parameters bypass `redact()`.** Only the
+5. **`AppLogger.e()`'s `error` and `stackTrace` parameters bypass `redact()`.** Only the
    `message` parameter is redacted (structurally, via the single `_emit` chokepoint). An `Object`
    passed as `error` is attached to the log unredacted. Currently harmless because no domain
    type has a `toString` override, so accidental interpolation cannot emit a credential — but it
    is a real seam. **Open item for whoever implements real redaction in Phase 8**: route `error`
    through `redact` too, or document the exclusion as accepted.
 
-5. **`packages/shared_utils/lib/src/result.dart` equality is stricter than payload-only comparison.** `Ok`/`Err` check `other.runtimeType == runtimeType`, so `Ok<int,String>(1)` is not equal to `Ok<num,Object>(1)`. This was deliberately **NOT** changed: simply dropping the `runtimeType` check would make equality **asymmetric** under Dart's covariant generics (one direction true, the other false), violating the `==` contract — a worse defect than being over-strict but symmetric. Documented as an accepted limitation, not a bug to fix.
+6. **`packages/shared_utils/lib/src/result.dart` equality is stricter than payload-only comparison.** `Ok`/`Err` check `other.runtimeType == runtimeType`, so `Ok<int,String>(1)` is not equal to `Ok<num,Object>(1)`. This was deliberately **NOT** changed: simply dropping the `runtimeType` check would make equality **asymmetric** under Dart's covariant generics (one direction true, the other false), violating the `==` contract — a worse defect than being over-strict but symmetric. Documented as an accepted limitation, not a bug to fix.
+
+---
+
+### Status provenance under human review (2026-09-28)
+
+A governance integrity sweep (CI-restoration task, Part 1) ran `git blame` over the Status
+line of every Phase 0–2 task in `ROADMAP.md` to establish *who wrote each `Completed`*. The
+result is a provenance table held in that task's report. Its headline findings, stated here
+without changing any ROADMAP status:
+
+- **Phase 0 (P0-T1..T12):** all twelve trace to separate `docs:`-only commits, several of
+  them explicitly titled "… after human review". This is the *correct* provenance pattern.
+- **Phase 1 (P1-T1..T5):** statuses were written by separate `docs:` commits
+  (`5120833`, `6b63ec6`, `300839c`, `896b060`) — correct pattern — **except P1-T5**, whose
+  Status line was last written by `a0c2f8e`, the **same commit that added the
+  `MockVpnEngine` code**. That is a probable agent self-mark (Class B).
+- **Phase 2 (P2-T1..T8, T13, T14, T10, T11):** every `Completed` Status line was written by
+  the **same commit that also changed `packages/` code**, i.e. an agent self-marked each task
+  complete in the commit that implemented it (Class B). P2-T11's Status is additionally
+  **uncommitted working-tree text** written by an agent (Class C). None of the Phase 2
+  `Completed` statuses came from a later human sign-off commit.
+- A task prompt had also instructed an agent to mark P2-T11 "Completed", which conflicts with
+  `DEFINITION_OF_DONE.md` §1 ("An AI agent MUST NOT mark a task as `Completed` by itself").
+
+**No ROADMAP Status was changed in response to these findings.** The human decides whether to
+downgrade any of them to "Ready for Human Review — sign-off pending". This block exists so the
+decision is made from evidence rather than from a doc that merely asserts the outcome.
+
+### `core_domain` freeze exceptions A1 + A2 (2026-09-28), and re-freeze
+
+The `core_domain` freeze was **temporarily lifted for exactly two, human-authorized changes**
+and is **RE-FROZEN** immediately afterwards:
+
+- **A1 — formatting-only:** `packages/core_domain/test/protocol_type_test.dart` and
+  `packages/core_domain/test/wireguard_outbound_test.dart` (the two files that had been
+  committed unformatted, turning CI red).
+- **A2 — the AmneziaWgOutbound equality fix:** `packages/core_domain/lib/src/outbound_config.dart`
+  (adds `==`/`hashCode` overrides covering the nine AWG parameters) plus the new
+  `packages/core_domain/test/amneziawg_equality_test.dart`.
+
+No other file under `packages/core_domain/` was modified. Nothing else in the frozen package
+required change; if something does in future, it needs its own explicit authorization.
 
 ---
 
 ## 7. Immediate Next Steps (In Order)
 
-1. Human: review and commit the Phase 2 work as ONE clean commit — P2-T5 (Hysteria2/TUIC parsers,
-   Sing-Box serializer support for them, the `parseUri` router wiring) plus this task’s cipher
-   validation, duplicate-line removal, and governance sync. 9 files are currently uncommitted and
-   have never been seen by CI.
+1. Human: **restore CI on `master`.** `master` is currently RED — the last four push runs
+   failed on the "Check formatting" job (see §3). A formatting-only fix is prepared and
+   verified locally (the full CI step sequence now passes end to end), but it is **not on CI
+   until the human commits and pushes**. Suggested commit split: (1) `style:` formatting,
+   (2) `fix(core_domain):` AmneziaWg equality, (3) `test:` serializer lock-in,
+   (4) `docs:` PROJECT_STATE sync. After pushing, re-check with
+   `gh run list --branch master --event push`.
+   Also uncommitted: the whole P2-T6..P2-T11 body of work (17 files total in the working
+   tree, of which 13 are modified and 3 are new, plus this task's edits) — none of it has
+   been seen by CI yet.
 2. Human: run the app on a real Android device/emulator. Still the highest-value outstanding
    verification action: it closes the four unchecked device-run acceptance criteria from P1-T7/T8/T10
    and is the only way to confirm routing, localization, and Riverpod wiring on a real target.

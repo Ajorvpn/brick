@@ -60,7 +60,7 @@ Result<OutboundConfig, ConfigParseError> parseVlessUri(String uri) {
   }
   final port = (portCheck as Ok<int, ConfigParseError>).value;
 
-  final query = value.queryParameters;
+  final query = safeQueryParameters(value);
   final transport = buildTransportSettings(query);
   if (transport case Err(:final error)) {
     return Err(error);

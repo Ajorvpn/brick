@@ -34,7 +34,7 @@ Result<OutboundConfig, ConfigParseError> parseHysteria2Uri(String uri) {
     return Err(UnsupportedSchemeError(value.scheme));
   }
 
-  final auth = _percentDecode(value.userInfo);
+  final auth = percentDecodeOrRaw(value.userInfo);
   if (auth.isEmpty) {
     return Err(MissingRequiredFieldError('auth'));
   }
@@ -57,7 +57,7 @@ Result<OutboundConfig, ConfigParseError> parseHysteria2Uri(String uri) {
   }
   final port = (portCheck as Ok<int, ConfigParseError>).value;
 
-  final query = value.queryParameters;
+  final query = safeQueryParameters(value);
 
   // Obfuscation: both halves must be present and the type must be one
   // sing-box accepts, otherwise sing-box refuses the whole config.
@@ -153,12 +153,4 @@ bool _boolParam(String? raw) {
   }
   final value = raw.toLowerCase();
   return value == '1' || value == 'true';
-}
-
-String _percentDecode(String input) {
-  try {
-    return Uri.decodeComponent(input);
-  } on ArgumentError {
-    return input;
-  }
 }

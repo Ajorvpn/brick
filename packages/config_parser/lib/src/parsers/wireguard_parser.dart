@@ -34,9 +34,10 @@ Result<OutboundConfig, ConfigParseError> parseWireguardUri(String uri) {
   // userinfo put the key in a query parameter instead, so accept both
   // and prefer the explicit query form.
   final keyFromQuery =
-      value.queryParameters['private_key'] ??
-      value.queryParameters['privatekey'];
-  final privateKey = (keyFromQuery ?? _percentDecode(value.userInfo)).trim();
+      safeQueryParameters(value)['private_key'] ??
+      safeQueryParameters(value)['privatekey'];
+  final privateKey = (keyFromQuery ?? percentDecodeOrRaw(value.userInfo))
+      .trim();
   if (privateKey.isEmpty) {
     return Err(MissingRequiredFieldError('private_key'));
   }
@@ -63,7 +64,7 @@ Result<OutboundConfig, ConfigParseError> parseWireguardUri(String uri) {
   }
   final port = (portCheck as Ok<int, ConfigParseError>).value;
 
-  final query = value.queryParameters;
+  final query = safeQueryParameters(value);
 
   final peerPublicKey = query['peer_public_key'] ?? query['public_key'];
   if (peerPublicKey == null || peerPublicKey.isEmpty) {
@@ -198,12 +199,4 @@ Result<int?, ConfigParseError> _positiveInt(String? raw, String field) {
     );
   }
   return Ok<int?, ConfigParseError>(value);
-}
-
-String _percentDecode(String input) {
-  try {
-    return Uri.decodeComponent(input);
-  } on ArgumentError {
-    return input;
-  }
 }

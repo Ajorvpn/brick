@@ -947,6 +947,34 @@ final class AmneziaWgOutbound extends WireGuardOutbound {
   @override
   ProtocolType get protocol => ProtocolType.amneziawg;
 
+  /// Equality covers the inherited WireGuard fields **and** the nine
+  /// AmneziaWG obfuscation parameters.
+  ///
+  /// Without this override the parent's comparison was silently used, so two
+  /// outbounds that differed only in `jc`/`h1`/… compared equal — a real
+  /// hazard for any deduplication or profile-diffing logic, and a latent
+  /// configuration bug. The parent's `==` is reused rather than restated so
+  /// the two definitions cannot drift apart; it already enforces
+  /// `runtimeType` symmetry, which is what keeps an `AmneziaWgOutbound` from
+  /// ever equalling a plain `WireGuardOutbound` with identical shared fields.
+  @override
+  bool operator ==(Object other) =>
+      super == other &&
+      other is AmneziaWgOutbound &&
+      other.jc == jc &&
+      other.jmin == jmin &&
+      other.jmax == jmax &&
+      other.s1 == s1 &&
+      other.s2 == s2 &&
+      other.h1 == h1 &&
+      other.h2 == h2 &&
+      other.h3 == h3 &&
+      other.h4 == h4;
+
+  @override
+  int get hashCode =>
+      Object.hash(super.hashCode, jc, jmin, jmax, s1, s2, h1, h2, h3, h4);
+
   @override
   Map<String, dynamic> toJson() {
     final json = outboundJson();

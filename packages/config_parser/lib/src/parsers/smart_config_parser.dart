@@ -8,6 +8,7 @@ import '../defensive_parser_utils.dart';
 import '../subscription/subscription_parser.dart';
 import '../subscription/subscription_user_info.dart';
 import 'singbox_json_reader.dart';
+import 'uri_parsing_support.dart' show percentDecodeOrRaw;
 import 'uri_parser.dart';
 
 /// The custom deep-link scheme the app registers for inbound imports.
@@ -204,9 +205,9 @@ String? _extractDeepLinkPayload(String text) {
     if (eq == -1) {
       continue;
     }
-    final key = _percentDecode(pair.substring(0, eq)).toLowerCase();
+    final key = percentDecodeOrRaw(pair.substring(0, eq)).toLowerCase();
     if (key == 'url' || key == 'config') {
-      return _percentDecode(pair.substring(eq + 1));
+      return percentDecodeOrRaw(pair.substring(eq + 1));
     }
   }
   return null;
@@ -284,11 +285,3 @@ Result<List<OutboundConfig>, ConfigParseError> _readOutboundList(
 }
 
 const int _maxDeepLinkDepth = 3;
-
-String _percentDecode(String input) {
-  try {
-    return Uri.decodeComponent(input);
-  } on ArgumentError {
-    return input;
-  }
-}

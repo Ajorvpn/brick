@@ -144,19 +144,21 @@ void main() {
       expect(minimal.obfuscationParams, <String, int>{'jc': 3});
     });
 
-    test('toJson namespaces the obfuscation block (sing-box has no such key)',
-        () {
-      final json = _awg().toJson();
-      // The WireGuard envelope is still emitted...
-      expect(json['type'], 'amneziawg');
-      expect(json['local_address'], <String>['10.0.0.2/32']);
-      // ...and obfuscation is namespaced rather than invented at top level,
-      // because the sing-box WireGuard schema rejects unknown top-level keys.
-      final obfuscation = json['amneziawg_obfuscation'] as Map<String, int>;
-      expect(obfuscation['jc'], 4);
-      expect(obfuscation['h4'], 3456);
-      expect(json.containsKey('jc'), isFalse);
-    });
+    test(
+      'toJson namespaces the obfuscation block (sing-box has no such key)',
+      () {
+        final json = _awg().toJson();
+        // The WireGuard envelope is still emitted...
+        expect(json['type'], 'amneziawg');
+        expect(json['local_address'], <String>['10.0.0.2/32']);
+        // ...and obfuscation is namespaced rather than invented at top level,
+        // because the sing-box WireGuard schema rejects unknown top-level keys.
+        final obfuscation = json['amneziawg_obfuscation'] as Map<String, int>;
+        expect(obfuscation['jc'], 4);
+        expect(obfuscation['h4'], 3456);
+        expect(json.containsKey('jc'), isFalse);
+      },
+    );
   });
 
   group('Hysteria2Outbound safety', () {

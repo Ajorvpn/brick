@@ -348,4 +348,60 @@ void main() {
       expect(out['server_port'], 8388);
     });
   });
+
+  // Pins the CURRENT accepted behaviour of AmneziaWG serialization, which is
+  // correct today but load-bearing in a subtle way: `tryBuild` first sets
+  // `'type': config.protocol.name` (which is 'amneziawg'), and the WireGuard
+  // branch's `map` then overwrites it with 'wireguard' via `out.addAll(map)`.
+  // The result is right for sing-box (which has no amneziawg outbound type),
+  // but it depends on that overwrite ORDER. A refactor that reorders those
+  // two statements would silently emit `"type": "amneziawg"`, which sing-box
+  // would reject. This test fails loudly if that ever happens.
+  group('AmneziaWG serialization lock-in', () {
+    AmneziaWgOutbound _awg() => AmneziaWgOutbound(
+      server: 'vpn.example.com',
+      serverPort: 51820,
+      privateKey: 'PLACEHOLDER-PRIVATE-KEY',
+      peerPublicKey: 'PLACEHOLDER-PUBLIC-KEY',
+      localAddresses: const ['10.0.0.2/32'],
+      jc: 4,
+      h1: 100,
+    );
+
+    test('emits type "wireguard", not "amneziawg"', () {
+      final out = buildSingBoxOutbound(_awg());
+      expect(out['type'], 'wireguard');
+    });
+
+    test('preserves the inherited WireGuard envelope', () {
+      final out = buildSingBoxOutbound(_awg());
+      expect(out['type'], 'wireguard');
+      expect(out['server'], 'vpn.example.com');
+      expect(out['server_port'], 51820);
+      expect(out['local_address'], ['10.0.0.2/32']);
+    });
+
+    test('obfuscation params are NOT emitted as top-level sing-box keys', () {
+      // sing-box has no AmneziaWG schema and rejects unknown top-level keys,
+      // so these are deliberately omitted at runtime.
+      final out = buildSingBoxOutbound(_awg());
+      for (final key in [
+        'jc',
+        'jmin',
+        'jmax',
+        's1',
+        's2',
+        'h1',
+        'h2',
+        'h3',
+        'h4',
+      ]) {
+        expect(
+          out.containsKey(key),
+          isFalse,
+          reason: '$key must not be top-level',
+        );
+      }
+    });
+  });
 }

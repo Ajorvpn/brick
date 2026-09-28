@@ -95,9 +95,9 @@ Result<OutboundConfig, ConfigParseError> parseShadowsocksUri(String uri) {
       }
       final eq = pair.indexOf('=');
       if (eq == -1) {
-        query[_decodeComponent(pair)] = '';
+        query[percentDecodeOrRaw(pair)] = '';
       } else {
-        query[_decodeComponent(pair.substring(0, eq))] = _decodeComponent(
+        query[percentDecodeOrRaw(pair.substring(0, eq))] = percentDecodeOrRaw(
           pair.substring(eq + 1),
         );
       }
@@ -247,13 +247,5 @@ String parseShadowsocksRemark(String uri) {
   if (hashIndex == -1) {
     return '';
   }
-  return _decodeComponent(uri.substring(hashIndex + 1));
-}
-
-String _decodeComponent(String input) {
-  try {
-    return Uri.decodeComponent(input);
-  } on ArgumentError {
-    return input;
-  }
+  return percentDecodeOrRaw(uri.substring(hashIndex + 1));
 }
