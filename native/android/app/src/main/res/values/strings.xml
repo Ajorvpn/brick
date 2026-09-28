@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Brick VPN Harness</string>
+    <string name="harness_headline">Brick VPN Native Harness</string>
+    <string name="harness_body">Gate A placeholder. No VPN service is registered in this build.</string>
+</resources>

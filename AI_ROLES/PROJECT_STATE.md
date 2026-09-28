@@ -20,17 +20,32 @@
 > task's final report). Every AI agent must read this file first, before
 > `ARCHITECTURE.md` or `ROADMAP.md`, to get immediate situational awareness.
 
-**Last updated**: 2026-09-28 — CI restoration + governance integrity sweep (Phase 0–2) + AmneziaWG equality fix
-**Updated by**: Coding agent, during the CI-restoration/governance-sweep task; test counts, format status and CI status all re-derived from live runs in that task
+**Last updated**: 2026-09-28 — P3-T1 toolchain research recorded + P3-T2 native Android harness scaffolded (build verified)
+**Updated by**: Coding agent, during the P3-T2 native-module-scaffolding task; build output, APK contents and Dart test counts all re-derived from live runs in that task
 
 ---
 
 ## 1. Current Phase
 
-**Phase 3 — Android VPN Engine: READY TO START, pending one human gate.** The Phase 2 parser
-layer this phase consumes is delivered and verified: all 8 protocol families, the subscription
-decoder, the smart content router, and the Sing-Box serializer and its inverse reader, at 231
-passing `config_parser` tests and 418 monorepo-wide.
+**Phase 3 — Android VPN Engine: Gate A (Native Harness) IN PROGRESS.** P3-T1 (toolchain
+research) is delivered and `TOOLCHAIN_VERSIONS.md` is pinned. P3-T2 has scaffolded
+`native/android/` as a standalone, CLI-buildable Android Gradle project and **proven
+`./gradlew assembleDebug`**, producing a real 3.2 MB debug APK. The Phase 2 parser layer
+this phase consumes remains delivered and verified (8 protocol families, subscription decoder,
+smart content router, Sing-Box serializer + inverse reader). Phase 2 is still not formally
+closed: P2-T12 and P2-T9's AC verification remain open, and `P3-T1` declares
+`Depends On: P2-T12`.
+
+**P3-T2 build environment, all verified live on 2026-09-28:** JDK 17.0.20.1; Android SDK at
+`~/Android/Sdk`; NDK **`26.1.10909125` (r26b)** present — matches the P3-T1 pin; AGP 9.1.0;
+Gradle 9.3.1; `compileSdk`/`targetSdk` **36** (Platform 36 pre-installed); `minSdk` 21.
+Two facts worth remembering: **AGP 9.x has built-in Kotlin support**, so applying
+`org.jetbrains.kotlin.android` is now a hard build error; and **`native` is a Java keyword**,
+so the Gradle `namespace` is `dev.brickvpn.harness` while the `applicationId` remains
+`dev.brickvpn.native.harness` exactly as specified.
+
+**Not yet proven:** the APK has never been installed or launched — `adb devices -l` is empty
+and `flutter emulators` reports "No emulators available".
 
 **Phase 2 is substantially complete but NOT 100% complete, and was not closed by the agent.** A
 closeout audit was performed on 2026-09-27 and is recorded in `ROADMAP.md`. Outstanding:

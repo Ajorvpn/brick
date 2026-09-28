@@ -1,0 +1,17 @@
+# Gradle build state and caches — never commit.
+.gradle/
+build/
+app/build/
+local.properties
+
+# Android/IDE noise
+*.iml
+.idea/
+captures/
+.externalNativeBuild/
+.cxx/
+
+# The root .gitignore has a blanket `*.jar` (intended for build outputs such as
+# libbox .aar/.jar artifacts). The Gradle wrapper JAR must still be committed,
+# or `./gradlew` fails on every fresh clone. Re-include it explicitly.
+!gradle/wrapper/gradle-wrapper.jar

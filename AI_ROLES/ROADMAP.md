@@ -1690,7 +1690,10 @@ findings — do not shortcut it even if it looks slower.
 
 ### P3-T1 — Research pass: sing-box/libbox current integration state
 
-**Status:** Not Started
+**Status:** Ready for Human Review ✅ — research delivered and primary-source verified 2026-09-28.
+Pins recorded in `TOOLCHAIN_VERSIONS.md`: sing-box `v1.10.7`, Go `1.20`,
+`github.com/sagernet/gomobile` `v0.1.4`, NDK `r26b`. Unverifiable items are listed
+in that file's "Unverified items (P3-T1)" section rather than assumed away.
 **Depends On:** P2-T12
 
 **Objective:** Before writing any code, produce a written research report (not yet committed as
@@ -1719,14 +1722,14 @@ official docs, and Hiddify's public Android source if license-compatible to refe
 - Excluded: any actual AAR build attempt (next task); any Kotlin code.
 
 **Acceptance Criteria:**
-- [ ] `TOOLCHAIN_VERSIONS.md`'s previously-`TBD` rows (Go, gomobile, NDK, sing-box commit/tag) are
+- [x] `TOOLCHAIN_VERSIONS.md`'s previously-`TBD` rows (Go, gomobile, NDK, sing-box commit/tag) are
       filled in with specific, verified values and a one-line justification each.
-- [ ] The two known footguns (Go auto-resolution/QUIC breakage, sing-box `platform.Interface` →
+- [x] The two known footguns (Go auto-resolution/QUIC breakage, sing-box `platform.Interface` →
       `adapter.PlatformInterface` migration) are explicitly re-confirmed as still-relevant or
       noted as superseded, with the current situation described accurately.
-- [ ] The 16KB page-size alignment requirement's current build-flag/verification method is
+- [x] The 16KB page-size alignment requirement's current build-flag/verification method is
       documented.
-- [ ] The report explicitly states what could **not** be verified with confidence, if anything,
+- [x] The report explicitly states what could **not** be verified with confidence, if anything,
       rather than filling gaps with assumptions.
 
 **Notes for Agent:**
@@ -1741,7 +1744,13 @@ official docs, and Hiddify's public Android source if license-compatible to refe
 
 ### P3-T2 — Native Android module scaffolding (`native/android`)
 
-**Status:** Not Started
+**Status:** Ready for Human Review ✅ — CLI `./gradlew assembleDebug` proven; a real 3.2 MB
+debug APK was produced and its `applicationId` verified as `dev.brickvpn.native.harness`.
+**The device install/launch AC remains UNMET** (no device or emulator reachable).
+Config: `compileSdk 36`, `targetSdk 36`, `minSdk 21`, NDK `26.1.10909125` (r26b), AGP 9.1.0,
+Gradle 9.3.1, JDK 17. Two build facts discovered: AGP 9.x has built-in Kotlin support (the
+separate Kotlin plugin is now an error), and `native` is a Java keyword so the Gradle
+`namespace` is `dev.brickvpn.harness` while the `applicationId` stays as specified.
 **Depends On:** P3-T1
 
 **Objective:** Set up `native/android/` as a standalone, buildable Android Gradle project
@@ -1757,15 +1766,15 @@ given `VpnService` requirements and realistic device support goals, don't assume
 - Excluded: any libbox/AAR integration (next task); any VpnService code.
 
 **Acceptance Criteria:**
-- [ ] `native/android/` builds successfully via Gradle CLI (`./gradlew assembleDebug`) with zero
+- [x] `native/android/` builds successfully via Gradle CLI (`./gradlew assembleDebug`) with zero
       manual IDE-only steps.
 - [ ] The built debug APK installs and launches on the connected physical device/emulator (per
-      `PROJECT_STATE.md`'s noted environment), showing a minimal placeholder screen.
-- [ ] All pinned versions match exactly what P3-T1 recorded in `TOOLCHAIN_VERSIONS.md`.
-- [ ] If the Iran-network Gradle-mirror issue (documented in `PROJECT_STATE.md`'s errors/lessons)
+      `PROJECT_STATE.md`'s noted environment), showing a minimal placeholder screen. **STILL UNMET (2026-09-28):** `adb devices -l` is empty and `flutter emulators` reports "No emulators available". The APK builds but has never been installed or launched. Left unticked deliberately; requires a human with a device.
+- [x] All pinned versions match exactly what P3-T1 recorded in `TOOLCHAIN_VERSIONS.md`. Verified: NDK `26.1.10909125` = P3-T1's r26b. `compileSdk`/`targetSdk` 36 match the pre-installed Platform 36 and AGP 9.1.0; note P3-T1 pinned no compile SDK, so 36 is this task's decision, not a P3-T1 match. `minSdk 21` is a human decision and remains an explicitly-unverified P3-T1 open item.
+- [x] *(conditional AC — condition did NOT occur; verified, not assumed)* If the Iran-network Gradle-mirror issue (documented in `PROJECT_STATE.md`'s errors/lessons)
       recurs, it is resolved the same documented way (`maven.aliyun.com` mirror) and the
       resolution is re-confirmed still necessary/correct, not blindly copied without checking.
-- [ ] A short `native/android/README.md` replaces the Phase-0 placeholder with real build/run
+- [x] A short `native/android/README.md` replaces the Phase-0 placeholder with real build/run
       instructions.
 
 **Notes for Agent:**
