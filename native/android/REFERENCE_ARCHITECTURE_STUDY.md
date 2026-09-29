@@ -42,11 +42,21 @@ our AAR, so their API surface is *not* usable as-is:
 | | References | Our pinned v1.10.7 AAR |
 |---|---|---|
 | Java package | `io.nekohasekai.libbox.*` (sfa) · `com.hiddify.core.libbox.*` (hiddify) | **`io.nekohasekai.libbox.libbox.*`** (doubled) |
-| `PlatformInterface` | ~38 methods | **18** |
+| `PlatformInterface` | **27** methods in v1.10.7's successor v1.14.2 (stable) — see note | **18** |
 | `InterfaceUpdateListener.updateDefaultInterface` | 4 args `(String, int, boolean, boolean)` | **2 args** `(String, int)` |
 
 This document therefore teaches **patterns**, and pins every API detail to the
 18-method interface extracted from our own artifact.
+
+> **Correction to the method count (2026-09-29).** This table previously said the
+> references expose "~38 methods". That figure was never verified and is wrong for a
+> stable release. A read-only comparison of `experimental/libbox/platform.go` found
+> **27** methods in **v1.14.2**, the latest *stable* sing-box (2026-09-24), versus our
+> **18** in v1.10.7 — 13 kept, **5 removed**, 14 added. The ~38 figure appears to
+> describe the reference apps built against the **1.15 alpha** series, not a stable
+> tag. Of the 14 additions, 10 are Tailscale-SSH/bridge surface and 4 are opt-in
+> L2-neighbour and DNS-transport facilities; **none is required for our 6+2-protocol
+> MVP**, which is why the pin stays at v1.10.7. See `AI_ROLES/PROJECT_STATE.md` §6.
 
 ---
 
@@ -113,6 +123,14 @@ sequenceDiagram
 Shutdown is the mirror image: `S->>V: onStopCommand(ACTION_STOP)` → `V->>C:
 stop()` → `C->>L: service.stop()` → `C` closes the retained `pfd` → state
 `DISCONNECTING -> DISCONNECTED`.
+
+> **Native correction (P3-T5, superseding the target above).** `DISCONNECTED` is the
+> **Dart-level** target in the line above. The shipped native `VpnStateMachine`
+> forces **`Stopped`** instead, because `Stopping -> Error` is illegal in the
+> 8-state graph (`ARCHITECTURE.md` §3.1.2). Both statements agree in spirit —
+> teardown must converge on a resting state and never on `Error` — but a P3-T6
+> implementation must target `Stopped`, which does not exist as `DISCONNECTED`
+> in the native vocabulary.
 
 **Gate A note:** the current harness has no `VpnService` at all
 (`BIND_VPN_SERVICE` is deliberately absent). This domain is design guidance for
@@ -283,6 +301,14 @@ already built into `MockVpnEngine` (P1-T5). P3-T6 must ensure the watchdog can
 force state to `DISCONNECTED` even if the Go side is wedged. This is an explicit
 residual risk, not a solved problem.
 
+> **Native correction (P3-T5, superseding the target above).** `DISCONNECTED` remains
+> the correct **Dart-level** resting state. The shipped native `VpnStateMachine`
+> instead forces **`Stopped`**, because `Stopping -> Error` is illegal in the 8-state
+> graph (`ARCHITECTURE.md` §3.1.2) — forcing `Error` here would violate the
+> normative transition graph to satisfy a timeout, which is exactly the
+> "silently coercing an impossible transition" the architecture forbids. A P3-T6
+> implementation must therefore let the watchdog land on `Stopped`.
+
 ### Threading
 
 `onRevoke` arrives on the main thread. sfa marshals it explicitly
@@ -383,7 +409,26 @@ CONNECTING → ERROR ; CONNECTED → ERROR ; ERROR → CONNECTING / DISCONNECTIN
   teardown must converge.
 - Session token per start attempt; stale callbacks discarded at receipt.
 - Hard stop watchdog: a stuck `DISCONNECTING` is a P0 bug (P1-T5 already
-  implements this).
+  implements this). **Native target (P3-T5):** the watchdog forces `Stopped`,
+  not `DISCONNECTED` and not `Error` — see the corrections in Domain 1 and
+  Domain 4, and `ARCHITECTURE.md` §3.1.2.
+
+> **SUPERSEDED — read `ARCHITECTURE.md` §3.1.2 instead.** The 5-state graph above
+> is the Dart-level `ConnectionState` shape and is retained for historical
+> reference only. The shipped native `VpnStateMachine` (P3-T5) implements an
+> **8-state** vocabulary — `Idle`, `Preparing`, `Starting`, `Running`,
+> `Stopping`, `Stopped`, `Error(reason)`, `Revoked` — which refines this graph
+> rather than replacing it. §3.1.2 is the authoritative 8→5 mapping.
+
+> **`Revoked` was never covered by this study.** The shipped machine has a full
+> handling path for it (`onRevoke()` / `onPermissionRestored()`), reached from a
+> `Running`, `Preparing`, `Starting` or `Stopping` state. `Revoked` represents
+> **OS-initiated VPN permission withdrawal mid-tunnel** — another app takes the
+> VPN slot, or the user revokes consent — which is a real, routine Android
+> lifecycle event, not an edge case to skip. **A P3-T6 implementation MUST wire
+> `VpnService.onRevoke()` to this transition**; the OS calling `onRevoke` while a
+> tunnel is live will otherwise leave the harness with no legal way to represent
+> why the tunnel went away.
 
 ### P3-T6 — `VpnService` skeleton
 
