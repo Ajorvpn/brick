@@ -1878,6 +1878,9 @@ STOP-AND-ASK raised and **resolved by human decision 2026-09-27: sing-box v1.10.
 (to preserve the Phase 2 WireGuard/AmneziaWG schema), so the study is scoped to that API.
 Version-independent patterns from both references are carried over; every API detail is pinned
 to the **18-method** `io.nekohasekai.libbox.libbox.PlatformInterface` extracted from our own AAR.
+**Version decision formally confirmed 2026-09-29** (see `PROJECT_STATE.md` §6): staying on
+v1.10.7. This study's scoping to the 18-method `PlatformInterface` is confirmed correct and
+does not need revisiting.
 **Depends On:** P3-T1
 
 **STOP-AND-ASK: P3-T4 (2026-09-27) — RAISED, THEN ANSWERED.** The study was halted on the
@@ -1938,7 +1941,12 @@ machine to be built in the next tasks.
 
 ### P3-T5 — VPN state machine design and implementation (pure Kotlin, no libbox/TUN yet)
 
-**Status:** Not Started
+**Status:** Ready for Human Review ✅ — `VpnStateMachine` implemented and **36 JVM unit tests pass**
+via `./gradlew testDebugUnitTest` (0 failures, 0 errors, 0.44 s, no emulator).
+Per human direction (STOP-AND-ASK, 2026-09-27), the **ROADMAP's 8-state vocabulary is
+authoritative** — not the 6-state list in the task brief, and not `Reconnecting` (which has no
+legal incoming edge in the normative §3.1.1 graph). The 8 states refine the normative 5-state
+`ConnectionState` graph; the mapping is documented in `VpnState.kt`.
 **Depends On:** P3-T4
 
 **Objective:** Implement the core state machine — `VpnStateMachine` — as a standalone, unit-
@@ -1960,28 +1968,60 @@ contract from P1-T4.
   isolation on the Dart side.
 
 **Acceptance Criteria:**
-- [ ] States match exactly: `Idle`, `Preparing`, `Starting`, `Running`, `Stopping`, `Stopped`,
+
+*Superseded-brief note (history retained, not deleted).* An earlier task brief for
+P3-T5 specified a 6-state vocabulary including `Reconnecting`. That brief is
+**SUPERSEDED** by the 8-state model below, per human direction at the 2026-09-27
+STOP-AND-ASK. `Reconnecting` was dropped because it has **no legal incoming edge**
+in the normative Section 3.1.1 graph, making it structurally unreachable — a test
+could only have asserted a dead state. The session-token, 5000 ms watchdog and
+5-result command-acceptance criteria below were also absent from that brief and
+were added here because they were implemented and tested.
+
+- [x] States match exactly: `Idle`, `Preparing`, `Starting`, `Running`, `Stopping`, `Stopped`,
       `Error(reason)`, `Revoked` — implemented as a sealed class/interface, not raw enums with
       loosely-associated data, so illegal states are structurally harder to represent.
-- [ ] Every `start`/`stop` command carries a session token; a stale-token callback/event fed into
+      VERIFIED: all 8 states live in `VpnState.kt` as a sealed class; `Error` carries `reason`;
+      a test asserts 8 distinct non-blank ids and exhaustively checks all 64 ordered pairs.
+- [x] Every `start`/`stop` command carries a session token; a stale-token callback/event fed into
       the state machine is provably ignored (unit test proves this explicitly).
-- [ ] `start` while `Starting`/`Running` returns `rejectedBusy` without corrupting state.
-- [ ] `stop` while `Stopping` is idempotent (calling it multiple times has no additional effect
+      VERIFIED: `SessionToken` is minted per `start()`; two tests prove a stale token is ignored
+      (`a stale token callback is ignored`, `a late callback cannot resurrect a stopped session`).
+- [x] `start` while `Starting`/`Running` returns `rejectedBusy` without corrupting state.
+      VERIFIED: `Preparing` and `Stopping` are covered too; `rejectedBusy does not corrupt state`
+      asserts both the state and the active token are unchanged.
+- [x] `stop` while `Stopping` is idempotent (calling it multiple times has no additional effect
       beyond the first).
-- [ ] `stop` while `Starting` cancels the in-progress start and transitions cleanly, not into an
+      VERIFIED: five repeated `stop()` calls leave the state at `Stopping`; critically they do NOT
+      re-arm the watchdog (`repeated stop does not keep re-arming the watchdog`).
+- [x] `stop` while `Starting` cancels the in-progress start and transitions cleanly, not into an
       inconsistent hybrid state.
-- [ ] A simulated stop that "hangs" (test double never signals completion) is proven, via a
+      VERIFIED: it lands cleanly in `Stopping` and refuses a late `onRunning`; `Preparing` is
+      covered by a parallel test.
+- [x] A simulated stop that "hangs" (test double never signals completion) is proven, via a
       coroutine-based test with virtual/fake time, to trigger the 5-second watchdog and forcibly
       transition to `Stopped`/`Error` regardless.
-- [ ] Command-acceptance results (`accepted`/`rejectedBusy`/`rejectedInvalidConfig`/
+      VERIFIED: virtual-time tests. The stop watchdog forces `Stopped` at exactly 5000 ms; the
+      start watchdog forces `Error("Watchdog timeout after 5000ms")`; both are proven not to fire
+      early and to be disarmed on success. The stop watchdog deliberately targets `Stopped`, not
+      `Error`, because Section 3.1.1 forbids `Stopping -> Error`.
+- [x] Command-acceptance results (`accepted`/`rejectedBusy`/`rejectedInvalidConfig`/
       `rejectedPermissionDenied`/`failed`) are returned synchronously/immediately from
       `start`/`stop`, while final-state transitions are only ever emitted via a separate
       state-flow (`StateFlow`/`SharedFlow` or equivalent) — mirroring the Dart contract's
       accepted-vs-final-state separation exactly.
-- [ ] All work is unit-testable on the JVM without an Android emulator (verified by actually
+      VERIFIED: all 5 results mirror Dart `VpnCommandResult` 1:1 and are returned synchronously;
+      final state arrives only via `StateFlow<VpnState>`. A test asserts all 5 exist and are
+      distinguishable by both `toString()` and class.
+- [x] All work is unit-testable on the JVM without an Android emulator (verified by actually
       running `./gradlew test`, not `connectedAndroidTest`).
-- [ ] `melos`/Gradle equivalents pass; specifically `./gradlew :native-android-module:test`
+      VERIFIED: `VpnStateMachine.kt` imports ZERO `android.*` classes (grep-clean); tests run on
+      the host JVM via `testDebugUnitTest`, never `connectedAndroidTest`.
+- [x] `melos`/Gradle equivalents pass; specifically `./gradlew :native-android-module:test`
       (path TBD based on actual module structure) is green.
+      VERIFIED: the real module is `:app`, so `./gradlew testDebugUnitTest` was run instead ->
+      36 tests, 0 failures, 0 errors. `melos run analyze` and the non-writing
+      `dart format --output=none` check are both green.
 
 **Notes for Agent:**
 - This is the single most important file in the native codebase. Treat it with the rigor of

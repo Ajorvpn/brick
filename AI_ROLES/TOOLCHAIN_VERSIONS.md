@@ -17,7 +17,7 @@ verified when the relevant phase begins.
 | Android NDK | **r26b** — HUMAN-DECIDED, not primary-source verified | 2026-09-28 | Pinned (P3-T1) on human direction. See "Unverified" below. |
 | Android Gradle Plugin | **9.1.0** | 2026-09-28 | Exercised in a real `./gradlew assembleDebug` build during P3-T3; pinned here retroactively. Declared explicitly in `native/android/build.gradle.kts`. |
 | Kotlin | Not yet pinned - deferred to a later Phase 3 task | 2026-09-16 | No native Kotlin implementation exists yet. Out of P3-T1 scope. |
-| sing-box | **v1.10.7** (v1.10.x series) | 2026-09-28 | Pinned (P3-T1). Chosen to match the schema the Phase 2 serializers already emit. See "sing-box version policy". |
+| sing-box | **v1.10.7** (v1.10.x series) | 2026-09-28 | Pinned (P3-T1). Chosen to match the schema the Phase 2 serializers already emit. See "sing-box version policy". **CONFIRMED STILL PINNED by human decision 2026-09-29** after a read-only evidence review of v1.14.2: the 14 methods v1.14.2 adds are Tailscale-SSH/bridge plus opt-in L2 and DNS facilities, none needed for the 6+2-protocol MVP, whereas upgrading would need Go 1.21->1.25.5, a gomobile re-pin, and would break WireGuard outbound (removed at >= 1.13). Full rationale in `PROJECT_STATE.md` section 6. Revisit only if Tailscale-like features or a WireGuard-endpoint rewrite become roadmap items. |
 
 ## Resolved Dart Package Versions (P0-T10)
 

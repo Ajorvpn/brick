@@ -47,6 +47,47 @@ so the Gradle `namespace` is `dev.brickvpn.harness` while the `applicationId` re
 **Not yet proven:** the APK has never been installed or launched — `adb devices -l` is empty
 and `flutter emulators` reports "No emulators available".
 
+**P3-T5 (2026-09-27) — READY FOR HUMAN REVIEW, state machine implemented and tested.** A
+STOP-AND-ASK was raised because the task brief, the ROADMAP, and `ARCHITECTURE.md` §3.1.1
+specified **three different state vocabularies**; the human chose Option 1, making the ROADMAP's
+**8-state** list authoritative and dropping the brief's `Reconnecting` (it has no legal incoming
+edge in the normative graph, so it would have been an untestable dead state).
+
+Delivered in `native/android/app/src/main/java/dev/brickvpn/harness/vpn/`:
+- `VpnState.kt` — 8 states as a **sealed class** (`Error` carries `reason`), plus the legal
+  transition table. Mapping to `core_domain`'s 5 `ConnectionState` variants: `Idle`/`Stopped` →
+  `Disconnected`, `Preparing`/`Starting` → `Connecting`, `Running` → `Connected`, `Stopping` →
+  `Disconnecting`, `Error` → `Error`, `Revoked` → `Error(PermissionDenied)`.
+- `VpnStateMachine.kt` — **pure Kotlin, zero `android.*` imports** (grep-verified), so it is
+  host-JVM testable. Session tokens per `start()`; stale callbacks refused; the 5 Dart
+  `VpnCommandResult` values returned synchronously while final state flows only through
+  `StateFlow<VpnState>`; a 5000 ms watchdog.
+- `VpnStateMachineTest.kt` — **36 tests, 0 failures, 0 errors, 0.44 s**, using
+  `kotlinx-coroutines-test` virtual time (no emulator, no Robolectric, no `connectedAndroidTest`).
+
+**Two real bugs found and fixed during the task, both worth remembering:**
+
+1. **JVM class-initialization order (the serious one).** `LEGAL` was a
+   `Map<VpnState, Set<VpnState>>` built in `VpnState`'s companion object. Because
+   `VpnStateMachine`'s field initializer touches `VpnState.Idle` first, `VpnState$Idle.<clinit>`
+   ran *before* `VpnState$Companion.<clinit>`, so the companion captured the still-uninitialized
+   `Idle` and `Revoked` singletons as **`null`**: `Idle.canTransitionTo(Preparing)` silently
+   returned **false**, and `onRevoke()` was refused. The map is now keyed by `const String` ids, so
+   no lookup can depend on object init order. A dedicated regression test pins this.
+2. **Watchdog re-arm on repeated `stop()`.** Naively re-arming the 5000 ms stop watchdog on every
+   `stop()` call would let a polling caller keep a stuck teardown alive forever. `stop()` while
+   `Stopping` is now a true no-op, proven by a test that calls it 5× and still converges.
+
+**Deliberate design decision worth flagging:** the **stop watchdog forces `Stopped`, not `Error`**.
+§3.1.1 forbids `Stopping -> Error` *precisely so* the watchdog can reach a legal resting state, so
+forcing `Error` would violate the normative graph to satisfy a timeout. The **start** watchdog does
+go to `Error("Watchdog timeout after 5000ms")`, which is legal.
+
+**Test infrastructure was created from scratch:** before this task `app/src/test` did not exist and
+`app/build.gradle.kts` declared **no** test dependencies, so `testDebugUnitTest` reported
+`NO-SOURCE` and "passed" without running a single test. JUnit 4.13.2, `kotlinx-coroutines-core`
+and `kotlinx-coroutines-test` were added. A green `testDebugUnitTest` was previously meaningless.
+
 **P3-T4 (2026-09-27) — READY FOR HUMAN REVIEW, study written.** The STOP-AND-ASK was
 **answered by the human: sing-box v1.10.7 is retained** (to preserve the Phase 2
 WireGuard/AmneziaWG schema), so the study was written scoped to the pinned API.
@@ -253,6 +294,47 @@ Status tokens below are quoted verbatim from the corresponding `**Status:**` lin
 ---
 
 ## 6. Open Questions / Pending Human Decisions
+
+### RESOLVED (human decision, 2026-09-29) — sing-box version: staying on v1.10.7
+
+**Decision: Brick VPN stays on sing-box v1.10.7. The pin does not move.**
+Evidence base: the read-only evidence report of 2026-09-28 (no build attempted).
+
+Rationale:
+
+- **The interface cost is essentially zero for our scope.** v1.14.2 adds 14
+  `PlatformInterface` methods; **10 of the 14 are Tailscale-SSH and bridge
+  surface** (`OpenShellSession`, `LookupUser`, `LookupSFTPServer`,
+  `ReadSystemSSHHostKey`, `CheckPlatformShell`, `UsePlatformShell`,
+  `TailscaleHostname`, `CancelNotification`, `UsePlatformBridge`,
+  `CreateBridge`), which this product does not implement. The remaining 4
+  (`StartNeighborMonitor`, `CloseNeighborMonitor`, `RegisterMyInterface`,
+  `LocalDNSTransport`) are opt-in L2-neighbour and DNS-transport facilities,
+  also unused. **None of the 14 is required for the 6+2-protocol TUN MVP** —
+  every one has a benign stub default in
+  `experimental/libbox/config.go`.
+  *(Correction: an earlier draft of this entry said all 14 were Tailscale/bridge.
+  That was wrong — 10 of 14. The conclusion is unchanged, since none of the 14
+  is needed either way.)*
+- **Upgrading is not cheap.** `go.mod` at v1.14.2 requires **Go 1.25.5** against
+  our **1.21.x** pin, and `build_libbox_aar.sh` hard-fails on mismatch; the
+  `gomobile v0.1.4` pin was chosen because it is the version v1.10.7 requires
+  and would need re-validating.
+- **It breaks WireGuard/AmneziaWG.** The WireGuard *outbound* no longer exists
+  at >= 1.13 (only `endpoint.go` remains), while
+  `singbox_serializer.dart` still emits a WireGuard **outbound**. Moving the
+  pin would therefore make that output invalid at runtime
+  (`config_parser/README.md`).
+- **Migration risk is low but real.** 5 methods are removed, and
+  `FindConnectionOwner` changed return type `(int32, error)` ->
+  `(*ConnectionOwner, error)` while keeping its name — a silent-breakage hazard
+  for anything written against the 18-method table.
+
+**Revisit only if** Tailscale-like features or a WireGuard-endpoint rewrite
+become actual roadmap items. The v1.10.x pin is otherwise a standing,
+deliberate choice — it is four minor series behind upstream and is **not**
+expected to move. Note that v1.10.7 receives no upstream fixes from here on;
+that is an accepted consequence of the decision, not an oversight.
 
 ### Phase 2 closeout audit — open items and known limits (2026-09-27)
 

@@ -170,6 +170,52 @@ first prevents a superseded attempt's late callback from applying a
 transition that is legal in the abstract but wrong for the current
 session; the second guarantees `Disconnecting` can never be terminal.
 
+3.1.2 Native Android Harness State Vocabulary (8-state)
+The native Android harness (`native/android`, Gate A) does NOT reuse the five
+Dart `ConnectionState` variants directly. P3-T5 implemented an 8-state
+vocabulary in `VpnState.kt`, a sealed class whose only legal transitions are:
+
+    Idle       -> Preparing, Revoked
+    Preparing  -> Starting, Stopping, Error, Revoked
+    Starting   -> Running, Stopping, Error, Revoked
+    Running    -> Stopping, Error, Revoked
+    Stopping   -> Stopped, Revoked
+    Stopped    -> Preparing, Idle, Revoked
+    Error(r)   -> Preparing, Stopping, Revoked
+    Revoked    -> Idle
+
+Every other pair is refused. An illegal transition is a programmer error that
+the native engine logs and refuses (never coerces, never throws across the
+boundary); the refusal is recorded in `lastRejection`.
+
+Mapping onto the normative Section 3.1.1 graph:
+
+| Native `VpnState` | Dart `ConnectionState` | Note |
+|---|---|---|
+| `Idle`                | `Disconnected` | nothing attempted yet |
+| `Preparing`           | `Connecting`   | config validation / TUN setup |
+| `Starting`            | `Connecting`   | engine start in flight |
+| `Running`             | `Connected`    | tunnel up |
+| `Stopping`            | `Disconnecting`| teardown announced |
+| `Stopped`             | `Disconnected` | teardown completed cleanly |
+| `Error(reason)`       | `Error(reason)`| 1:1 |
+| `Revoked`             | `Error(PermissionDenied)` | no Dart equivalent |
+
+Why the native side needs a finer vocabulary: it must distinguish "never
+attempted" (`Idle`) from "finished cleanly" (`Stopped`) — a distinction Dart's
+single `Disconnected` deliberately collapses — and it must distinguish "still
+validating config" (`Preparing`) from "engine is starting" (`Starting`), because
+a stop request must cancel cleanly in both. `Revoked` has no Dart counterpart
+because VPN permission revocation is an Android-specific concept: the OS can
+withdraw the VPN slot from under a running tunnel, and that must not be
+reported as an ordinary teardown.
+
+The 8-state graph is a strict refinement of Section 3.1.1 — no edge exists here
+that is illegal there. Two consequences worth stating: `Running -> Error` is
+legal (an unexpected drop must not be laundered into a clean teardown), and
+`Stopping -> Error` is NOT legal, which is precisely what lets the 5000 ms stop
+watchdog force a stuck teardown to `Stopped` as a legal resting state.
+
 3.2 The Abstraction
 text
 
