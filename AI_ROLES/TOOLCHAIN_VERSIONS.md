@@ -12,10 +12,10 @@ verified when the relevant phase begins.
 | Dart SDK | 3.13.3 | 2026-09-16 | Installed through Flutter and verified with `dart --version`. |
 | Melos | 8.7.0 | 2026-09-16 | Installed and verified with `melos --version`. |
 | Git | 2.43.0 | 2026-09-16 | Installed and verified with `git --version`. |
-| Go | **1.20** (minimum matching the sing-box v1.10.7 `go.mod` directive) | 2026-09-28 | Pinned (P3-T1). Must be built with `GOTOOLCHAIN=local`. See "Go toolchain auto-resolution". |
+| Go | **1.21.x** (1.21.13 installed) — CORRECTED in P3-T3 | 2026-09-28 | Pinned in P3-T1 as 1.20, corrected in P3-T3: sing-box v1.10.7's `go.mod` says `go 1.20` but that **understates** the real requirement — `experimental/libbox/command_connections.go:6` imports the stdlib `slices` package, which only entered GOROOT in Go 1.21, so `gomobile bind` cannot compile the libbox package with Go 1.20. Must be built with `GOTOOLCHAIN=local`. |
 | gomobile | **`github.com/sagernet/gomobile` v0.1.4** (fork of `golang.org/x/mobile`) | 2026-09-28 | Pinned (P3-T1). v0.1.4 is the exact version sing-box v1.10.7 requires. BSD-3-Clause. |
 | Android NDK | **r26b** — HUMAN-DECIDED, not primary-source verified | 2026-09-28 | Pinned (P3-T1) on human direction. See "Unverified" below. |
-| Android Gradle Plugin | Not yet pinned - deferred to a later Phase 3 task | 2026-09-16 | No project-level pin is recorded. Out of P3-T1 scope. |
+| Android Gradle Plugin | **9.1.0** | 2026-09-28 | Exercised in a real `./gradlew assembleDebug` build during P3-T3; pinned here retroactively. Declared explicitly in `native/android/build.gradle.kts`. |
 | Kotlin | Not yet pinned - deferred to a later Phase 3 task | 2026-09-16 | No native Kotlin implementation exists yet. Out of P3-T1 scope. |
 | sing-box | **v1.10.7** (v1.10.x series) | 2026-09-28 | Pinned (P3-T1). Chosen to match the schema the Phase 2 serializers already emit. See "sing-box version policy". |
 
@@ -86,22 +86,42 @@ path is **not** used by v1.10.7. That path belongs to the pre-1.10
 `module github.com/sagernet/sing-box`. Any design note or code that imports
 `io.nekohasekai.libbox` is wrong for this pin and must be corrected.
 
-### Go version (verified)
+### Go version (verified by build)
 
-sing-box **v1.10.7**'s `go.mod` declares **`go 1.20`**. That is the minimum
-language/toolchain version for that module, so **Go 1.20** is the pin.
+sing-box **v1.10.7**'s `go.mod` declares **`go 1.20`**. P3-T1 read that
+directive and pinned **Go 1.20**. That inference was **wrong**, and P3-T3 proved
+it by attempting a real build.
 
-A prior working note suggested Go 1.23.x on the grounds that it "matches
-sing-box go.mod". **That was incorrect** and has been corrected here:
+A `go` directive is a *floor*, not a build recipe. The libbox package imports
+`slices`:
 
-| sing-box | `go` directive in `go.mod` |
-|---|---|
-| v1.10.7 | `go 1.20` |
-| v1.14.2 (current stable) | `go 1.25.5` |
+```
+experimental/libbox/command_connections.go:6:  "slices"
+```
 
-Neither declares 1.23.x. Building with a much newer Go than the module asks for
-is permitted by the `go` directive but increases the risk of the QUIC breakage
-described below, which is one more reason to stay close to 1.20.
+`slices` entered the Go standard library in **Go 1.21**, so with Go 1.20
+installed `gomobile bind` fails outright:
+
+```
+command_connections.go:6:2: package slices is not in GOROOT (/home/e60/.local/go/src/slices)
+gomobile: go build -v -buildmode=c-shared -o=.../libgojni.so . failed: exit status 1
+```
+
+**Corrected pin: Go 1.21.x** (1.21.13), human-approved in P3-T3 and confirmed
+by a clean end-to-end build. Recorded here so the next person does not repeat
+the mistake.
+
+| sing-box | `go` directive in `go.mod` | actually builds libbox? |
+|---|---|---|
+| v1.10.7 | `go 1.20` | no — needs **1.21+** |
+| v1.14.2 (current stable) | `go 1.25.5` | not attempted |
+
+A prior working note also suggested Go 1.23.x because it "matches sing-box
+go.mod". That was incorrect too: **neither** version declares 1.23.x.
+
+**Generalisable lesson, worth carrying to the next version bump:** verify what a
+package actually *imports*, not only what its `go.mod` declares. A pin that
+was never exercised is a hypothesis.
 
 ### gomobile (verified)
 
@@ -129,8 +149,13 @@ CGO_LDFLAGS="-Wl,-z,max-page-size=16384"
 Verification on the built artifact:
 
 ```
-readelf -l jni/arm64-v8a/libbox.so | grep -A 1 LOAD
+readelf -l jni/arm64-v8a/libgojni.so | grep -A 1 LOAD
 ```
+
+> **Filename corrected in P3-T3.** A gomobile AAR ships
+> `jni/<abi>/**libgojni.so**`, not `libbox.so`. Checking the old name matches
+> nothing and makes the verification pass for the wrong reason. The build
+> script now asserts the file exists before reading it.
 
 The `Align` column of each `LOAD` segment must read **`0x4000`** (16384). Any
 `0x1000` (4096) means the library is not 16 KB aligned.
@@ -206,12 +231,33 @@ this becomes a genuine migration task with its own acceptance criteria; it is
 
 ## Deferred Phase 3 Pins
 
-**Pinned in P3-T1 (2026-09-28):** Go 1.20, `github.com/sagernet/gomobile`
-v0.1.4, Android NDK r26b (human-directed, unverified), sing-box v1.10.7.
+**Pinned in P3-T1 (2026-09-28):** Go **1.21.x** (corrected from 1.20 in P3-T3,
+see "Go version" above), `github.com/sagernet/gomobile` v0.1.4, Android NDK
+r26b (human-directed, unverified), sing-box v1.10.7.
 
-**Still deferred to a later Phase 3 task:** Android Gradle Plugin and Kotlin.
-Neither was in P3-T1's scope and neither is needed until the native Android
-module is actually scaffolded (P3-T2 onwards).
+**All four were exercised by a real build in P3-T3** except that the NDK choice
+is still unverified against a primary source.
+
+**Pinned retroactively in P3-T3** after being exercised by a real
+`./gradlew assembleDebug` build: Android Gradle Plugin **9.1.0**.
+
+**Still open, human decision required — Kotlin.** `native/android` declares **no**
+Kotlin plugin: AGP 9.x supplies Kotlin internally, and applying
+`org.jetbrains.kotlin.android` there is now a hard build error. Three different
+"the Kotlin version" answers exist and they disagree:
+
+| Where | Version | What it is |
+|---|---|---|
+| `native/android` buildscript classpath | `2.2.10` | `kotlin-gradle-plugin`, transitive from AGP 9.1.0 — not declared by us |
+| `native/android` resolved stdlib | `2.2.21` | `kotlin-stdlib` runtime library |
+| `apps/mobile` `settings.gradle.kts` | `2.4.0` | `org.jetbrains.kotlin.android`, explicitly declared by the Flutter app |
+
+Left unpinned deliberately: recording `2.2.10` would document a *transitive*
+dependency that silently drifts on any AGP bump, and `2.4.0` describes a
+different module than the one P3-T3 exercised. A human should decide whether to
+(a) pin the AGP-supplied version and accept it moving with AGP, (b) pin 2.4.0 and
+align the native module to the Flutter app, or (c) leave it recorded as
+"AGP-supplied, unpinned".
 
 ## Unverified items (P3-T1) — read before trusting these pins
 
@@ -219,7 +265,7 @@ Per the P3-T1 acceptance criteria, these are recorded rather than papered
 over. Each needs a human check or a source I could not reach:
 
 1. **Android NDK r26b is human-directed, not verified.** No primary source was
-   found stating that r26b is the correct NDK for Go 1.20 +
+   found stating that r26b is the correct NDK for Go 1.21 +
    `sagernet/gomobile` on arm64-v8a/x86_64. r27b was also mentioned as an
    alternative and was not ruled out. Confirm before the AAR build task.
 2. **`-Wl,-z,max-page-size=16384` is not primary-source confirmed** for a
@@ -231,12 +277,13 @@ over. Each needs a human check or a source I could not reach:
 4. **The Go/QUIC breakage incident is unsourced.** See the footgun note above:
    the control is adopted, the specific bug is not evidenced.
 5. **Minimum SDK / API level was not verified.** "min API 21" was asserted in
-   an earlier note but no source was checked; Go 1.20 and modern Android NDK
+   an earlier note but no source was checked; Go 1.21 and modern Android NDK
    toolchains have their own floor.
 6. **`SagerNet/sing-box-for-android` license was not independently checked**
    (assumed GPL-3.0-or-later).
-7. **Nothing has been built.** P3-T1 is a research task; no AAR, no
-   `libbox.so`, and no `readelf` verification has actually been performed,
-   because no native toolchain is installed on this machine yet. Every 16 KB
-   claim above is therefore a specification for a future build, not an
-   observed result.
+7. ~~**Nothing has been built.**~~ **SUPERSEDED in P3-T3.** The AAR has since
+   been built from pinned source and the 16 KB alignment *measured*, not
+   assumed: `jni/arm64-v8a/libgojni.so` shows `0x4000` on every LOAD segment,
+   both inside the AAR and inside the final APK. See
+   `native/android/scripts/build_libbox_aar.sh`, which performs this check on
+   every run and refuses to emit a passing build otherwise.

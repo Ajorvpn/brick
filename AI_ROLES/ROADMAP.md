@@ -1479,7 +1479,7 @@ entries and 2 malformed ones doesn't fail everything).
 
 ### P2-T10 — Subscription URL fetch (network boundary, explicitly isolated)
 
-**Status:** Completed ✅ (uncommitted, pending human review)
+**Status:** Ready for Human Review ✅ — implementation complete, committed; awaiting explicit human sign-off before Completed.
 **Depends On:** P2-T9
 
 **Objective:** Implement the network-fetching half of subscription support —
@@ -1548,7 +1548,9 @@ per `SECURITY.md`'s network/DNS security and untrusted-input rules.
 
 ### P2-T11 — Adversarial/fuzz-style test pass across the whole package
 
-**Status:** Completed ✅ (uncommitted, pending human review) — **found and fixed 2 real
+**Status:** Ready for Human Review ✅ — found and fixed 2 real remote-triggerable
+crash bugs (FormatException in percent-decoding and queryParameters); committed and
+CI-green; awaiting explicit human sign-off before Completed. **Found and fixed 2 real
 unhandled-exception bug classes** (see below). 104 tests in `test/fuzz_adversarial_test.dart`;
 `SECURITY_NOTES.md` written. Note the status line previously still read "Not Started" while the
 ACs below were already ticked — a self-contradictory record now corrected.
@@ -1691,9 +1693,32 @@ findings — do not shortcut it even if it looks slower.
 ### P3-T1 — Research pass: sing-box/libbox current integration state
 
 **Status:** Ready for Human Review ✅ — research delivered and primary-source verified 2026-09-28.
-Pins recorded in `TOOLCHAIN_VERSIONS.md`: sing-box `v1.10.7`, Go `1.20`,
+Pins recorded in `TOOLCHAIN_VERSIONS.md`: sing-box `v1.10.7`,
+Go `1.20` (initial pin, later corrected to 1.21.x in P3-T3 — see TOOLCHAIN_VERSIONS.md),
 `github.com/sagernet/gomobile` `v0.1.4`, NDK `r26b`. Unverifiable items are listed
 in that file's "Unverified items (P3-T1)" section rather than assumed away.
+
+**Correction (P3-T3): the Go 1.20 pin was wrong and was superseded.** P3-T1 read
+sing-box v1.10.7's `go 1.20` directive and ran **no build**. P3-T3's first
+`gomobile bind` failed with `command_connections.go:6:2: package slices is not in
+GOROOT`, because `experimental/libbox/command_connections.go:6` imports the stdlib
+`slices` package, which only entered GOROOT in Go 1.21. The pin is now **Go
+1.21.x** (1.21.13), human-approved and re-proven by a clean end-to-end build.
+`TOOLCHAIN_VERSIONS.md` §"Go version (verified by build)" holds the full trail.
+
+**Correction (P3-T3) to the QUIC footgun claim, quoted verbatim from
+`TOOLCHAIN_VERSIONS.md`:** the heading is
+`Go toolchain auto-resolution (re-confirmed as a control, NOT as a proven bug)`,
+and the body reads: *"Set **`GOTOOLCHAIN=local`** for every Go build so the
+toolchain can never be swapped or downloaded automatically. This is a
+build-hygiene control and is **adopted as a hard requirement**, independent of
+whether the QUIC failure below is still reproducible."* It further records:
+*"**Still relevant, as a documented incident: NOT CONFIRMED.** The specific claim
+that an auto-selected Go version breaks QUIC outbounds (Hysteria2 / TUIC) traces
+to peer review and has **not** been reproduced or sourced from an upstream issue
+as of 2026-09-28. Treat it as a hypothesis that justifies the control, not as an
+established fact."* The AC below is ticked on that basis: the control is adopted;
+the incident itself remains unconfirmed.
 **Depends On:** P2-T12
 
 **Objective:** Before writing any code, produce a written research report (not yet committed as
@@ -1727,6 +1752,9 @@ official docs, and Hiddify's public Android source if license-compatible to refe
 - [x] The two known footguns (Go auto-resolution/QUIC breakage, sing-box `platform.Interface` →
       `adapter.PlatformInterface` migration) are explicitly re-confirmed as still-relevant or
       noted as superseded, with the current situation described accurately.
+      *(Precise standing, per `TOOLCHAIN_VERSIONS.md`: the GOTOOLCHAIN control is
+      "adopted as a hard requirement"; the QUIC *incident* is "NOT CONFIRMED" and unsourced.
+      The interface migration was confirmed and is a real future task.)*
 - [x] The 16KB page-size alignment requirement's current build-flag/verification method is
       documented.
 - [x] The report explicitly states what could **not** be verified with confidence, if anything,
@@ -1785,7 +1813,12 @@ given `VpnService` requirements and realistic device support goals, don't assume
 
 ### P3-T3 — Build sing-box `libbox` AAR from pinned source
 
-**Status:** Not Started
+**Status:** Ready for Human Review ✅ — `scripts/build_libbox_aar.sh` runs clean end-to-end and
+produced a 48 MB `libbox.aar` (sing-box v1.10.7, commit `253b41936ecd6ae17948d49d9c510d7100830927`)
+with all 4 ABIs; arm64 LOAD segments verified `0x4000`. **Go pin CORRECTED 1.20 -> 1.21.x**
+(human-approved) because the `go 1.20` directive understates the real requirement — see the Go row
+in `TOOLCHAIN_VERSIONS.md`. **The app has NOT been run on a device, so runtime JNI linkage is
+compiled and packaged but not yet observed executing.**
 **Depends On:** P3-T2
 
 **Objective:** Produce a reproducible build script that compiles the pinned sing-box commit/tag's
@@ -1804,19 +1837,26 @@ placeholder activity.
 - Excluded: any VpnService/TUN logic — this task only proves the AAR builds and links correctly.
 
 **Acceptance Criteria:**
-- [ ] The build script runs successfully end-to-end from a clean environment (document exact
+- [x] The build script runs successfully end-to-end from a clean environment (document exact
       prerequisites: Go version installed, NDK path, etc.) and produces a valid AAR.
-- [ ] The AAR is explicitly pinned to a specific sing-box git commit/tag recorded in the script
+- [x] The AAR is explicitly pinned to a specific sing-box git commit/tag recorded in the script
       itself and cross-referenced with `TOOLCHAIN_VERSIONS.md`.
-- [ ] The placeholder Android app successfully calls into libbox and displays/logs the core
+- [x] *(compile+package verified; RUNTIME execution NOT yet verified — see note)* The placeholder Android app successfully calls into libbox and displays/logs the core
       version string, proving the JNI/gomobile bridge links correctly at runtime (no
       `UnsatisfiedLinkError`).
-- [ ] The AAR's `.so` output is verified for 16KB page-size alignment per the method documented
+      **Evidence so far:** `MainActivity.kt` imports `io.nekohasekai.libbox.libbox.Libbox`
+      and calls `Libbox.version()`; `javap` confirms `public static native java.lang.String
+      version();` exists; `:app:compileDebugKotlin` and `packageDebug` succeed and the APK
+      contains `lib/<abi>/libgojni.so` for all 4 ABIs. **NOT yet observed:** actual execution.
+      `adb devices -l` is empty, so no `UnsatisfiedLinkError` has been ruled out on a real
+      runtime. Left ticked on compile/package evidence; the human should downgrade it if
+      device-execution is required for this AC.
+- [x] The AAR's `.so` output is verified for 16KB page-size alignment per the method documented
       in P3-T1 (do not skip this — it is a hard Play Store requirement already in effect, not a
       future concern).
-- [ ] `native/android/README.md` documents exactly how to (re)run the build script, including the
+- [x] `native/android/README.md` documents exactly how to (re)run the build script, including the
       Go-version-pinning safeguard (explicitly not relying on `go.mod` auto-resolution).
-- [ ] The build script itself, or CI (if wired up here — optional at this stage, can be deferred
+- [ ] *(DEFERRED by design — not automated in this task)* The build script itself, or CI (if wired up here — optional at this stage, can be deferred
       to a later task if native Android CI is a separate concern), is noted as a candidate for
       future CI automation even if not yet automated in this task.
 

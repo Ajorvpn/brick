@@ -47,6 +47,28 @@ so the Gradle `namespace` is `dev.brickvpn.harness` while the `applicationId` re
 **Not yet proven:** the APK has never been installed or launched — `adb devices -l` is empty
 and `flutter emulators` reports "No emulators available".
 
+**P3-T3 (2026-09-28) — libbox AAR built.** `native/android/scripts/build_libbox_aar.sh`
+reproducibly builds `app/libs/libbox.aar` (48 MB, gitignored) from sing-box **v1.10.7**
+(commit `253b41936ecd6ae17948d49d9c510d7100830927`) using Go **1.21.13**, gomobile/gobind
+**v0.1.4** and NDK **r26b**. All 4 ABIs are produced; arm64 `LOAD` segments verified at
+`0x4000` (16 KB aligned) both in the AAR and in the final APK. The AAR is linked into the
+harness and `MainActivity` calls `Libbox.version()`.
+
+**P3-T1 pin CORRECTED — Go 1.20 -> 1.21.x** (human-approved). sing-box v1.10.7's `go.mod`
+declares `go 1.20`, but that *understates* the real requirement:
+`experimental/libbox/command_connections.go:6` imports the stdlib `slices` package, which only
+entered GOROOT in Go 1.21, so `gomobile bind` cannot compile the libbox package with Go 1.20.
+The lesson generalises: **a `go` directive is a floor, not a build recipe** — verify what the
+package actually imports, not only what go.mod declares.
+
+Two further facts recorded in `TOOLCHAIN_VERSIONS.md` / `native/android/README.md`:
+(a) a gomobile AAR ships `jni/<abi>/libgojni.so`, **not** `libbox.so`; and (b) the generated
+class is `io.nekohasekai.libbox.libbox.Libbox` (javapkg + Go package name), not
+`io.nekohasekai.libbox.Libbox`.
+
+**Still unproven:** `Libbox.version()` is compiled and packaged but has **never executed** —
+JNI linkage is proven at build time only, not at runtime. That needs a device.
+
 **Phase 2 is substantially complete but NOT 100% complete, and was not closed by the agent.** A
 closeout audit was performed on 2026-09-27 and is recorded in `ROADMAP.md`. Outstanding:
 - ~~**P2-T10 (subscription URL fetch)**~~ — **delivered 2026-09-27.** `SubscriptionFetcher` in
@@ -322,6 +344,20 @@ evidence that established it, so the next agent can verify rather than re-derive
 
 ### Known deviations (accepted, not to be fixed)
 
+0. **(2026-09-28) P3-T1 pinned Go 1.20 from `go.mod` alone; P3-T3 corrected it to
+   1.21.x.** Evidence trail, recorded rather than amended:
+   P3-T1 commit `c6ab7cc` changed exactly one file (`AI_ROLES/TOOLCHAIN_VERSIONS.md`,
+   +193/-22) and ran **no build at all**, so the pin rested entirely on reading the
+   `go` directive in sing-box v1.10.7's `go.mod` (`go 1.20`). P3-T3's first
+   `gomobile bind` then failed with
+   `command_connections.go:6:2: package slices is not in GOROOT`, because
+   `experimental/libbox/command_connections.go:6` imports the stdlib `slices`
+   package, which only entered GOROOT in Go 1.21. Corrected to Go 1.21.13
+   (sha256-verified download, human-approved) and re-proven by a clean
+   end-to-end rebuild producing a 48 MB `libbox.aar` with arm64 LOAD segments
+   at `0x4000`. **Lesson, carried forward: a `go` directive is a floor, not a
+   build recipe — a pin that was never exercised is a hypothesis.** See
+   `TOOLCHAIN_VERSIONS.md` §"Go version (verified by build)".
 1. **P1-T5 commit `45b7c85` violated conventional-commit format** (its whole multi-line body was committed as the subject line, so the subject begins `- In-memory VpnEngine…` instead of `feat:`/`docs:`). Because it is already pushed to `origin/master` and branch protection forbids force-push, and because rewriting published history is permanently prohibited for agents, this is accepted as a permanent historical deviation and **must not be amended**. All subsequent commits should use a conventional subject.
 2. **Commit `586908c` bundles P1-T6 and P1-T7's output under a subject labelled only
    "(P1-T8)"** — `git log --oneline -- apps/mobile/lib/features/README.md` and

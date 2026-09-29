@@ -4,6 +4,10 @@ build/
 app/build/
 local.properties
 
+# libbox AAR is a BUILD ARTIFACT, never committed (P3-T3). It is 48 MB and is
+# reproduced by scripts/build_libbox_aar.sh from pinned source.
+app/libs/
+
 # Android/IDE noise
 *.iml
 .idea/

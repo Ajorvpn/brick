@@ -53,7 +53,14 @@ android {
 }
 
 dependencies {
-    // Intentionally minimal. No Flutter, no libbox, no Pigeon at Gate A.
+    // Intentionally minimal. No Flutter, no Pigeon at Gate A.
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.appcompat:appcompat:1.7.0")
+
+    // P3-T3: the sing-box v1.10.7 libbox AAR, built reproducibly by
+    // scripts/build_libbox_aar.sh. It is gitignored, so a fresh clone MUST run
+    // that script before this module will compile. No graceful fallback is
+    // provided on purpose: a missing AAR should fail loudly at build time
+    // rather than silently ship a harness that reports a fake version.
+    implementation(files("libs/libbox.aar"))
 }
