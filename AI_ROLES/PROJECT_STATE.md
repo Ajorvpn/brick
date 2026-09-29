@@ -47,6 +47,33 @@ so the Gradle `namespace` is `dev.brickvpn.harness` while the `applicationId` re
 **Not yet proven:** the APK has never been installed or launched — `adb devices -l` is empty
 and `flutter emulators` reports "No emulators available".
 
+**P3-T4 (2026-09-27) — READY FOR HUMAN REVIEW, study written.** The STOP-AND-ASK was
+**answered by the human: sing-box v1.10.7 is retained** (to preserve the Phase 2
+WireGuard/AmneziaWG schema), so the study was written scoped to the pinned API.
+`native/android/REFERENCE_ARCHITECTURE_STUDY.md` now exists (~18 KB) and covers all six
+domains. Decisions recorded there:
+
+- **TUN FD ownership:** `establish()` -> retain the `ParcelFileDescriptor` in the Kotlin
+  controller -> pass `pfd.fd` to libbox. **`detachFd()` is never called.** Confirmed in both
+  references (`hiddify` has zero `detachFd` hits under `android/app/src/main`). This directly
+  addresses the legacy TUN-leak failure in `ARCHITECTURE.md` §3.5.
+- **Thin service:** `VpnService` is a lifecycle shell; logic lives in a separate, unit-testable
+  controller. Both references do this (`VPNService.kt:28-46` in each).
+- **Single process:** neither reference declares `android:process`; `.bg.` is a package segment,
+  not a process. Gate A stays single-process.
+- **JNI:** the exact **18-method** `io.nekohasekai.libbox.libbox.PlatformInterface` was extracted
+  from our own AAR via `javap` and tabulated. Newer upstream methods (`checkPlatformShell`,
+  `usePlatformAutoRedirect`, `usePlatformBridge`, …) are explicitly marked unavailable.
+  Note `InterfaceUpdateListener.updateDefaultInterface(String,int)` takes **2** args here vs
+  **4** upstream — porting the reference call verbatim would not compile.
+- **Panic safety is an open gap, not solved:** neither reference traps Go panics at the JNI
+  boundary (sing-box-for-android's `triggerNativeCrash()` is debug-only). Mitigation is the
+  session-token + stop-watchdog contract already in `MockVpnEngine`, not exception handling.
+
+Sources `8e42c63` and `276a7ef` were studied for architecture only; **zero GPL code was copied**.
+Hiddify is GPLv3 §7-with-additional-terms, recorded in `TOOLCHAIN_VERSIONS.md`.
+
+
 **P3-T3 (2026-09-28) — libbox AAR built.** `native/android/scripts/build_libbox_aar.sh`
 reproducibly builds `app/libs/libbox.aar` (48 MB, gitignored) from sing-box **v1.10.7**
 (commit `253b41936ecd6ae17948d49d9c510d7100830927`) using Go **1.21.13**, gomobile/gobind

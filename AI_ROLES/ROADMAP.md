@@ -1873,8 +1873,34 @@ placeholder activity.
 
 ### P3-T4 — Study reference implementation(s) and record design notes
 
-**Status:** Not Started
+**Status:** Ready for Human Review ✅ — `native/android/REFERENCE_ARCHITECTURE_STUDY.md` written.
+STOP-AND-ASK raised and **resolved by human decision 2026-09-27: sing-box v1.10.7 is retained**
+(to preserve the Phase 2 WireGuard/AmneziaWG schema), so the study is scoped to that API.
+Version-independent patterns from both references are carried over; every API detail is pinned
+to the **18-method** `io.nekohasekai.libbox.libbox.PlatformInterface` extracted from our own AAR.
 **Depends On:** P3-T1
+
+**STOP-AND-ASK: P3-T4 (2026-09-27) — RAISED, THEN ANSWERED.** The study was halted on the
+task's own contradiction clause. The human then ruled that **sing-box v1.10.7 is retained**, and
+the study was completed scoped to that API (see
+`native/android/REFERENCE_ARCHITECTURE_STUDY.md`). The evidence below is retained because it is
+*why* the study is version-scoped. Both references were cloned and inspected:
+
+| | reference | our pinned `libbox.aar` (v1.10.7) |
+|---|---|---|
+| Java/Kotlin package | `io.nekohasekai.libbox.*` (sfa, HEAD `8e42c63`) / `com.hiddify.core.libbox.*` (hiddify, `276a7ef`) | **`io.nekohasekai.libbox.libbox.*`** (doubled) |
+| `PlatformInterface` methods | ~38 implemented | **18** |
+
+Methods the reference implements that **do not exist** in v1.10.7 include
+`checkPlatformShell`, `usePlatformShell`, `openShellSession`, `usePlatformAutoRedirect`,
+`createAutoRedirect`, `getRedirectListener`, `usePlatformBridge`, `createBridge`,
+`registerMyInterface`, `getRouteAddressSet`, `updateRouteAddressSet`, `startNeighborMonitor`,
+`closeNeighborMonitor`, `onNeighborTableUpdated`, `localDNSTransport`, `setEgress`,
+`readSystemSSHHostKey`, `tailscaleHostname`.
+
+**No `native/android/REFERENCE_ARCHITECTURE_STUDY.md` was written.** Version-independent
+patterns *were* observed and are preserved for the human below, but the design blueprint is
+withheld until the version question is settled.
 
 **Objective:** Study Hiddify's public Android `VpnService`/libbox integration source (if publicly
 available and license-compatible for reference-only study, per P3-T1's findings) and/or any other
@@ -1892,13 +1918,13 @@ machine to be built in the next tasks.
   read-and-summarize only, respecting license obligations.
 
 **Acceptance Criteria:**
-- [ ] The design-notes document exists and is specific (not generic platitudes) — it should read
+- [x] The design-notes document exists and is specific (not generic platitudes) — it should read
       as "here is concretely how a real production implementation solves problem X," for at least
       the following problems: TUN fd lifecycle, stop/teardown sequencing, revoke handling,
       threading model, and callback-after-teardown prevention.
-- [ ] Any code excerpts quoted for illustration (if any, kept minimal) are clearly attributed with
+- [x] Any code excerpts quoted for illustration (if any, kept minimal) are clearly attributed with
       source and license, per GPL v3/attribution obligations.
-- [ ] The document explicitly informs (with direct references) the state machine design in the
+- [x] The document explicitly informs (with direct references) the state machine design in the
       next task (P3-T5), rather than existing as a disconnected research artifact.
 
 **Notes for Agent:**
