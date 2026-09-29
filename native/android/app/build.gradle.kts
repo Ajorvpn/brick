@@ -63,4 +63,20 @@ dependencies {
     // provided on purpose: a missing AAR should fail loudly at build time
     // rather than silently ship a harness that reports a fake version.
     implementation(files("libs/libbox.aar"))
+
+    // P3-T5: `VpnStateMachine` is pure Kotlin (no Android framework imports) and
+    // emits its state through a `StateFlow`, so coroutines are a genuine
+    // `implementation` dependency of the module, not a test-only one.
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1")
+
+    // P3-T5: host-JVM unit tests. `testDebugUnitTest` needs no emulator and no
+    // Robolectric, which is what lets the state machine be proven in isolation
+    // (the native counterpart of how MockVpnEngine was proven in P1-T5).
+    // NOTE: before this task `app/src/test` did not exist and NO test
+    // dependencies were declared, so `testDebugUnitTest` reported NO-SOURCE
+    // and "passed" without executing a single test.
+    testImplementation("junit:junit:4.13.2")
+    // Virtual time: the 5000 ms stop watchdog is exercised deterministically
+    // via `advanceTimeBy` instead of actually sleeping five seconds.
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
 }
