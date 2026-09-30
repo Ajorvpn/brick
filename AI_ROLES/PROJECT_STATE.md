@@ -44,8 +44,17 @@ Two facts worth remembering: **AGP 9.x has built-in Kotlin support**, so applyin
 so the Gradle `namespace` is `dev.brickvpn.harness` while the `applicationId` remains
 `dev.brickvpn.native.harness` exactly as specified.
 
-**Not yet proven:** the APK has never been installed or launched — `adb devices -l` is empty
-and `flutter emulators` reports "No emulators available".
+**Not yet proven (P3-T2, 2026-09-28; SUPERSEDED 2026-09-30 by P3-T6):** the APK had never been
+installed or launched — `adb devices -l` was empty and `flutter emulators` reported
+"No emulators available".
+
+**P3-T6 UPDATE (2026-09-30) — a real device is now attached and was used.** `adb devices -l`
+reports **`RZ8M53WPMPF`** (Samsung **SM-A205F**, Android 10 / **API 29**, usb `3-2`,
+`state: device`). `./gradlew connectedAndroidTest` was run against it and passed **4/4**.
+This closes the "no device available" blocker recorded in P3-T1/P3-T2. Note the device is
+**API 29**, so the API 34+ foreground-service rules are not exercised on this hardware; the
+`specialUse` declaration is forward-looking for `targetSdk 36` but unverified at runtime here.
+`flutter emulators` remains empty — the device is USB-attached, not an AVD.
 
 **P3-T5 (2026-09-27) — READY FOR HUMAN REVIEW, state machine implemented and tested.** A
 STOP-AND-ASK was raised because the task brief, the ROADMAP, and `ARCHITECTURE.md` §3.1.1
@@ -87,6 +96,36 @@ go to `Error("Watchdog timeout after 5000ms")`, which is legal.
 `app/build.gradle.kts` declared **no** test dependencies, so `testDebugUnitTest` reported
 `NO-SOURCE` and "passed" without running a single test. JUnit 4.13.2, `kotlinx-coroutines-core`
 and `kotlinx-coroutines-test` were added. A green `testDebugUnitTest` was previously meaningless.
+
+**P3-T6 (2026-09-30) — READY FOR HUMAN REVIEW, VpnService skeleton proven on a real device.**
+`BrickVpnService` implements the Android lifecycle against the P3-T5 `VpnStateMachine`, with
+**no libbox call of any kind** (engine is `FakeTunnelEngine`, a fixed-delay sleep) — the
+P3-T6/P3-T7 separation was preserved as `ROADMAP.md` requires. Delivered in
+`native/android/app/src/main/java/dev/brickvpn/harness/vpn/`: `TunnelEngine.kt` (interface +
+fake) and `BrickVpnService.kt`; instrumented tests in `app/src/androidTest/.../BrickVpnServiceTest.kt`.
+
+- **Real-device proof:** `RZ8M53WPMPF` (Samsung SM-A205F, **API 29**). `./gradlew connectedAndroidTest`
+  → **4/4 passed, BUILD SUCCESSFUL**; the P3-T5 host-JVM suite still **36/36**.
+- logcat proves the real chain: `service created → onStartCommand: start → TUN descriptor
+  acquired (fd=64) → state -> Starting → state -> Running`, then `ACTION_STOP → Stopping →
+  onDestroy → TUN descriptor closed`.
+- **Descriptor discipline:** `establish()` is retained in Kotlin and closed exactly once via an
+  `AtomicBoolean` guard, on a `cleanupScope` that **outlives `onDestroy`** so a teardown-time
+  cancel cannot skip the close. `detachFd()` is never called. No fd leak across 3 cycles
+  (asserted against `/proc/self/fd`).
+
+**One real bug found and fixed, worth remembering:** the `ACTION_STOP` branch of
+`onStartCommand` did **not** call `startForeground()`. The instrumentation process was killed
+mid-suite with `android.app.RemoteServiceException: Context.startForegroundService() did not
+then call Service.startForeground()`. `startForegroundSafely()` is now hoisted to the top of
+`onStartCommand` for **every** action, and the tests use `startService()` (not
+`startForegroundService()`) for the stop command, since a teardown must not re-promote to
+foreground. High confidence — the exception names the contract verbatim.
+
+**Known gap carried forward:** the device is **API 29**, so the Android 14+ foreground-service
+rules are *not* exercised. The manifest declares `specialUse` (correct for `targetSdk 36`) but
+that path is unverified at runtime on this hardware. **P3-T7's test-config decision is
+deliberately left open** — this task made no test-config choice.
 
 **P3-T4 (2026-09-27) — READY FOR HUMAN REVIEW, study written.** The STOP-AND-ASK was
 **answered by the human: sing-box v1.10.7 is retained** (to preserve the Phase 2
@@ -422,6 +461,13 @@ evidence that established it, so the next agent can verify rather than re-derive
    `assembleDebug` cannot complete in this environment because the `io.flutter:*_debug` engine
    artifacts are neither cached nor downloadable — `storage.googleapis.com` is unreachable
    (curl times out) while `github.com` and `pub.dev` both return HTTP 200. **Until a human runs the
+   > **P3-T6 UPDATE (2026-09-30) — partly superseded.** The *evidence above* is no longer true:
+   > a real Android device is now attached (`RZ8M53WPMPF`, Samsung SM-A205F, API 29) and
+   > `./gradlew connectedAndroidTest` passed 4/4 on it. What this item still blocks is the
+   > **Flutter app** (`apps/mobile`), not the native harness: the `storage.googleapis.com`
+   > engine-artifact problem above is unrelated to the device and remains unresolved, so
+   > P1-T7/T8/T10/T11 (all Flutter-side) are still genuinely open. Only the native Gate A
+   > harness has now been proven on hardware.
    app on a device, the routing, localization, and Riverpod wiring are proven only by widget tests,
    never on a real target.**
 2. **RETIRED — the earlier "`melos run <script>` hangs" reports were a FALSE POSITIVE.**

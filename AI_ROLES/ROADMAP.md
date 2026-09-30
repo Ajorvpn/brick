@@ -2038,7 +2038,11 @@ were added here because they were implemented and tested.
 
 ### P3-T6 — VpnService skeleton wired to the state machine (no libbox yet)
 
-**Status:** Not Started
+**Status:** Ready for Human Review ✅ — `BrickVpnService` implemented against the P3-T5
+`VpnStateMachine` with a **fake** engine (no libbox call of any kind, per this task's
+separation rule). `./gradlew connectedAndroidTest` passes **4/4** on the real connected device
+`RZ8M53WPMPF` (Samsung SM-A205F, API 29), and the P3-T5 host-JVM suite still passes 36/36.
+See `PROJECT_STATE.md` for the lifecycle logcat evidence and the one real bug fixed.
 **Depends On:** P3-T5, P3-T2
 
 **Objective:** Implement a minimal Android `VpnService` subclass that wires real Android

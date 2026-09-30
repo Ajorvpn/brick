@@ -26,6 +26,10 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "0.1.0-gateA"
+
+        // P3-T6: required for `connectedAndroidTest` to generate and run a
+        // self-instrumenting APK for this applicationId on the real device.
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     // Pinned by P3-T1 (AI_ROLES/TOOLCHAIN_VERSIONS.md): NDK r26b.
@@ -79,4 +83,14 @@ dependencies {
     // Virtual time: the 5000 ms stop watchdog is exercised deterministically
     // via `advanceTimeBy` instead of actually sleeping five seconds.
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
+
+    // P3-T6: instrumented tests (`connectedAndroidTest`) proving the real
+    // Android lifecycle — foreground service, TUN establishment, ACTION_STOP,
+    // onRevoke, and descriptor closure — on a real device. These are separate
+    // from the host-JVM `test` task above and REQUIRE a connected device.
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test:rules:1.6.1")
+    androidTestImplementation("androidx.test:core:1.6.1")
+    androidTestImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
 }
