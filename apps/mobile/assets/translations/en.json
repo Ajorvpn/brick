@@ -9,5 +9,26 @@
     "title": "Settings",
     "label": "Settings",
     "back_to_home": "Back to Home"
+  },
+  "connection": {
+    "add_server": "Add Server",
+    "parse": "Parse",
+    "save": "Save",
+    "uri_label": "Server URI",
+    "uri_required": "Enter a server URI first",
+    "no_servers": "No saved servers yet",
+    "load_failed": "Could not load saved servers",
+    "connect": "Connect",
+    "disconnect": "Disconnect",
+    "remove": "Remove",
+    "broken_title": "Unreadable server",
+    "state_disconnected": "Disconnected",
+    "state_connecting": "Connecting",
+    "state_connected": "Connected",
+    "state_disconnecting": "Disconnecting",
+    "state_error": "Connection error",
+    "traffic": "{tx} up / {rx} down",
+    "traffic_none": "No traffic data",
+    "traffic_unavailable": "Traffic data unavailable"
   }
 }

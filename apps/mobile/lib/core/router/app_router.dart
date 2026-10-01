@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import 'package:go_router/go_router.dart';
+import 'package:mobile/features/connection/presentation/screens/add_server_screen.dart';
 import 'package:mobile/features/connection/presentation/screens/home_screen.dart';
 import 'package:mobile/features/settings/presentation/screens/settings_screen.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -36,6 +37,11 @@ GoRouter appRouter(Ref ref) {
         path: '/',
         name: 'home',
         builder: (context, state) => const HomeScreen(),
+      ),
+      GoRoute(
+        path: '/add-server',
+        name: 'add-server',
+        builder: (context, state) => const AddServerScreen(),
       ),
       GoRoute(
         path: '/settings',

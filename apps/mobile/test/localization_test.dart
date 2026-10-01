@@ -2,7 +2,6 @@
 
 import 'dart:io';
 
-import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/features/connection/presentation/screens/home_screen.dart';
@@ -42,10 +41,14 @@ void main() {
       await pumpLocalizedApp(
         tester,
         localizedMaterialApp(home: const HomeScreen()),
+        overrides: repositoryOverride(),
       );
 
       expect(find.text('Brick VPN'), findsOneWidget);
-      expect(find.text('Home'), findsOneWidget);
+      // HomeScreen renders the AppBar title and the empty-state message. It
+      // does NOT render `home.label` ('Home') anywhere, so asserting on that
+      // string would only ever pass by coincidence.
+      expect(find.text('No saved servers yet'), findsOneWidget);
       expect(find.text('Go to Settings'), findsOneWidget);
       // The raw lookup key must never be displayed to a user.
       expect(find.text('home.go_to_settings'), findsNothing);
@@ -89,22 +92,25 @@ void main() {
         },
       );
 
-      await tester.pumpWidget(
-        EasyLocalization(
-          supportedLocales: const <Locale>[Locale('en'), Locale('de')],
-          path: 'assets/translations',
-          startLocale: const Locale('de'),
-          fallbackLocale: const Locale('en'),
-          saveLocale: false,
-          assetLoader: loader,
-          child: localizedMaterialApp(home: const HomeScreen()),
-        ),
+      await pumpLocalizedApp(
+        tester,
+        localizedMaterialApp(home: const HomeScreen()),
+        assetLoader: loader,
+        // HomeScreen is a ConsumerWidget: without a ProviderScope (and a
+        // repository override) it throws while building, so the whole test
+        // fails on a StateError rather than on a translation mismatch.
+        overrides: repositoryOverride(),
+        startLocale: const Locale('de'),
       );
-      await tester.pumpAndSettle();
 
       expect(find.text('Ziegel VPN'), findsOneWidget);
-      expect(find.text('Startseite'), findsOneWidget);
       expect(find.text('Zu den Einstellungen'), findsOneWidget);
+      // `home.label` is translated but HomeScreen never renders it, so the
+      // German value must be absent — this pins the assertion to the keys the
+      // screen actually uses.
+      expect(find.text('Startseite'), findsNothing);
+      // The raw lookup key must never surface in another locale either.
+      expect(find.text('home.title'), findsNothing);
     });
   });
 }

@@ -319,6 +319,23 @@ Status tokens below are quoted verbatim from the corresponding `**Status:**` lin
   call-site changes required. Until then, NO sensitive value is actually
   redacted at runtime; see SECURITY.md Section 4.
 - Android native integration (`VpnService`, `libbox` JNI bridge) — deferred to Phase 3.
+- **Secure storage for saved server profiles — NOT yet done; release blocker.**
+  Saved servers are currently persisted in **plain `SharedPreferences`**
+  (`apps/mobile/lib/core/providers/server_profile_repository_provider.dart` binds
+  `SharedPreferencesServerProfileDataSource`). The stored value is the
+  **full source URI, which embeds the server credential** (e.g. a VLESS UUID or
+  a Trojan password), so on a rooted or imaged device that data is readable in
+  cleartext. Per SECURITY.md §3, server config is High-sensitivity data and plain
+  `SharedPreferences` is not acceptable at release.
+  **Required before Phase 11 / release:** replace the data source with a
+  `flutter_secure_storage`-backed (Keystore / Keychain) implementation of
+  `ServerProfileLocalDataSource`, keeping the repository and every provider
+  unchanged so only the composition root moves. The `TODO(Ajorvpn)` in
+  `server_profile_repository_provider.dart` tracks this; it is a **deferred
+  security task, not a stylistic one** — do not treat the green test suite as
+  evidence this is closed.
+  Accepted for now because the alternative is shipping no persistence at all;
+  it must not survive to release.
 - Clean Linux desktop toolchain (missing locally: clang, cmake, ninja, pkg-config; deferred to Phase 12).
 
 ---

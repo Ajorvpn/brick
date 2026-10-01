@@ -14,17 +14,28 @@ void main() {
   setUpAll(initTestLocalization);
   group('appRouterProvider navigation', () {
     testWidgets('default initial location renders HomeScreen', (tester) async {
-      await pumpLocalizedApp(tester, const MyApp());
+      await pumpLocalizedApp(
+        tester,
+        const MyApp(),
+        overrides: repositoryOverride(),
+      );
 
       expect(find.byType(HomeScreen), findsOneWidget);
-      expect(find.text('Home'), findsOneWidget);
+      // HomeScreen shows the AppBar title plus the empty-state message; it
+      // does not render `home.label`.
+      expect(find.widgetWithText(AppBar, 'Brick VPN'), findsOneWidget);
+      expect(find.text('No saved servers yet'), findsOneWidget);
       expect(find.byType(SettingsScreen), findsNothing);
     });
 
     testWidgets('navigating to /settings renders SettingsScreen', (
       tester,
     ) async {
-      await pumpLocalizedApp(tester, const MyApp());
+      await pumpLocalizedApp(
+        tester,
+        const MyApp(),
+        overrides: repositoryOverride(),
+      );
 
       await tester.tap(find.text('Go to Settings'));
       await tester.pumpAndSettle();
@@ -39,7 +50,11 @@ void main() {
     testWidgets('back navigation returns from Settings to Home', (
       tester,
     ) async {
-      await pumpLocalizedApp(tester, const MyApp());
+      await pumpLocalizedApp(
+        tester,
+        const MyApp(),
+        overrides: repositoryOverride(),
+      );
 
       await tester.tap(find.text('Go to Settings'));
       await tester.pumpAndSettle();
@@ -60,7 +75,11 @@ void main() {
       // A detached GoRouter has an empty `currentConfiguration.uri` until it
       // is attached to a widget tree, so the initial location is asserted
       // through the rendered output rather than through router internals.
-      await pumpLocalizedApp(tester, const MyApp());
+      await pumpLocalizedApp(
+        tester,
+        const MyApp(),
+        overrides: repositoryOverride(),
+      );
 
       expect(find.byType(HomeScreen), findsOneWidget);
     });

@@ -36,6 +36,11 @@ environment:
 # dependency, so depending on them never drags Flutter into the pure-Dart
 # packages.
 dependencies:
+  # `config_parser` is a pure-Dart workspace sibling the app consumes
+  # DIRECTLY to turn a pasted server URI into a `core_domain`
+  # `OutboundConfig`. Being pure Dart, it never drags Flutter into the
+  # pure-Dart packages.
+  config_parser:
   core_domain:
   core_vpn_engine:
   # The following adds the Cupertino Icons font to your application.
@@ -48,6 +53,14 @@ dependencies:
   go_router: ^18.0.1
   logger: ^2.8.0
   riverpod_annotation: ^4.0.7
+  # TODO(Ajorvpn): SECURITY.md Section 3 classifies server configuration as
+  # High-sensitivity data that must live in platform-native secure storage
+  # (Android Keystore / `flutter_secure_storage`), NEVER in plain
+  # `SharedPreferences`. This dependency exists ONLY so the connection
+  # feature can prove its Riverpod + state-stream wiring end to end against
+  # `MockVpnEngine` before any native engine exists. It MUST be replaced by
+  # secure storage before Phase 11 / any release build.
+  shared_preferences: ^2.5.3
   shared_utils:
 
 dev_dependencies:
@@ -55,9 +68,6 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   riverpod_generator: ^4.0.9
-  # Used directly by the widget-test localization harness to stub the
-  # persisted-locale channel that easy_localization reads at startup.
-  shared_preferences: ^2.5.3
   very_good_analysis: ^11.0.0
 
 # For information on the generic Dart part of this file, see the
