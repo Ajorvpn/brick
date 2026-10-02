@@ -9,11 +9,33 @@
     -->
     <uses-permission android:name="android.permission.BIND_VPN_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!--
+      P3-T7: libbox opens real sockets the moment it initialises the `tun`
+      inbound. Without INTERNET every socket() returns EACCES, which surfaced
+      on-device (SM-A205F, API 29) as:
+
+        proxyerror: initialize inbound/tun[tun-in]:
+          listen tcp4 10.111.222.1:0: socket: permission denied
+
+      P3-T6 never declared INTERNET because its FakeTunnelEngine touched no
+      network at all; the fake engine masked a genuine platform requirement.
+      INTERNET is a normal (install-time) permission: no runtime prompt.
+    -->
+    <uses-permission android:name="android.permission.INTERNET" />
     <!-- API 34+ only; harmless below that. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!--
+      P3-T7: `android:name` installs BrickVpnApplication, which is the only
+      place `Libbox.setup(SetupOptions)` can be called. Without it sing-box
+      resolves its cache file against the process CWD (`/` on Android, read-only)
+      and every BoxService.start() fails with:
+        proxyerror: pre-start cache file: open cache.db: read-only file system
+      It must run before any VpnService, which Application.onCreate guarantees.
+    -->
     <application
+        android:name=".BrickVpnApplication"
         android:allowBackup="false"
         android:label="@string/app_name"
         android:supportsRtl="true"

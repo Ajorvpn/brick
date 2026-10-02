@@ -15,8 +15,14 @@ import java.io.File
  * P3-T6 instrumented tests — these run on the REAL connected device
  * (`connectedAndroidTest`), as required by ROADMAP AC-6/AC-7.
  *
- * They prove the Android lifecycle layer only. **No libbox is involved**; the
- * engine is [FakeTunnelEngine], per the P3-T6/P3-T7 separation.
+ * Originally these ran against [FakeTunnelEngine] only, per the P3-T6/P3-T7
+ * separation. **Since P3-T7 they now run against the real
+ * [LibboxTunnelEngine]**, which is precisely what ROADMAP P3-T7 AC7 asks for:
+ * the P3-T6 lifecycle suite (start/stop/revoke, no-fd-leak) must still pass
+ * with the real engine swapped in. The assertions are unchanged, so a pass
+ * here means the engine swap did not regress the Android layer.
+ *
+ * P3-T7's own libbox-specific proof lives in [LibboxEngineTest].
  *
  * VpnService requires user consent before `Builder.establish()` returns a
  * descriptor. Consent is granted out-of-band for automation with:
@@ -76,6 +82,45 @@ class BrickVpnServiceTest {
     @Before
     fun setUp() {
         VpnService.prepare(context)
+        stopLeftoverService()
+    }
+
+    /**
+     * Instrumented tests share one process and a `VpnService` is a process
+     * singleton, so a test that leaves the service running lets the next test
+     * inherit its state. See the equivalent helper in [LibboxEngineTest] for the
+     * concrete failure this prevents. Isolation only -- no assertion here was
+     * weakened.
+     */
+    private fun stopLeftoverService() {
+        val previous = BrickVpnService.current ?: return
+        // Ask the previous session to stop cleanly, then force the component
+        // down so the next test gets a FRESH instance (and a fresh Idle state
+        // machine). A VpnService is a process singleton, so without the forced
+        // stop the next test's startService() would be delivered to the old
+        // instance and inherit its state. See [LibboxEngineTest] for the
+        // concrete failure this prevents.
+        runCatching {
+            context.startService(
+                Intent(context, BrickVpnService::class.java)
+                    .setAction(BrickVpnService.ACTION_STOP),
+            )
+        }
+        runCatching {
+            context.stopService(Intent(context, BrickVpnService::class.java))
+        }
+        val deadline = System.currentTimeMillis() + 10_000
+        while (System.currentTimeMillis() < deadline) {
+            if (BrickVpnService.current == null) break
+            Thread.sleep(25)
+        }
+        if (BrickVpnService.current === previous) {
+            throw AssertionError(
+                "previous BrickVpnService (state=" +
+                    "${previous.stateMachine.currentState}) did not shut down",
+            )
+        }
+        started = false
     }
 
     @After

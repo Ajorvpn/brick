@@ -18,23 +18,22 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 
 /**
- * Gate A `VpnService` skeleton. Wires real Android lifecycle events to the
- * P3-T5 [VpnStateMachine].
+ * Gate A `VpnService`. Wires real Android lifecycle events to the P3-T5
+ * [VpnStateMachine], and (since P3-T7) to a real libbox instance.
  *
- * **No libbox call is made anywhere in this class** — see the note below.
+ * ## P3-T6 -> P3-T7: the engine changed, the lifecycle did not
  *
- * ## Why no libbox here
- *
- * `ROADMAP.md` P3-T6 is titled "VpnService skeleton wired to the state machine
- * *(no libbox yet)*" and its Notes for Agent say to "preserve this separation
- * strictly; do not 'just wire in libbox while I'm here' even if it seems
- * convenient". The engine here is [FakeTunnelEngine]. Real libbox startup, the
- * 18-method `PlatformInterface` binding, and the TUN-fd handoff into Go are
- * **P3-T7's** job, deliberately, so a bug found in this task is unambiguously
- * an Android-lifecycle bug rather than a native-bridge bug.
+ * P3-T6 ran [FakeTunnelEngine], so `Running` meant "a timer elapsed". P3-T7
+ * replaces it with [LibboxTunnelEngine], so `Running` means "libbox actually
+ * started". What deliberately did **not** change is the shape of this class:
+ * it still owns the Android objects, still borrows a descriptor rather than
+ * taking it, and still delegates every decision to [VpnStateMachine]. That
+ * separation is what made P3-T6's bugs attributable to the Android layer
+ * instead of the native bridge, and it is why swapping the engine was a
+ * one-line change here rather than a rewrite.
  *
  * ## Threading
  *
@@ -50,8 +49,13 @@ class BrickVpnService : VpnService() {
     val stateMachine: VpnStateMachine =
         VpnStateMachine(scope = CoroutineScope(SupervisorJob() + Dispatchers.IO))
 
-    /** Engine seam. Always fake in P3-T6. */
-    var engine: TunnelEngine = FakeTunnelEngine()
+    /**
+     * Engine seam. A real [LibboxTunnelEngine] since P3-T7.
+     *
+     * Still a `var` so a test can inject [FakeTunnelEngine] to exercise the
+     * Android layer without libbox; production never overrides it.
+     */
+    var engine: TunnelEngine = LibboxTunnelEngine()
 
     private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -63,15 +67,33 @@ class BrickVpnService : VpnService() {
     private val cleanupScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     /**
-     * The retained TUN descriptor. Kotlin owns it; libbox (in P3-T7) receives
-     * only the borrowed `fd` int. `detachFd()` is never called — see
-     * `REFERENCE_ARCHITECTURE_STUDY.md` Domain 2.
+     * The retained TUN descriptor. Kotlin owns it; libbox receives only the
+     * borrowed `fd` int, which `LibboxPlatformInterface.openTun` hands back to
+     * Go and `LibboxTunnelEngine` invalidates before teardown.
+     * `detachFd()` is never called — see `REFERENCE_ARCHITECTURE_STUDY.md`
+     * Domain 2.
+     *
+     * ## Why an `AtomicReference` and not a flag + field
+     *
+     * This was previously a `@Volatile var` beside a one-shot `AtomicBoolean`
+     * "already closed" flag, and that pair **leaked a descriptor** on the
+     * start/stop race, observed on-device during P3-T7:
+     *
+     * ```
+     * ACTION_STOP -> state -> Stopping -> state -> Stopped   // close runs, tunPfd is null
+     * TUN descriptor acquired (fd=67)                        // in-flight start, too late
+     * ```
+     *
+     * The teardown consumed the one-shot flag while `tunPfd` was still `null`,
+     * then the racing `runStartSequence` published a descriptor that no future
+     * `closeTunOnce()` could ever release — the flag was permanently spent.
+     *
+     * An `AtomicReference` makes the close a **claim on the descriptor itself**
+     * via [getAndSet]: whichever caller observes a descriptor closes it, exactly
+     * once, and a descriptor published *after* an earlier close is still
+     * released. There is no global flag to spend prematurely.
      */
-    @Volatile
-    private var tunPfd: ParcelFileDescriptor? = null
-
-    /** Makes the close idempotent so it happens exactly once on every path. */
-    private val tunClosed = AtomicBoolean(false)
+    private val tunPfd = AtomicReference<ParcelFileDescriptor?>(null)
 
     override fun onCreate() {
         super.onCreate()
@@ -112,7 +134,7 @@ class BrickVpnService : VpnService() {
         val token = stateMachine.activeSession
         ioScope.launch {
             if (token != null) stateMachine.onRevoke()
-            runCatching { engine.stop() }
+            stopEngine(StopReason.USER_STOP)
             closeTunOnce()
         }
         stopSelf()
@@ -127,7 +149,7 @@ class BrickVpnService : VpnService() {
         cleanupScope.launch {
             try {
                 if (token != null && stateMachine.stop() == VpnCommandResult.Accepted) {
-                    runCatching { engine.stop() }
+                    stopEngine(StopReason.ON_DESTROY)
                     stateMachine.onStopped(token)
                 }
                 closeTunOnce()
@@ -153,7 +175,16 @@ class BrickVpnService : VpnService() {
 
     /**
      * Preparing -> Starting -> Running. Mirrors the study's Domain 1 startup
-     * sequence, with the fake engine standing in for `libbox`.
+     * sequence, driving the real `libbox` engine since P3-T7.
+     *
+     * ## The start/stop race (a real descriptor leak this sequence now closes)
+     *
+     * A stop can arrive while `establish()` is still in flight. The machine
+     * correctly lands on `Stopped`, the teardown's [closeTunOnce] finds no
+     * descriptor yet, and then this sequence acquires one — which, before the
+     * [tunPfd] fix, could never be released. The `onPreparingComplete` check
+     * below is therefore not just a legality guard: when it is refused, this
+     * sequence owns a descriptor nobody else will close, so it releases it.
      */
     private suspend fun runStartSequence() {
         val token = stateMachine.activeSession ?: return
@@ -164,18 +195,33 @@ class BrickVpnService : VpnService() {
                 stateMachine.onFailure(token, "establish() returned null")
                 return
             }
-            tunPfd = pfd
+            tunPfd.set(pfd)
             Log.i(TAG, "TUN descriptor acquired (fd=${pfd.fd})")
 
-            if (!stateMachine.onPreparingComplete(token)) return
+            if (!stateMachine.onPreparingComplete(token)) {
+                // The session was superseded while establish() was in flight (a
+                // stop arrived first), so `Stopped -> Starting` is *refused* --
+                // correctly. This descriptor belongs to a dead session and is
+                // nobody else's to release, so release it here.
+                Log.i(TAG, "start superseded before Running; releasing TUN descriptor")
+                closeTunOnce()
+                return
+            }
             Log.i(TAG, "state -> Starting")
 
-            engine.start(pfd.fd) // fake: fixed-delay sleep, no libbox, no network
+            engine.start(pfd.fd) // real: Libbox.newService(...) + BoxService.start()
 
             if (stateMachine.onRunning(token)) Log.i(TAG, "state -> Running")
         } catch (t: Throwable) {
-            Log.e(TAG, "start failed: ${t.javaClass.simpleName}: ${t.message}")
-            stateMachine.onFailure(token, "start failed: ${t.javaClass.simpleName}")
+            // The reason must be SPECIFIC (ROADMAP P3-T7 "Notes for Agent"): the
+            // bare class name `proxyerror` is only gomobile's proxy wrapper and
+            // says nothing about the cause. The real Go error travels in the
+            // message -- observed on-device as "pre-start cache file: open
+            // cache.db: read-only file system" -- so it belongs in the state's
+            // reason, not only in the log line.
+            val reason = "start failed: ${t.javaClass.simpleName}: ${t.message}"
+            Log.e(TAG, reason)
+            stateMachine.onFailure(token, reason)
         }
     }
 
@@ -184,7 +230,7 @@ class BrickVpnService : VpnService() {
         ioScope.launch {
             if (token != null && stateMachine.stop() == VpnCommandResult.Accepted) {
                 Log.i(TAG, "state -> Stopping (reason=$reason)")
-                runCatching { engine.stop() }
+                stopEngine(reason)
                 closeTunOnce()
                 if (stateMachine.onStopped(token)) Log.i(TAG, "state -> Stopped")
             }
@@ -192,11 +238,35 @@ class BrickVpnService : VpnService() {
         stopSelf()
     }
 
+    /**
+     * Stops the engine, logging — rather than swallowing — a teardown failure.
+     *
+     * These paths (`ACTION_STOP`, `onRevoke`, `onDestroy`) all run after the
+     * state machine has already committed to a terminal state, and
+     * `Stopping -> Error` is *illegal* in the normative graph, so a teardown
+     * failure cannot be reported as `Error` without coercing an impossible
+     * transition. It must therefore be observable somewhere, and logcat is that
+     * somewhere: the ROADMAP's "do not silently swallow any libbox error" rule
+     * applies to `runCatching { … }` just as much as to a bare try/catch.
+     */
+    private suspend fun stopEngine(reason: StopReason) {
+        runCatching { engine.stop() }
+            .onFailure {
+                Log.w(
+                    TAG,
+                    "engine stop failed (reason=$reason): " +
+                        "${it.javaClass.simpleName}: ${it.message}",
+                )
+            }
+    }
+
     /** Idempotent, off-main-thread, safe to call from any teardown path. */
     private suspend fun closeTunOnce() {
-        if (!tunClosed.compareAndSet(false, true)) return
-        val pfd = tunPfd ?: return
-        tunPfd = null
+        // Atomic claim: exactly one caller wins the descriptor, so a double
+        // teardown cannot double-close, and — critically — a descriptor
+        // published by a racing start *after* an earlier close is still
+        // released rather than stranded (see the [tunPfd] KDoc).
+        val pfd = tunPfd.getAndSet(null) ?: return
         withContext(Dispatchers.IO) {
             runCatching { pfd.close() }
                 .onSuccess { Log.i(TAG, "TUN descriptor closed") }
@@ -214,8 +284,9 @@ class BrickVpnService : VpnService() {
      *    unlikely to collide with the test device's real network.
      *  - Route `10.111.222.0/24` — the same test range only. A real tunnel uses
      *    `0.0.0.0/0`; restricting the route here means this lifecycle test
-     *    cannot hijack the device's actual traffic, which matters because the
-     *    engine is fake and would black-hole it.
+     *    cannot hijack the device's actual traffic. That matters even with the
+     *    real libbox engine: the Gate A config's only outbound is `block`, so
+     *    anything routed here would be silently discarded rather than proxied.
      *  - DNS `10.111.222.2` — inside the same reserved range and therefore
      *    unroutable, so DNS cannot be perturbed.
      */

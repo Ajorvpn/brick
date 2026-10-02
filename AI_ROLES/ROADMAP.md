@@ -2095,7 +2095,7 @@ isolation from libbox-specific complexity.
 
 ### P3-T7 — libbox integration: real tunnel engine wired into VpnService
 
-**Status:** Not Started
+**Status:** Ready for Human Review ✅ — PlatformInterface binding, real libbox lifecycle, and teardown verified on device with a block outbound; AC1 (real-traffic IP-change verification) explicitly OUTSTANDING, blocked on a test server.
 **Depends On:** P3-T6, P3-T3
 
 **Objective:** Replace the fake/stub tunnel engine from P3-T6 with a real implementation that
@@ -2121,21 +2121,21 @@ libbox requires from the host app, and correctly passes the TUN file descriptor 
       ifconfig.me`-equivalent check before/after connecting, documented in the report) — this is
       the first point in the entire project where real network traffic actually flows through
       sing-box, and it must be explicitly, manually verified, not assumed from code review alone.
-- [ ] libbox callbacks (state changes, errors) are correctly routed into `VpnStateMachine`,
+- [x] libbox callbacks (state changes, errors) are correctly routed into `VpnStateMachine`,
       respecting session tokens (a stale callback from a previous session must be provably
       ignored, per P3-T5's contract).
-- [ ] No libbox call (start, stop, config apply) blocks the main thread.
-- [ ] The `ParcelFileDescriptor` handling rule from P3-T6 still holds with the real libbox engine
+- [x] No libbox call (start, stop, config apply) blocks the main thread.
+- [x] The `ParcelFileDescriptor` handling rule from P3-T6 still holds with the real libbox engine
       in place — re-verified, not assumed to still work unchanged.
-- [ ] The DNS-bootstrap-deadlock class of bug from the legacy project (`Semaphore`/thread-pool
+- [x] The DNS-bootstrap-deadlock class of bug from the legacy project (`Semaphore`/thread-pool
       blocking in a custom `lookup()` implementation) is either not reintroduced (if the current
       libbox/adapter interface no longer requires a custom blocking DNS implementation) or, if it
       is still required, is implemented with explicit, tested interruptibility/timeout handling —
       confirm which situation applies based on P3-T1's research and document the decision.
-- [ ] Any remote rule-set/geoip/geosite downloads libbox may attempt are either disabled for this
+- [x] Any remote rule-set/geoip/geosite downloads libbox may attempt are either disabled for this
       test config or explicitly verified not to block startup indefinitely (the legacy project's
       "blocking Iran-side raw.githubusercontent.com fetch" bug must not be reintroduced silently).
-- [ ] Instrumented tests re-run from P3-T6 (start/stop/revoke) all still pass with the real engine.
+- [x] Instrumented tests re-run from P3-T6 (start/stop/revoke) all still pass with the real engine.
 - [ ] `melos`/Gradle test commands pass; manual real-traffic verification is documented with
       concrete before/after evidence in the task report.
 

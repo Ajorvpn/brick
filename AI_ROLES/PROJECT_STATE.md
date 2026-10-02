@@ -97,6 +97,40 @@ go to `Error("Watchdog timeout after 5000ms")`, which is legal.
 `NO-SOURCE` and "passed" without running a single test. JUnit 4.13.2, `kotlinx-coroutines-core`
 and `kotlinx-coroutines-test` were added. A green `testDebugUnitTest` was previously meaningless.
 
+**P3-T7 (2026-10-02) — READY FOR HUMAN REVIEW, real libbox runs on a real device; AC1 explicitly OUTSTANDING.**
+The P3-T6 fake engine is replaced by `LibboxTunnelEngine`, which drives a genuine sing-box v1.10.7
+`BoxService`; `LibboxPlatformInterface` implements all **18** `PlatformInterface` methods (fresh
+`javap` this task — zero drift from the P3-T4 table); `BrickVpnApplication` performs the process-wide
+`Libbox.setup()`. Verified on `RZ8M53WPMPF` (SM-A205F, **API 29**): `connectedAndroidTest` →
+**11/11, 0 failures**; host-JVM `testDebugUnitTest` → **36/36**. logcat proves real libbox execution:
+`Libbox.setup ok` ×1, `libbox service started` ×11, `libbox service closed` ×11,
+`openTun: lending` ×11, `TUN descriptor closed` ×12.
+
+- **AC1 is NOT met.** The Gate A config's only outbound is `block`, which discards traffic, so there
+  is no real tunnel and the device's effective outbound IP cannot change. AC1's manual before/after
+  IP verification **awaits a human-provided test server / public endpoint**. This is a scoped,
+  deliberate deferral — not "done", and it must not be reported as done.
+- **Three real bugs found on the device that code review had not caught:**
+  1. **`Libbox.setup()` was never called.** Without it sing-box's `sWorkingPath` is `""`, so it
+     resolved `cache.db` against the process CWD (`/`, read-only) and *every* `BoxService.start()`
+     failed with `proxyerror: pre-start cache file: open cache.db: read-only file system`.
+  2. **`android.permission.INTERNET` was missing.** libbox opens real sockets immediately; every
+     `socket()` returned `EACCES`, surfacing as `initialize inbound/tun[tun-in]: listen tcp4
+     10.111.222.1:0: socket: permission denied`. P3-T6 never needed it because `FakeTunnelEngine`
+     touched no network — **a fake engine masked a genuine platform requirement.**
+  3. **A TUN descriptor leak in the start/stop race.** When a stop arrived while `establish()` was in
+     flight, a one-shot `AtomicBoolean` "already closed" flag was consumed while `tunPfd` was still
+     `null`, so the descriptor the racing start then acquired could never be released. Replaced with
+     an `AtomicReference` claim on the descriptor itself; `runStartSequence` now also releases a
+     descriptor whose session was superseded. The final logcat measurably balances: 11 sessions +
+     1 superseded release = **12** descriptor closes.
+- **P3-T6's descriptor rule was re-verified, not assumed:** `noDescriptorLeakAcrossStartStop` passes
+  with the real engine, `detachFd()` is still never called, and libbox's own wrapper `dup()`s the fd
+  (primary source: `experimental/libbox/service.go:OpenTun`).
+- **AC5 answered with primary-source evidence:** the v1.10.7 18-method interface contains **no DNS
+  `lookup()`/resolver callback at all**, so the legacy `Semaphore`/thread-pool deadlock class is
+  structurally absent from this pin rather than merely avoided.
+
 **P3-T6 (2026-09-30) — READY FOR HUMAN REVIEW, VpnService skeleton proven on a real device.**
 `BrickVpnService` implements the Android lifecycle against the P3-T5 `VpnStateMachine`, with
 **no libbox call of any kind** (engine is `FakeTunnelEngine`, a fixed-delay sleep) — the
@@ -124,8 +158,12 @@ foreground. High confidence — the exception names the contract verbatim.
 
 **Known gap carried forward:** the device is **API 29**, so the Android 14+ foreground-service
 rules are *not* exercised. The manifest declares `specialUse` (correct for `targetSdk 36`) but
-that path is unverified at runtime on this hardware. **P3-T7's test-config decision is
-deliberately left open** — this task made no test-config choice.
+that path is unverified at runtime on this hardware. **P3-T7's test-config question is now
+partially answered and remains OPEN.** The non-traffic half is done (see the P3-T7 entry above):
+the harness runs real libbox against a hardcoded `block` outbound, so no server was needed to
+verify lifecycle and teardown. What is still open is **exactly ROADMAP P3-T7 AC1** — a real
+outbound plus a manually verified change in the device's effective outbound IP — which **awaits a
+human-provided test server or public endpoint**. Do not read this as resolved.
 
 **P3-T4 (2026-09-27) — READY FOR HUMAN REVIEW, study written.** The STOP-AND-ASK was
 **answered by the human: sing-box v1.10.7 is retained** (to preserve the Phase 2
