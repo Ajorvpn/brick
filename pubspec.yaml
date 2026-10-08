@@ -18,7 +18,7 @@ workspace:
   - packages/vpn_engine_android
 
 dev_dependencies:
-  melos: ^8.7.0
+  melos: ^8.9.0
 
 melos:
   command:
