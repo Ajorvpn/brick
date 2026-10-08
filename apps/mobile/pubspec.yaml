@@ -62,6 +62,11 @@ dependencies:
   # secure storage before Phase 11 / any release build.
   shared_preferences: ^2.5.3
   shared_utils:
+  # P3-T11: the native VPN engine, packaged as a Flutter Android platform
+  # plugin. Pubspec-only wiring: the `AndroidVpnEngine` engine swap is P3-T14
+  # and the provider override is P3-T15, so no Dart source imports it yet.
+  vpn_engine_android:
+    path: ../../packages/vpn_engine_android
 
 dev_dependencies:
   build_runner: ^2.16.1

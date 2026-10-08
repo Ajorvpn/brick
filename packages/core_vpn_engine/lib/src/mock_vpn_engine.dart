@@ -278,6 +278,23 @@ final class MockVpnEngine implements VpnEngine {
     return _state;
   }
 
+  /// Consent on a platform that has no consent dialog.
+  ///
+  /// The mock models connection lifecycle, not Android's `VpnService.prepare()`
+  /// prompt — there is nothing to ask a user, so consent is already held and
+  /// the answer is immediate. Returning [VpnCommandAccepted] here is not a
+  /// faked *dialog outcome*; it is the truthful answer for a platform with no
+  /// dialog, exactly as documented on `VpnEngine.prepare()`.
+  ///
+  /// Unlike a no-op stub it still enforces the disposed invariant, so a
+  /// `prepare()` issued after `dispose()` fails loudly instead of implying a
+  /// consent grant that could then be used to justify a later `start()`.
+  @override
+  Future<VpnCommandResult> prepare() async {
+    _assertNotDisposed();
+    return const VpnCommandAccepted();
+  }
+
   /// Releases the engine: cancels pending timers and closes both streams.
   ///
   /// Safe to call more than once — later calls are no-ops — so callers can

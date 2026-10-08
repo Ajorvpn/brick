@@ -2306,7 +2306,7 @@ its own dedicated chaos-test pass — never assuming Gate A's proof automaticall
 
 ### P3-T11 — Convert native Android module into a Flutter platform plugin
 
-**Status:** Not Started
+**Status:** Ready for Human Review (2026-10-05)
 **Depends On:** P3-T10
 
 **Objective:** Restructure `native/android/` (or create a new properly-structured Flutter federated
@@ -2327,16 +2327,61 @@ code beyond what's structurally required for plugin packaging.
   structural/packaging migration only.
 
 **Acceptance Criteria:**
-- [ ] All Gate A unit tests (`VpnStateMachineTest` etc.) pass unchanged after migration into the
-      new plugin structure — proving the migration introduced no logic changes.
-- [ ] All Gate A instrumented tests pass unchanged after migration (re-run on the real device).
-- [ ] The plugin correctly registers with Flutter's plugin system (verified by adding it as a
+- [x] All Gate A unit tests (`VpnStateMachineTest` etc.) pass unchanged after migration into the
+      new plugin structure — proving the migration introduced no logic changes. **36/36, 0
+      failures, 0 errors**, asserted numerically from the JUnit XML (not from Gradle's exit
+      code, which can be green with zero discovered tests). The test source is byte-identical
+      to the original (`cmp`).
+- [x] All Gate A instrumented tests pass unchanged after migration (re-run on the real device).
+      **Closed 2026-10-06: 13/13, `OK (13 tests)`, `INSTRUMENTATION_CODE: -1`, Time 34.192s.**
+      Asserted numerically — `numtests=13`, 13 × `STATUS_CODE 1`, 13 × `STATUS_CODE 0`, zero
+      non-zero codes, 13 distinct names (4 `BrickVpnServiceTest` + 9 `LibboxEngineTest`) — not
+      eyeballed from Gradle output. The APK was **rebuilt first** (`assembleDebugAndroidTest`
+      → `BUILD SUCCESSFUL in 28s`) because every source file's mtime was *newer* than the
+      leftover APK after P3-T11's `git mv`/`git rm`, so the stale binary would not have proved
+      anything about the current sources.
+      **Corrected invocation (the recipe previously written here was wrong):** because
+      `testApplicationId` is set to `dev.brickvpn.native.harness`, the androidTest APK is
+      **self-instrumenting** — `aapt2 dump` shows `package="dev.brickvpn.native.harness"` and
+      `pm list instrumentation` registers the runner under that same name with `target=`
+      identical to it. There is **no `.test` suffix**. Using `.test` yields
+      `Unable to find instrumentation info for: ComponentInfo{...}` → `INSTRUMENTATION_FAILED`.
+      ```sh
+      ./gradlew assembleDebugAndroidTest                                    # 1. rebuild
+      adb install -r build/outputs/apk/androidTest/debug/vpn_engine_android-debug-androidTest.apk
+      adb shell appops set dev.brickvpn.native.harness ACTIVATE_VPN allow    # 2. AFTER install
+      adb shell am instrument -w -r \
+        dev.brickvpn.native.harness/androidx.test.runner.AndroidJUnitRunner  # 3. no ".test"
+      ```
+      Install resets the `ACTIVATE_VPN` appop, which is what makes a naive re-run fail; and use
+      `am instrument` directly, never `connectedAndroidTest`, which reinstalls and resets the
+      appop mid-run.
+- [x] The plugin correctly registers with Flutter's plugin system (verified by adding it as a
       path dependency to `apps/mobile` and confirming `melos bootstrap` resolves it, even before
-      any Dart code calls into it).
-- [ ] The libbox AAR build script continues to work from its new location, producing an
+      any Dart code calls into it). `melos list` shows **7** packages; `melos bootstrap` →
+      "7 packages bootstrapped".
+- [x] The libbox AAR build script continues to work from its new location, producing an
       identical AAR to before the migration (same sing-box commit pinned, same output).
-- [ ] `melos run analyze` and `melos run test` pass across the whole workspace; native Gradle
-      tests also pass via their own command.
+      Rebuilt clean from `packages/vpn_engine_android/scripts/build_libbox_aar.sh`. Verified by
+      **measurement rather than hash comparison** (hashes are not portable evidence across
+      rebuilds): sing-box **v1.10.7** + `with_utls`; `PlatformInterface` has exactly **18**
+      methods via `javap`; `utls_stub.go` and its stub error string are **absent**; real
+      `github.com/sagernet/utls` symbols and `NewRealityClient` are **present**; arm64-v8a
+      `LOAD` segments are **0x4000** (16 KB) aligned.
+- [x] `melos run analyze` and `melos run test` pass across the whole workspace; native Gradle
+      tests also pass via their own command. `melos run analyze --no-select` → SUCCESS (7/7);
+      `melos run test` → SUCCESS, **594** Dart tests green; `./gradlew testDebugUnitTest` → 36/36.
+      `vpn_engine_android` is added to the workspace and to `test:flutter`'s `ignore` but
+      deliberately **NOT** to `test:dart`'s `scope`: it is a Flutter package with no `test/`
+      directory, so scoping it into plain `dart test` would route it into an incompatible runner.
+
+**Delivered:** the plugin lives at `packages/vpn_engine_android/` and the obsolete
+`native/android/` project has been **deleted**. Migration was a pure move — all 9 Kotlin files,
+both `AndroidManifest.xml` files, and the JVM test class were verified byte-identical to their
+originals before deletion. `build_libbox_aar.sh`, `README.md`, and `REFERENCE_ARCHITECTURE_STUDY.md`
+moved with them. `VpnEngineAndroidPlugin` intentionally opens **no** channel and defines **no**
+protocol (that is P3-T12); the Dart engine (P3-T14) and provider override (P3-T15) are not wired.
+`minSdk` moved 21 → 24 (Flutter's hard floor for platform plugins).
 
 **Notes for Agent:**
 - Resist any temptation to "improve" or refactor the native lifecycle code while moving it — if

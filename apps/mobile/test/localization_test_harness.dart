@@ -123,6 +123,9 @@ class FakeVpnEngine implements VpnEngine {
   /// How many times [stop] was called.
   int stopCalls = 0;
 
+  /// How many times [prepare] was called.
+  int prepareCalls = 0;
+
   /// The last state pushed via [emit].
   ConnectionState lastState = const Disconnected();
 
@@ -162,6 +165,16 @@ class FakeVpnEngine implements VpnEngine {
 
   @override
   Future<ConnectionState> getStatus() async => lastState;
+
+  /// Consent is always already held in tests: this fake exists to drive UI
+  /// state transitions deterministically, and there is no Android consent
+  /// dialog to model. Recorded like `stopCalls` so a test can assert the
+  /// widget layer actually asked for consent before starting.
+  @override
+  Future<VpnCommandResult> prepare() async {
+    prepareCalls++;
+    return const VpnCommandAccepted();
+  }
 
   /// Releases both controllers.
   Future<void> dispose() async {

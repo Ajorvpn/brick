@@ -70,4 +70,39 @@ abstract interface class VpnEngine {
   /// A point-in-time read for callers that need the state once (e.g. after
   /// process restart); lifecycle changes still arrive on [connectionState].
   Future<ConnectionState> getStatus();
+
+  /// Obtains the platform's tunnel-consent grant before [start] can succeed.
+  ///
+  /// ## Why this method exists (P3-T12 discovery)
+  ///
+  /// This interface was written in P1-T4, before Android-specific realities
+  /// were fully in view. It could *report* a missing permission — that is
+  /// what [VpnCommandRejectedPermissionDenied] is for — but it offered no way
+  /// to *request* one. Android makes that a hard requirement: `VpnService`
+  /// cannot establish a TUN interface until the user has accepted the
+  /// system's consent dialog (`VpnService.prepare()` returns an `Intent` that
+  /// must be launched, and its result observed). A caller left with no way to
+  /// ask could never clear the rejection it was being given.
+  ///
+  /// `ARCHITECTURE.md` Section 3.3 already anticipated exactly this
+  /// amendment, so adding it here corrects the original design rather than
+  /// expanding scope: "This interface is expected to be amended during
+  /// Phase 3 (see P3-T12 in ROADMAP.md) to add an explicit prepare()-style
+  /// permission-consent command, mirroring Android's `VpnService.prepare()`
+  /// flow, which was not present in the original interface design above."
+  ///
+  /// ## Contract
+  ///
+  /// Returns *only* whether consent now holds — it must not be read as any
+  /// statement about tunnel state (Invariant 1 still applies: consent is
+  /// neither a command acceptance nor a connection). Resolving with
+  /// [VpnCommandAccepted] means the caller may now call [start] without
+  /// expecting a permission rejection; [VpnCommandRejectedPermissionDenied]
+  /// means consent was refused and [start] will keep being refused until the
+  /// user grants it.
+  ///
+  /// Platforms with no consent concept (the P1-T5 mock, and later desktop)
+  /// answer [VpnCommandAccepted] immediately rather than pretending a
+  /// dialog happened.
+  Future<VpnCommandResult> prepare();
 }

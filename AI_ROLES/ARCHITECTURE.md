@@ -171,7 +171,7 @@ transition that is legal in the abstract but wrong for the current
 session; the second guarantees `Disconnecting` can never be terminal.
 
 3.1.2 Native Android Harness State Vocabulary (8-state)
-The native Android harness (`native/android`, Gate A) does NOT reuse the five
+The native Android engine (`packages/vpn_engine_android`, Gate A) does NOT reuse the five
 Dart `ConnectionState` variants directly. P3-T5 implemented an 8-state
 vocabulary in `VpnState.kt`, a sealed class whose only legal transitions are:
 
@@ -298,6 +298,45 @@ No callback re-entrancy deadlocks: Native callbacks from libbox
 (e.g., a Go-side serviceStop() callback) must never directly call
 back into a function that could be waiting on the same lock/thread
 that triggered it in the first place.
+
+Outbound socket protection is MANDATORY for any real tunnel, and it
+is gated, not automatic. In pinned sing-box v1.10.7, libbox reaches the
+host for per-socket protection through
+`PlatformInterface.autoDetectInterfaceControl(fd)`; the reference
+Android client implements that method as `VpnService.protect(fd)`. It
+fires only when BOTH conditions hold: (a) the platform interface
+returns true from `usePlatformAutoDetectInterfaceControl()`, and (b)
+the config sets `route.auto_detect_interface = true`. If either is
+missing, libbox silently falls back to interface-based socket binding.
+Once the TUN claims `0.0.0.0/0` without protection being active,
+libbox's own connection to the proxy server is routed back into the TUN
+it created — a self-inflicted routing loop. Protection and full-route
+capture are therefore a matched pair and must be enabled together; a
+wide route with protection disabled is a bug, not a tuning choice.
+(Verified 2026-10-03 against pinned source. Since P3-T7 Part 2 the harness
+wires all three halves — `usePlatformAutoDetectInterfaceControl() = true`,
+`VpnService.protect(fd)` in `autoDetectInterfaceControl`, and
+`route.auto_detect_interface = true` in the config — and an instrumented
+test asserts the callback actually fires on a real dial. The Gate A route
+stays restricted, which remains safe regardless.)
+
+The pinned libbox AAR's build tags define its transport ceiling.
+sing-box gates several protocols behind build tags, and the shipping
+AAR was built without `with_utls`. Because sing-box v1.10.7 routes
+every Reality outbound through `NewRealityClient`, which is a stub
+without that tag, **Reality cannot function at all** with this AAR.
+Protocol support must therefore be asserted against the AAR's actual
+build tags rather than assumed from the library's advertised protocol
+list; a supported protocol in upstream docs is not necessarily
+available in our binary.
+
+As of P3-T7 Part 2 (2026-10-03) the shipping AAR **does** carry
+`with_utls`: `scripts/build_libbox_aar.sh` passes it explicitly, with
+the justification sourced from the pinned tree rather than assumed.
+This is the standing model for build-tag decisions — the tag set is
+part of the dependency contract and must be re-verified whenever the
+AAR is rebuilt, because a tag silently missing produces a binary that
+compiles, installs, and only fails at connection time.
 Session tokens are mandatory on every start()/stop() command.
 Every command carries a session token identifying the lifecycle
 attempt it belongs to; callbacks or events tagged with a stale/
@@ -312,7 +351,13 @@ timeout. If libbox teardown has not completed within that window,
 the watchdog must forcibly close the retained ParcelFileDescriptor
 and force the state machine into STOPPED/ERROR regardless of
 libbox's own reported status. A stuck STOPPING state is always
-treated as a P0 bug, never as acceptable behavior.
+treated as a P0 bug, never as acceptable behavior. This guarantee is
+bounded by an upstream, process-level risk: sing-box v1.10.7's
+BoxService.Close() calls os.Exit(1) internally on its own
+C.FatalStopTimeout, so a hung libbox close can terminate the entire
+app process before this watchdog can act — it is therefore not a
+full substitute for process-level supervision (see
+PROJECT_STATE.md "Known deviations").
 Type-safe generated channels only: All platform-channel commands
 must use Pigeon-generated type-safe interfaces, never hand-written
 MethodChannel string-keyed method names or raw argument maps.

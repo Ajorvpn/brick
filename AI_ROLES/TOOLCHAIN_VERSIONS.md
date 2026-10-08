@@ -15,7 +15,7 @@ verified when the relevant phase begins.
 | Go | **1.21.x** (1.21.13 installed) — CORRECTED in P3-T3 | 2026-09-28 | Pinned in P3-T1 as 1.20, corrected in P3-T3: sing-box v1.10.7's `go.mod` says `go 1.20` but that **understates** the real requirement — `experimental/libbox/command_connections.go:6` imports the stdlib `slices` package, which only entered GOROOT in Go 1.21, so `gomobile bind` cannot compile the libbox package with Go 1.20. Must be built with `GOTOOLCHAIN=local`. |
 | gomobile | **`github.com/sagernet/gomobile` v0.1.4** (fork of `golang.org/x/mobile`) | 2026-09-28 | Pinned (P3-T1). v0.1.4 is the exact version sing-box v1.10.7 requires. BSD-3-Clause. |
 | Android NDK | **r26b** — HUMAN-DECIDED, not primary-source verified | 2026-09-28 | Pinned (P3-T1) on human direction. See "Unverified" below. |
-| Android Gradle Plugin | **9.1.0** | 2026-09-28 | Exercised in a real `./gradlew assembleDebug` build during P3-T3; pinned here retroactively. Declared explicitly in `native/android/build.gradle.kts`. |
+| Android Gradle Plugin | **9.1.0** | 2026-09-28 | Exercised in a real `./gradlew assembleDebug` build during P3-T3; pinned here retroactively. Declared explicitly in `packages/vpn_engine_android/android/build.gradle.kts`. |
 | Kotlin | Not yet pinned - deferred to a later Phase 3 task | 2026-09-16 | No native Kotlin implementation exists yet. Out of P3-T1 scope. |
 | sing-box | **v1.10.7** (v1.10.x series) | 2026-09-28 | Pinned (P3-T1). Chosen to match the schema the Phase 2 serializers already emit. See "sing-box version policy". **CONFIRMED STILL PINNED by human decision 2026-09-29** after a read-only evidence review of v1.14.2: the 14 methods v1.14.2 adds are Tailscale-SSH/bridge plus opt-in L2 and DNS facilities, none needed for the 6+2-protocol MVP, whereas upgrading would need Go 1.21->1.25.5, a gomobile re-pin, and would break WireGuard outbound (removed at >= 1.13). Full rationale in `PROJECT_STATE.md` section 6. Revisit only if Tailscale-like features or a WireGuard-endpoint rewrite become roadmap items. |
 
@@ -241,15 +241,15 @@ is still unverified against a primary source.
 **Pinned retroactively in P3-T3** after being exercised by a real
 `./gradlew assembleDebug` build: Android Gradle Plugin **9.1.0**.
 
-**Still open, human decision required — Kotlin.** `native/android` declares **no**
+**Still open, human decision required — Kotlin.** `packages/vpn_engine_android/android` declares **no**
 Kotlin plugin: AGP 9.x supplies Kotlin internally, and applying
 `org.jetbrains.kotlin.android` there is now a hard build error. Three different
 "the Kotlin version" answers exist and they disagree:
 
 | Where | Version | What it is |
 |---|---|---|
-| `native/android` buildscript classpath | `2.2.10` | `kotlin-gradle-plugin`, transitive from AGP 9.1.0 — not declared by us |
-| `native/android` resolved stdlib | `2.2.21` | `kotlin-stdlib` runtime library |
+| `packages/vpn_engine_android/android` buildscript classpath | `2.2.10` | `kotlin-gradle-plugin`, transitive from AGP 9.1.0 — not declared by us |
+| `packages/vpn_engine_android/android` resolved stdlib | `2.2.21` | `kotlin-stdlib` runtime library |
 | `apps/mobile` `settings.gradle.kts` | `2.4.0` | `org.jetbrains.kotlin.android`, explicitly declared by the Flutter app |
 
 Left unpinned deliberately: recording `2.2.10` would document a *transitive*
@@ -276,14 +276,19 @@ over. Each needs a human check or a source I could not reach:
    alignment is more likely a build-flag concern than a fork feature.
 4. **The Go/QUIC breakage incident is unsourced.** See the footgun note above:
    the control is adopted, the specific bug is not evidenced.
-5. **Minimum SDK / API level was not verified.** "min API 21" was asserted in
-   an earlier note but no source was checked; Go 1.21 and modern Android NDK
-   toolchains have their own floor.
+5. ~~**Minimum SDK / API level was not verified.**~~ **RESOLVED in P3-T11.**
+   "min API 21" was asserted in an earlier note but no source was checked; Go
+   1.21 and modern Android NDK toolchains have their own floor. P3-T11 raised
+   the plugin's `minSdk` from the inherited **21** to **24**, matching Flutter's
+   own floor, because the AAR is consumed by a Flutter app and 21 was never
+   validated against one. The AAR is still *built* with `-androidapi 21`; the two
+   numbers describe different things (the AAR's compatibility floor vs. the
+   plugin's install floor).
 6. **`SagerNet/sing-box-for-android` license was not independently checked**
    (assumed GPL-3.0-or-later).
 7. ~~**Nothing has been built.**~~ **SUPERSEDED in P3-T3.** The AAR has since
    been built from pinned source and the 16 KB alignment *measured*, not
    assumed: `jni/arm64-v8a/libgojni.so` shows `0x4000` on every LOAD segment,
    both inside the AAR and inside the final APK. See
-   `native/android/scripts/build_libbox_aar.sh`, which performs this check on
+   `packages/vpn_engine_android/scripts/build_libbox_aar.sh`, which performs this check on
    every run and refuses to emit a passing build otherwise.

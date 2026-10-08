@@ -1,0 +1,49 @@
+name: vpn_engine_android
+description: >-
+  Flutter Android platform plugin wrapping the proven Gate A native VPN engine
+  (BrickVpnService + libbox). P3-T11: structural packaging only — the
+  platform-channel/Pigeon layer is P3-T12 and the Dart VpnEngine
+  implementation is P3-T14.
+version: 0.0.1
+publish_to: 'none'
+# P3-T11: required for pub workspace membership — every existing member in this
+# repo (core_domain, core_vpn_engine, config_parser, shared_utils, ui_theme,
+# apps/mobile) declares it, and `melos bootstrap` fails with
+# "does not have `resolution: workspace`" without it.
+resolution: workspace
+
+environment:
+  sdk: ">=3.6.0 <4.0.0"
+  flutter: '>=3.3.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  # P3-T12: pinned, not floating. 29.0.6 is the version verified against here —
+  # it requires Dart SDK ^3.11.0 and this project runs Dart 3.13.3 /
+  # Flutter 3.47.4. Bumping a Pigeon major re-generates the committed
+  # `.g.dart`/`.g.kt`, so a bump is a reviewable code change rather than a free
+  # transitive update.
+  pigeon: ^29.0.6
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        # P3-T11: the Kotlin sources were migrated VERBATIM from the former
+        # standalone `native/android/app` module, keeping their original
+        # `dev.brickvpn.harness` package/namespace. Renaming the package would
+        # mean editing code, which this task's zero-behavior-change rule
+        # forbids — so the plugin's Android package deliberately differs from the
+        # Dart package name above. This is normal for Flutter plugins: `package`
+        # is the native package, while `name:` is the Dart package.
+        package: dev.brickvpn.harness
+        # P3-T11: structural registration ONLY. This class deliberately opens no
+        # channel and defines no protocol — that is P3-T12's job, and deciding
+        # any channel API shape here would preempt it.
+        pluginClass: VpnEngineAndroidPlugin

@@ -27,10 +27,12 @@
 
 ## 1. Current Phase
 
-**Phase 3 — Android VPN Engine: Gate A (Native Harness) IN PROGRESS.** P3-T1 (toolchain
-research) is delivered and `TOOLCHAIN_VERSIONS.md` is pinned. P3-T2 has scaffolded
+**Phase 3 — Android VPN Engine: Gate A IN PROGRESS.** P3-T1 (toolchain
+research) is delivered and `TOOLCHAIN_VERSIONS.md` is pinned. P3-T2 scaffolded
 `native/android/` as a standalone, CLI-buildable Android Gradle project and **proven
-`./gradlew assembleDebug`**, producing a real 3.2 MB debug APK. The Phase 2 parser layer
+`./gradlew assembleDebug`**, producing a real 3.2 MB debug APK; **as of P3-T11 that project
+has been migrated to the Flutter plugin package `packages/vpn_engine_android/` and deleted.**
+The Phase 2 parser layer
 this phase consumes remains delivered and verified (8 protocol families, subscription decoder,
 smart content router, Sing-Box serializer + inverse reader). Phase 2 is still not formally
 closed: P2-T12 and P2-T9's AC verification remain open, and `P3-T1` declares
@@ -62,7 +64,8 @@ specified **three different state vocabularies**; the human chose Option 1, maki
 **8-state** list authoritative and dropping the brief's `Reconnecting` (it has no legal incoming
 edge in the normative graph, so it would have been an untestable dead state).
 
-Delivered in `native/android/app/src/main/java/dev/brickvpn/harness/vpn/`:
+Delivered in `packages/vpn_engine_android/android/src/main/kotlin/dev/brickvpn/harness/vpn/`
+(as of P3-T11; originally `native/android/app/src/main/java/dev/brickvpn/harness/vpn/`):
 - `VpnState.kt` — 8 states as a **sealed class** (`Error` carries `reason`), plus the legal
   transition table. Mapping to `core_domain`'s 5 `ConnectionState` variants: `Idle`/`Stopped` →
   `Disconnected`, `Preparing`/`Starting` → `Connecting`, `Running` → `Connected`, `Stopping` →
@@ -110,6 +113,102 @@ The P3-T6 fake engine is replaced by `LibboxTunnelEngine`, which drives a genuin
   is no real tunnel and the device's effective outbound IP cannot change. AC1's manual before/after
   IP verification **awaits a human-provided test server / public endpoint**. This is a scoped,
   deliberate deferral — not "done", and it must not be reported as done.
+
+### P3-T7 AC1 verification attempt (2026-10-03) — AC1 still NOT met; TWO NEW BLOCKERS found
+
+A real verification attempt was made with a human-provided VLESS/Reality/gRPC public server and a
+throwaway local Shadowsocks server. **AC1 remains unmet.** Two architectural blockers were found
+that make the current build unable to carry real traffic at all, independent of any test server:
+
+- **NEW OPEN ITEM A — the pinned libbox AAR is built WITHOUT `-tags with_utls`, so Reality is
+  impossible.** In sing-box v1.10.7 `common/tls/utls_stub.go` (build tag `!with_utls`) makes
+  `NewRealityClient` return an unconditional error, and `common/tls/client.go` calls it for every
+  Reality outbound. The shipped `libgojni.so` demonstrably contains the stub (its embedded source
+  path string and both stub error strings are present in the binary). Consequence: **any Reality
+  endpoint — arguably the most common VLESS/XRay transport in the wild — cannot be used with the
+  currently pinned AAR.** The AAR must be rebuilt with uTLS (and, if Reality-only parity is wanted,
+  verified for other excluded tags). This is a dependency-level decision, not a task-level fix.
+- **NEW OPEN ITEM B — outbound socket protection is present but permanently disabled, so a widened
+  route would loop.** The protect-equivalent *does* exist and is already implemented as one of our 18
+  `PlatformInterface` methods: `autoDetectInterfaceControl(fd)` (verified against pinned source —
+  `Router.AutoDetectInterfaceFunc()` in `route/router.go` invokes it for **every** outbound socket;
+  the reference app `sing-box-for-android` implements it as `protect(fd)`). But it is gated behind
+  **both** `usePlatformAutoDetectInterfaceControl() = true` **and** `route.auto_detect_interface =
+  true` in the config JSON. Ours currently returns `false` and the config omits the flag, so libbox
+  falls back to interface-based binding. **Any real tunnelling is therefore impossible by current
+  design**, and simply widening the route to `0.0.0.0/0` would route libbox's own connection to the
+  server back into the TUN. Wiring `VpnService.protect(fd)` is a genuine prerequisite for shipping a
+  usable VPN and deserves its own task, not a silent flip.
+- **Positive result worth keeping:** with a **narrow** route (only the probe target's ranges, not
+  `0.0.0.0/0`) and Shadowsocks — which needs no uTLS — the real engine **did** carry device traffic.
+  Server-side proof: the throwaway Shadowsocks server logged inbound connections whose **only**
+  source was the test device's LAN address, while the device stayed reachable over ADB throughout.
+  So the TUN → libbox → outbound → remote-server path is real and works; what is missing is a
+  transport the pinned AAR supports plus a full-route/protect pairing.
+- **Environmental note:** the test device's clock is ~66 minutes behind the dev machine, which makes
+  Shadowsocks 2022-cipher timestamp validation fail (`bad timestamp`). That is a device/NTP problem,
+  not a tunnel defect, but it will mask payload-level verification until corrected.
+
+**Net:** AC1 stays OUTSTANDING, now blocked on NEW OPEN ITEMS A and B rather than merely "awaiting
+a test server". A test server is no longer the critical path; the pinned AAR's build tags and the
+protect wiring are.
+### P3-T7 Part 2 (2026-10-03) — NEW OPEN ITEMS A and B are FIXED; AC1 still NOT met (needs a credential)
+
+Part 2 closed both architectural blockers above. **AC1 remains OUTSTANDING** — not because of
+any remaining defect in our code, but because the retest could not be performed: the
+human-provided VLESS/Reality credential was shredded at the end of the previous session per the
+task's own teardown rule and was not re-supplied, so the "device IP actually changes to the
+server's network" measurement could not be repeated. Nothing below claims otherwise.
+
+- **NEW OPEN ITEM A — CLOSED. The AAR now carries uTLS.** `scripts/build_libbox_aar.sh` now
+  passes `-tags with_utls` to `gomobile bind`, justified in-script from the pinned source rather
+  than from memory: `Makefile:3` lists `with_utls` in sing-box's own official `TAGS_GO120`;
+  `common/tls/reality_client.go:1` is `//go:build with_utls`; and `common/tls/utls_stub.go:1`
+  is the `!with_utls` complement whose `NewRealityClient` raised the error that blocked us.
+  Verified three ways:
+  1. **Binary:** the new `libgojni.so` contains **zero** occurrences of `utls_stub.go` or the
+     stub's error string, and now contains real uTLS internals (`uApplyPatch`,
+     `uconn.Extensions`, ClientHello fingerprints) — the same `strings` probe that originally
+     diagnosed the fault.
+  2. **Host binary:** rebuilt `sing-box` with `-tags with_utls`; the identical Reality config
+     that previously failed with `parse outbound[0]: uTLS, which is required by reality client
+     is not included in this build` now parses cleanly.
+  3. **On device:** the instrumented suite runs against the new AAR with **zero** occurrences of
+     that error in logcat.
+  The AAR still passes the script's 16 KB alignment assertion and is larger than before
+  (53 MB vs 50 MB), consistent with uTLS being linked in. `with_reality_server` was
+  deliberately NOT enabled: it is for running a Reality inbound, and we are a client.
+- **NEW OPEN ITEM B — CLOSED. Socket protection is wired and proven live.**
+  `LibboxPlatformInterface.usePlatformAutoDetectInterfaceControl()` now returns `true`,
+  `autoDetectInterfaceControl(fd)` calls the real `VpnService.protect(fd)` (wired through a
+  `socketProtector` lambda supplied by `BrickVpnService`), and the config carries
+  `route.auto_detect_interface: true` — all three halves of the two-part gate. Verified by a new
+  instrumented test asserting the callback **actually fires during a real dial** (not merely
+  that the method exists), and separately on-device under a temporary `0.0.0.0/0` route:
+  `protect()` was invoked, the suite still passed, and the device stayed reachable over ADB —
+  i.e. **no routing loop**, which is precisely what the pairing prevents.
+- **Tests:** `connectedAndroidTest` → **13/13** (was 11; two new permanent tests below).
+  `testDebugUnitTest` → **36/36**.
+- **Two new permanent tests** (deliberate non-doc repo changes, per this task):
+  `outboundSocketProtectionIsInvokedDuringARealDial` guards the two-part protect gate against
+  regression, and `deadPeerStillWalksTheFullLifecycleAndTearsDownCleanly` is a hermetic
+  known-dead-peer test proving a valid config with an unreachable server still reaches `Running`
+  and still tears down to `Stopped` — the guard against a "connected" state hiding a broken
+  tunnel. The latter had to run through the real service rather than `start(tunFd = -1)`,
+  because libbox configures the TUN during `BoxService.start()`, so a *valid* config needs a
+  genuine descriptor.
+- **Route decision left to the human, as instructed.** The `0.0.0.0/0` widening used for
+  testing was **reverted**; `BrickVpnService` still ships the restricted `10.111.222.0/24`
+  Gate A route. Whether a shipping VPN should capture `0.0.0.0/0` permanently is a product
+  decision, not a harness default — and it must never ship without the protect wiring.
+- **Build-script side change:** client submodules (`clients/android`, `clients/apple`) are now
+  opt-in via `FETCH_CLIENT_SUBMODULES=1` rather than unconditional. They are not imported by
+  `experimental/libbox`, and fetching them wasted ~20 minutes and failed twice with
+  `RPC failed; curl 56` before this task.
+
+**Net:** AC1's remaining dependency is a **human-provided test credential**, not a defect. The
+two blockers that previously made it structurally unreachable are fixed and locked in by tests.
+
 - **Three real bugs found on the device that code review had not caught:**
   1. **`Libbox.setup()` was never called.** Without it sing-box's `sWorkingPath` is `""`, so it
      resolved `cache.db` against the process CWD (`/`, read-only) and *every* `BoxService.start()`
@@ -130,6 +229,52 @@ The P3-T6 fake engine is replaced by `LibboxTunnelEngine`, which drives a genuin
 - **AC5 answered with primary-source evidence:** the v1.10.7 18-method interface contains **no DNS
   `lookup()`/resolver callback at all**, so the legacy `Semaphore`/thread-pool deadlock class is
   structurally absent from this pin rather than merely avoided.
+
+**P3-T11 (2026-10-05) — READY FOR HUMAN REVIEW. The engine is now a Flutter Android platform
+plugin at `packages/vpn_engine_android/`; the obsolete `native/android/` project is DELETED.**
+Migration was a **pure move**: all 9 Kotlin files (7 main + 2 androidTest), both
+`AndroidManifest.xml` files, and the JVM test class were verified **byte-identical** (`cmp`) to
+their former `native/android/` originals before deletion, so no behavioural regression is
+possible from the repackaging. `scripts/build_libbox_aar.sh` moved with them (output path
+changed to `android/libs/libbox.aar`, since a library module has no `app/`); `README.md` and
+`REFERENCE_ARCHITECTURE_STUDY.md` moved too.
+
+- **Test counts preserved exactly: 36/36 JVM, 0 failures, 0 errors; 13/13 instrumented, 0
+  failures** — asserted numerically from the JUnit XML, not from Gradle's exit code. This
+  matters because AGP 9 can run a JUnit 5 platform that discovers zero tests and still report
+  green; these tests stay JUnit 4 precisely so the count is meaningful.
+- **Rebuilt AAR verified by measurement, not hash:** sing-box v1.10.7 with `with_utls`;
+  `PlatformInterface` has exactly **18** methods via `javap`; `utls_stub.go` and its
+  "uTLS, which is required by reality client is not included in this build" error string are
+  **absent**; real `github.com/sagernet/utls` symbols (922 refs) and
+  `sing-box/common/tls.NewRealityClient` are **present**; arm64-v8a `LOAD` segments are
+  **0x4000** (16 KB) aligned.
+- **`VpnEngineAndroidPlugin` opens no channel and defines no protocol**, by design. Picking a
+  channel shape here would preempt P3-T12. The Dart engine (P3-T14) and provider override
+  (P3-T15) are likewise not wired; `apps/mobile` carries a path dependency and nothing imports
+  it yet.
+- **Melos dual-list rule:** added to the workspace and to `test:flutter`'s `ignore`, and
+  deliberately **NOT** added to `test:dart`'s `scope`. It is a Flutter package with no
+  `test/` directory; scoping it into plain `dart test` would route it into an incompatible
+  runner. `melos bootstrap` → 7 packages; `melos run analyze --no-select` → SUCCESS across all
+  7; `dart format --set-exit-if-changed .` → 0 changed.
+
+- **Two wiring bugs found and fixed during this task, both silent:** the plugin's `pubspec.yaml`
+  needs `resolution: workspace` (every existing member declares it, and bootstrap hard-fails
+  without it), and this repo's YAML is **2-space** indented — a 4-space edit nested
+  `vpn_engine_android` under `shared_utils` in `apps/mobile/pubspec.yaml`, which `melos`
+  rejected with a confusing "Unrecognized keys: [sdk, git, path, hosted]" parse error.
+- **`.gitignore` footgun carried over deliberately:** the root's blanket `*.jar` rule would
+  have excluded `android/gradle/wrapper/gradle-wrapper.jar`, so `./gradlew` would fail on every
+  fresh clone. The plugin `.gitignore` re-includes it, as `native/android/.gitignore` did.
+- **NOT re-verified this session: the 13 instrumented tests.** They passed 13/13 earlier in this
+  session, but the final post-deletion pass could not re-run them because `RZ8M53WPMPF`
+  disconnected (`adb devices` empty; no system image is installed, so there is no emulator
+  fallback). The instrumented APK **does** build (`assembleDebugAndroidTest` → SUCCESS) and the
+  test sources are byte-identical, so this is an environment gap, not a known defect — but
+  treat the post-deletion 13/13 as **not independently re-confirmed** until a device is
+  reattached. Order matters when redoing it: install first, then
+  `adb shell appops set dev.brickvpn.native.harness ACTIVATE_VPN allow`, then instrument.
 
 **P3-T6 (2026-09-30) — READY FOR HUMAN REVIEW, VpnService skeleton proven on a real device.**
 `BrickVpnService` implements the Android lifecycle against the P3-T5 `VpnStateMachine`, with
@@ -318,6 +463,17 @@ Status tokens below are quoted verbatim from the corresponding `**Status:**` lin
 ## 3. What Exists Right Now (Verified)
 
 ### Code & Architecture Skeleton
+- **`packages/vpn_engine_android/` (Flutter Android platform plugin, verified):** Created in
+  P3-T11. Wraps the proven Gate A native VPN engine (`BrickVpnService` + `LibboxTunnelEngine` +
+  real libbox `BoxService`) as a Flutter Android platform plugin, replacing the deleted
+  `native/android/` standalone harness. Kotlin sources, both manifests, and all tests were
+  migrated **byte-identically**, so behaviour is unchanged by construction. Verified:
+  **36/36** JVM tests and **13/13** instrumented tests (13/13 not re-confirmed post-deletion —
+  device unavailable; see the P3-T11 entry in §1). `PlatformInterface` implements all **18**
+  libbox methods. Ships a structural, channel-free `VpnEngineAndroidPlugin`; the platform
+  channel is P3-T12, the Dart engine P3-T14. `minSdk` 24, `compileSdk`/`targetSdk` 36, AGP 9.1.0,
+  Gradle 9.3.1, built-in Kotlin. Builds its own `libbox.aar` via
+  `scripts/build_libbox_aar.sh` (sing-box v1.10.7, `with_utls`, 16 KB aligned).
 - **`packages/shared_utils/` (Pure Dart, verified):** Retroactively corrected P0-T6's scaffolding by removing all Flutter SDK transitives. Contains a hand-written, sealed `Result<T, E>` primitive with `Ok` and `Err` final subclasses (value-equality with `identical` fast path, intentionally no `toString` override so sensitive error payloads are not printed by default, `map`/`mapErr` transforms, and exhaustive `fold`/pattern-matching). Tested with 10 standalone unit tests running under `dart test`.
 - **`packages/core_domain/` (Pure Dart, verified):** Contains the complete polymorphic `OutboundConfig` hierarchy — sealed `TcpBasedOutbound` family (VLESS, VMess, Trojan), sealed `QuicBasedOutbound` family (Hysteria2, TUIC — mandatory non-nullable TLS, `zeroRttHandshake` defaulting to false), and standalone `ShadowsocksOutbound` — plus 7 shared composition types (`TlsSettings`, `TransportSettings` with 4 transports, `QuicSettings`, `MultiplexSettings`, and the REALITY/uTLS/fragment blocks), the `ProtocolType` enum (6 values with canonical URI schemes), and the `ServerProfile` container with `copyWith`. Ships alongside sealed `ConnectionState` (5 variants), sealed `ConnectionErrorReason` (4 variants), and immutable `TrafficStats`. All value types are const-constructible with `identical`-fast-path equality, implement discriminated snake_case `toJson()`, and intentionally have no `toString` override (SECURITY.md). Tested with 89 standalone unit tests running under `dart test`.
 
@@ -384,6 +540,22 @@ Status tokens below are quoted verbatim from the corresponding `**Status:**` lin
 - **Local Gradle init-script footgun (must stay disabled):** `/home/e60/.gradle/init.d/iran-mirrors.gradle.disabled` must remain disabled to prevent settings-repository conflicts in Android Gradle builds.
 - **Disk pressure — standing gate item:** Disk `/` fluctuates as build/tool caches accumulate. As measured on 2026-09-25, `/` is at **86% (14 GB free)**, which is **below** the project's documented ~92% danger threshold. A manual cache cleanup was performed by the human maintainer between the 2026-09-22 forensic audit (which recorded 95% / 4.9 GB free — above the danger line) and this entry; this agent did not run the purge itself. Safe repo-local recipe if needed: `rm -rf apps/mobile/build packages/*/build .dart_tool apps/mobile/.dart_tool packages/*/.dart_tool` then `melos bootstrap`. Note the largest consumers on this machine are outside the repo (`~/.gradle` and `~/Android`, measured at 8.4 GB and 8.8 GB respectively on 2026-09-22), so the repo-local recipe alone is not sufficient. Watch this: once disk crosses ~92%, Flutter/Dart/Melos tools can silently fail with exit 255 and empty output. If a tool fails with exit 255 and produces empty output, run **the exit-255 diagnosis below first** before assuming disk pressure.
 - **Exit-255 empty-output diagnosis (before assuming disk failure):** The snap-installed Flutter, Dart, and pub-global Melos shims silently fail with exit code 255 and zero-byte output when stdout is redirected to a regular file (e.g., `flutter --version > /tmp/x.log`). The identical command succeeds when piped (e.g., `flutter --version | cat`) or when written directly to a terminal. If you observe exit 255 with empty output from any of these tools, ALWAYS retry the command piped through `cat` or `tee` before concluding disk pressure or environment breakage. This misdiagnosis has happened at least once in project history; capturing it here to prevent recurrence.
+- **AGP 9.1.0: how to apply `com.android.library` from a module's `plugins {}` block (recipe, measured 2026-10-03 during P3-T11).** Reusable for P3-T12–P3-T15 and any future Android library/plugin module here. **To apply AGP 9.1.0's `com.android.library` to a module via `plugins{}`, add a `pluginManagement.resolutionStrategy` mapping `id("com.android.library")` to `com.android.tools.build:gradle:9.1.0` in `settings.gradle.kts` — the plugin marker artifact AGP 9 publishes doesn't resolve otherwise.** Built-in Kotlin (no `org.jetbrains.kotlin.android`) works under this setup; the stock `flutter create --template=plugin` output does **NOT** build standalone against our AGP 9.1.0 pin — it relies on the consuming app's settings file for AGP, and its `java.srcDirs(...)` call is deprecated-as-error under 9.1.0.
+
+  The five attempts below were each run as a real build, not reasoned about; the error strings are verbatim.
+
+  | # | Approach | Outcome |
+  |---|---|---|
+  | 1 | `plugins { id("com.android.library") version "9.1.0" }` in the module | ✗ `could not resolve plugin artifact 'com.android.library:com.android.library.gradle.plugin:9.1.0'` — AGP 9 publishes no plugin-marker for this id |
+  | 2 | bare `plugins { id("com.android.library") }` + module-local `buildscript { classpath(...) }` | ✗ `plugin dependency must include a version number for this source` — Gradle evaluates a script's `plugins {}` **before** that same script's `buildscript {}` |
+  | 3 | same, version declared in a `plugins {}` block in `settings.gradle.kts` | ✗ same marker-resolution failure as (1) |
+  | 4 | `buildscript { classpath(...) }` + `apply(plugin = "com.android.library")` | ✗ plugin applies, but **25** × `Unresolved reference 'implementation'` — `apply()` generates no Kotlin DSL type-safe accessors |
+  | **5** | **`plugins { id("com.android.library") version "9.1.0" }` + `pluginManagement.resolutionStrategy { eachPlugin { … useModule("com.android.tools.build:gradle:${requested.version}") } }` in `settings.gradle.kts`** | ✓ **AGP applies, accessors generated, Kotlin compiles** |
+
+  Two further AGP-9 traps found in the same session, both of which the stock Flutter template walks into:
+  - `java.srcDirs("src/main/kotlin")` is deprecated and fails the build (`'fun srcDirs(...)' is deprecated. Use \`directories\` mutable set instead`) — and `directories` exposes no `setFrom` in this DSL version. **No `srcDirs` override is needed at all**: AGP 9 includes `src/main/kotlin` and `src/test/kotlin` by default.
+  - A module cannot exclude a single source file from its own Kotlin compile via `exclude(...)`/`java.exclude(...)` in `sourceSets` — both resolve to Gradle's `Configuration.exclude` and fail with `Unresolved reference … receiver type mismatch`.
+- **`minSdk` is now 24, overriding P3-T2's `minSdk 21` (human-confirmed, 2026-10-03).** Reason: Flutter's platform-plugin mechanism has a **hard floor of 24**, so remaining at 21 is **not a viable alternative** for ROADMAP P3-T11 AC #3 (the plugin must be resolvable by `apps/mobile`). This is an **external constraint forcing the change, not a preference**, and it supersedes the P3-T2 decision recorded at ROADMAP line ~1801 (`minSdk 21 is a human decision and remains an explicitly-unverified P3-T1 open item`). **The test device (SM-A205F, API 29) is unaffected either way, so our device test suite cannot detect this boundary — do not assume the 36/13 instrumented + host-JVM runs cover it.** Any future device-claim about supported API levels must be verified separately or stated as untested.
 
 ---
 
@@ -595,6 +767,15 @@ evidence that established it, so the next agent can verify rather than re-derive
    through `redact` too, or document the exclusion as accepted.
 
 6. **`packages/shared_utils/lib/src/result.dart` equality is stricter than payload-only comparison.** `Ok`/`Err` check `other.runtimeType == runtimeType`, so `Ok<int,String>(1)` is not equal to `Ok<num,Object>(1)`. This was deliberately **NOT** changed: simply dropping the `runtimeType` check would make equality **asymmetric** under Dart's covariant generics (one direction true, the other false), violating the `==` contract — a worse defect than being over-strict but symmetric. Documented as an accepted limitation, not a bug to fix.
+
+7. **(2026-10-02) RISK — sing-box v1.10.7's `BoxService.Close()` calls `os.Exit(1)` on a
+   `C.FatalStopTimeout` internally** (confirmed in pinned source during P3-T7). This means a hung
+   libbox close can kill the entire app process, and our own 5000ms stop watchdog
+   (`VpnStateMachine`) cannot intervene — it operates at the Kotlin level, above a process-kill.
+   No mitigation exists yet; revisit during Phase 7 stability work (process-level supervision /
+   restart strategy). Evidence: `experimental/libbox/service.go`, `func (s *BoxService) Close()`,
+   pinned commit `253b41936ecd6ae17948d49d9c510d7100830927` —
+   `select { case <-done: return err; case <-time.After(C.FatalStopTimeout): os.Exit(1) }`.
 
 ---
 

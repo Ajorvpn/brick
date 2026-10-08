@@ -887,4 +887,55 @@ void main() {
       await expectLater(engine.getStatus(), throwsStateError);
     });
   });
+
+  // P3-T12: `prepare()` is the consent command added to `VpnEngine` because
+  // ARCHITECTURE.md Section 3.3 anticipated exactly this amendment. The mock
+  // has no consent dialog to model, so its whole job here is to answer
+  // truthfully and to stay consistent with the engine's disposed invariant.
+  group('prepare (P3-T12 consent)', () {
+    test(
+      'returns VpnCommandAccepted immediately with no dialog to model',
+      () async {
+        final engine = buildEngine();
+        addTearDown(engine.dispose);
+
+        final result = await engine.prepare();
+        expect(result, const VpnCommandAccepted());
+      },
+    );
+
+    test('does not disturb the connection state (Invariant 1)', () async {
+      final engine = buildEngine();
+      addTearDown(engine.dispose);
+
+      expect(await engine.getStatus(), const Disconnected());
+      expect(await engine.prepare(), const VpnCommandAccepted());
+      // Consent is neither a command acceptance nor a connection: asking for
+      // it must not move the lifecycle an inch.
+      expect(await engine.getStatus(), const Disconnected());
+    });
+
+    test('emits nothing on either stream', () async {
+      final engine = buildEngine();
+      addTearDown(engine.dispose);
+
+      final states = <ConnectionState>[];
+      final stats = <TrafficStats>[];
+      final stateSub = engine.connectionState.listen(states.add);
+      final statsSub = engine.trafficStats.listen(stats.add);
+      addTearDown(stateSub.cancel);
+      addTearDown(statsSub.cancel);
+
+      await engine.prepare();
+      await Future<void>.delayed(Duration.zero);
+      expect(states, isEmpty);
+      expect(stats, isEmpty);
+    });
+
+    test('throws StateError after dispose, like every other command', () async {
+      final engine = buildEngine();
+      await engine.dispose();
+      await expectLater(engine.prepare(), throwsStateError);
+    });
+  });
 }

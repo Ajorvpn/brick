@@ -1,0 +1,22 @@
+# P3-T11: this package's Android module is a STANDALONE Gradle project (it has
+# its own gradlew / settings.gradle.kts so the engine can be built and tested
+# without a Flutter app). That means its build state lives at
+# `android/.gradle` and `android/build`, which the root .gitignore's
+# Flutter-shaped `android/.gradle/` rule does NOT match.
+android/.gradle/
+android/build/
+android/.kotlin/
+android/local.properties
+android/libs/*.aar
+.gradle/
+build/
+*.iml
+.idea/
+captures/
+.externalNativeBuild/
+.cxx/
+
+# The root .gitignore has a blanket `*.jar` (intended for build outputs such as
+# libbox .aar/.jar artifacts). The Gradle wrapper JAR must still be committed,
+# or `./gradlew` fails on every fresh clone. Re-include it explicitly.
+!android/gradle/wrapper/gradle-wrapper.jar

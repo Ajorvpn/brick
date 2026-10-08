@@ -48,6 +48,9 @@ class _FakeVpnEngine implements VpnEngine {
 
   @override
   Future<ConnectionState> getStatus() async => initialState;
+
+  @override
+  Future<VpnCommandResult> prepare() async => const VpnCommandAccepted();
 }
 
 ServerProfile buildProfile() => ServerProfile(
@@ -85,6 +88,16 @@ void main() {
       addTearDown(engine.dispose);
       expect(await engine.getStatus(), const Connected());
     });
+
+    test(
+      'prepare returns Future<VpnCommandResult> and leaves state alone',
+      () async {
+        final engine = _FakeVpnEngine(const Disconnected());
+        addTearDown(engine.dispose);
+        expect(await engine.prepare(), isA<VpnCommandAccepted>());
+        expect(await engine.getStatus(), const Disconnected());
+      },
+    );
 
     test('command acceptance does not imply a state transition '
         '(Invariant 1)', () async {

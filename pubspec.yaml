@@ -11,6 +11,11 @@ workspace:
   - packages/config_parser
   - packages/ui_theme
   - packages/shared_utils
+  # P3-T11: the native Gate A engine, now a Flutter Android platform plugin.
+  # NOTE: this package depends on Flutter, so it must appear in `test:flutter`
+  # → `ignore:` below (it has no `test/` dir yet, but the dual-list rule
+  # documented below requires both edits together for every new package).
+  - packages/vpn_engine_android
 
 dev_dependencies:
   melos: ^8.7.0
@@ -66,6 +71,15 @@ melos:
           - core_domain
           - core_vpn_engine
           - config_parser
+          # P3-T11 — deliberate ABSENCE, documented deliberately.
+          # `vpn_engine_android` is a FLUTTER package, so it must NOT be routed
+          # to `dart test`. The dual-list rule above states the pairing for a new
+          # **pure-Dart** package ("present in `scope:` + present in `ignore:`").
+          # For a Flutter package the correct pairing is the mirror image:
+          # **absent from `scope:` + present in `ignore:`** (edit made below).
+          # Adding it here would make `dart test` run against a package that
+          # imports `dart:ui`, breaking the load-bearing "pure-Dart packages have
+          # no Flutter dependency" invariant documented above.
 
     test:flutter:
       description: Run `flutter test` for packages that depend on Flutter.
@@ -77,3 +91,8 @@ melos:
           - core_domain
           - core_vpn_engine
           - config_parser
+          # P3-T11: dual-list rule edit #2 of 2 for vpn_engine_android. It is a
+          # Flutter package, so it must NOT be routed to `dart test`. Paired
+          # with the `test:dart` → `scope:` edit above AND the `workspace:` entry
+          # — all three are required together, per the rule documented above.
+          - vpn_engine_android

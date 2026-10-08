@@ -164,7 +164,7 @@ text
 
 ---
 
-## 6. Native Bridge Code (Android/Kotlin — applies to `native/android/`)
+## 6. Native Bridge Code (Android/Kotlin — applies to `packages/vpn_engine_android/`)
 
 - Kotlin code follows the [official Kotlin style guide](https://kotlinlang.org/docs/coding-conventions.html).
 - Every function that crosses the Platform Channel boundary (Dart ↔ 
