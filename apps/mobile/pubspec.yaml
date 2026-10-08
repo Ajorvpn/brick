@@ -50,7 +50,7 @@ dependencies:
   flutter:
     sdk: flutter
   flutter_riverpod: ^3.4.3
-  go_router: ^18.0.1
+  go_router: ^18.0.2
   logger: ^2.8.0
   riverpod_annotation: ^4.0.7
   # TODO(Ajorvpn): SECURITY.md Section 3 classifies server configuration as
