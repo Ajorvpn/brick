@@ -29,7 +29,7 @@ dev_dependencies:
   # Flutter 3.47.4. Bumping a Pigeon major re-generates the committed
   # `.g.dart`/`.g.kt`, so a bump is a reviewable code change rather than a free
   # transitive update.
-  pigeon: ^29.0.6
+  pigeon: ^29.0.8
 
 flutter:
   plugin:
