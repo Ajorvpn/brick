@@ -100,6 +100,7 @@ class BrickVpnService : VpnService() {
         super.onCreate()
         current = this
         Log.i(TAG, "service created")
+        ServiceLifecycleHub.created(stateMachine)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -162,13 +163,16 @@ class BrickVpnService : VpnService() {
         ioScope.cancel()
         if (current === this) current = null
         super.onDestroy()
+        ServiceLifecycleHub.destroyed()
     }
 
 
     // ------------------------------------------------------------- transitions
 
     private fun requestStart() {
-        when (val result = stateMachine.start()) {
+        val result = stateMachine.start()
+        CommandVerdictHub.publish(CommandKind.START, result)
+        when (result) {
             VpnCommandResult.Accepted -> ioScope.launch { runStartSequence() }
             else -> Log.w(TAG, "start rejected: $result (state=${stateMachine.currentState})")
         }
@@ -229,7 +233,9 @@ class BrickVpnService : VpnService() {
     private fun requestStop(reason: StopReason) {
         val token = stateMachine.activeSession
         ioScope.launch {
-            if (token != null && stateMachine.stop() == VpnCommandResult.Accepted) {
+            val result = stateMachine.stop()
+            CommandVerdictHub.publish(CommandKind.STOP, result)
+            if (token != null && result == VpnCommandResult.Accepted) {
                 Log.i(TAG, "state -> Stopping (reason=$reason)")
                 stopEngine(reason)
                 closeTunOnce()
