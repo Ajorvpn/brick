@@ -92,6 +92,8 @@ enum VpnCommandOutcome {
 
 /// Result of the Android VPN consent flow (`VpnService.prepare()`).
 ///
+/// Result of the Android VPN consent flow (`VpnService.prepare()`).
+///
 /// This is the P3-T12 AC3 addition: the original P1-T4 interface was written
 /// before Android's consent dialog was in view, so it models no way to ASK for
 /// permission — only a way to be REJECTED for lacking it. The distinction
@@ -108,6 +110,11 @@ enum VpnConsentStatus {
   /// The dialog was shown and refused (or consent was revoked since).
   /// `start()` will be rejected until consent is obtained.
   denied,
+
+  /// No Activity is attached to show the system consent dialog.
+  /// Distinct from [denied]: consent has not been refused, it simply cannot
+  /// be requested right now.
+  noActivity,
 }
 
 /// One emission of the connection-state event channel.
@@ -196,9 +203,11 @@ abstract class VpnEngineHostApi {
   /// config for now, so the profile is carried faithfully across the bridge
   /// and deliberately not yet consumed. It must NOT be dropped here: doing so
   /// would lose information the contract requires.
+  @async
   VpnCommandOutcome start(Map<String, Object?> profileJson);
 
   /// Requests a tunnel stop. Same acceptance semantics as [start].
+  @async
   VpnCommandOutcome stop();
 
   /// Point-in-time state read for callers that are not subscribed (e.g. after

@@ -255,6 +255,8 @@ enum class VpnCommandOutcome(val raw: Int) {
 /**
  * Result of the Android VPN consent flow (`VpnService.prepare()`).
  *
+ * Result of the Android VPN consent flow (`VpnService.prepare()`).
+ *
  * This is the P3-T12 AC3 addition: the original P1-T4 interface was written
  * before Android's consent dialog was in view, so it models no way to ASK for
  * permission — only a way to be REJECTED for lacking it. The distinction
@@ -271,7 +273,13 @@ enum class VpnConsentStatus(val raw: Int) {
    * The dialog was shown and refused (or consent was revoked since).
    * `start()` will be rejected until consent is obtained.
    */
-  DENIED(2);
+  DENIED(2),
+  /**
+   * No Activity is attached to show the system consent dialog.
+   * Distinct from [denied]: consent has not been refused, it simply cannot
+   * be requested right now.
+   */
+  NO_ACTIVITY(3);
 
   companion object {
     fun ofRaw(raw: Int): VpnConsentStatus? {
@@ -503,9 +511,9 @@ interface VpnEngineHostApi {
    * and deliberately not yet consumed. It must NOT be dropped here: doing so
    * would lose information the contract requires.
    */
-  fun start(profileJson: Map<String, Any?>): VpnCommandOutcome
+  suspend fun start(profileJson: Map<String, Any?>): VpnCommandOutcome
   /** Requests a tunnel stop. Same acceptance semantics as [start]. */
-  fun stop(): VpnCommandOutcome
+  suspend fun stop(): VpnCommandOutcome
   /**
    * Point-in-time state read for callers that are not subscribed (e.g. after
    * a process restart, before the UI settles on an initial display).
@@ -544,12 +552,14 @@ interface VpnEngineHostApi {
           channel.setMessageHandler { message, reply ->
             val args = message as List<Any?>
             val profileJsonArg = args[0] as Map<String, Any?>
-            val wrapped: List<Any?> = try {
-              listOf(api.start(profileJsonArg))
-            } catch (exception: Throwable) {
-              VpnEngineApiPigeonUtils.wrapError(exception)
+            CoroutineScope(Dispatchers.Main).launch {
+              val wrapped: List<Any?> = try {
+                listOf(api.start(profileJsonArg))
+              } catch (exception: Throwable) {
+                VpnEngineApiPigeonUtils.wrapError(exception)
+              }
+              reply.reply(wrapped)
             }
-            reply.reply(wrapped)
           }
         } else {
           channel.setMessageHandler(null)
@@ -559,12 +569,14 @@ interface VpnEngineHostApi {
         val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.vpn_engine_android.VpnEngineHostApi.stop$separatedMessageChannelSuffix", codec)
         if (api != null) {
           channel.setMessageHandler { _, reply ->
-            val wrapped: List<Any?> = try {
-              listOf(api.stop())
-            } catch (exception: Throwable) {
-              VpnEngineApiPigeonUtils.wrapError(exception)
+            CoroutineScope(Dispatchers.Main).launch {
+              val wrapped: List<Any?> = try {
+                listOf(api.stop())
+              } catch (exception: Throwable) {
+                VpnEngineApiPigeonUtils.wrapError(exception)
+              }
+              reply.reply(wrapped)
             }
-            reply.reply(wrapped)
           }
         } else {
           channel.setMessageHandler(null)
