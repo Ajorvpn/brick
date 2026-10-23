@@ -20,14 +20,19 @@
 > task's final report). Every AI agent must read this file first, before
 > `ARCHITECTURE.md` or `ROADMAP.md`, to get immediate situational awareness.
 
-**Last updated**: 2026-09-28 — P3-T1 toolchain research recorded + P3-T2 native Android harness scaffolded (build verified)
-**Updated by**: Coding agent, during the P3-T2 native-module-scaffolding task; build output, APK contents and Dart test counts all re-derived from live runs in that task
+**Last updated**: 2026-10-23 — P3-T12 and P3-T13 remediated and verified on device (Ready for Human Review)
+**Updated by**: Coding agent, during P3-T13 Part B remediation; D1/D2/R10 verified live via 74 JVM unit tests and 20 instrumented tests on SM-A205F
 
 ---
 
 ## 1. Current Phase
 
-**Phase 3 — Android VPN Engine: Gate A IN PROGRESS.** P3-T1 (toolchain
+**Phase 3 — Android VPN Engine: P3-T12 and P3-T13 READY FOR HUMAN REVIEW.**
+- **P3-T12 (Pigeon schema definition):** `pigeons/vpn_api.dart` defines `@HostApi() VpnEngineHostApi` (`prepare()`, `start()`, `stop()`, `getStatus()`) with `@async` methods, plus `VpnStateEvent` streaming via EventChannel. Generated bindings (`lib/src/vpn_engine_api.g.dart` and `android/.../VpnEngineApi.g.kt`) are committed and in sync.
+- **P3-T13 (Kotlin Pigeon layer remediation):** Remediated architectural defects D1 (eliminated throwaway `VpnStateMachine` instantiations in `PigeonVpnApiImpl.kt` and `VpnEngineAndroidPlugin.kt`, enforced native-state pre-check in `stop()` returning `REJECTED_BUSY` for `Idle`/`Stopped`/`Stopping`/`Revoked`), added comprehensive host-JVM test suites (R10: `CommandCoordinatorTest` [10/10], `PigeonVpnApiImplTest` [13/13], `VpnStateMachineTest` [37/37], `CommandVerdictHubTest` [7/7], `ServiceLifecycleHubTest` [7/7] → **74/74 JVM tests passing**, 0 failures, 0 errors).
+- **On-device instrumented verification (SM-A205F / RZ8M53WPMPF, Android 10 / API 29):** Tested with D2 `ACTION_STOP` tests for `Error` and `Stopped` states. Full suite passed **20/20** (`BrickVpnServiceTest` 4, `BrickVpnServiceVerdictRaceTest` 1, `BrickVpnServiceVerdictTest` 6, `LibboxEngineTest` 9).
+
+P3-T1 (toolchain
 research) is delivered and `TOOLCHAIN_VERSIONS.md` is pinned. P3-T2 scaffolded
 `native/android/` as a standalone, CLI-buildable Android Gradle project and **proven
 `./gradlew assembleDebug`**, producing a real 3.2 MB debug APK; **as of P3-T11 that project
@@ -457,6 +462,8 @@ Status tokens below are quoted verbatim from the corresponding `**Status:**` lin
 - **P1-T4** (`ROADMAP.md:679`): `Completed ✅` — Implemented `abstract interface class VpnEngine` (connectionState/trafficStats streams with independent failure domains, `start(ServerProfile)`/`stop()`/`getStatus()` with acceptance-separate-from-state semantics) and sealed `VpnCommandResult` (5 stateless variants with `'type'` discriminators). Package migrated to pure Dart (`core_domain` workspace dep) and added to both Melos lists in the same change set. 13 tests passing, including exhaustive-switch and stream-isolation checks. Pushed and merged to master at commit `249617f`.
 - **P1-T5** (`ROADMAP.md:721`): `Completed ✅` — `MockVpnEngine` reference implementation (541 lines) fully implemented: simulated lifecycle, configurable rejections, independent failure domains, session tokens, a 5000 ms stop watchdog, and idempotent `stop()`/`dispose()`. 30 `mock_vpn_engine_test.dart` tests (43 total in the package, up from 13 at P1-T4). 147 pure-Dart tests pass monorepo-wide (10 shared_utils + 94 core_domain + 43 core_vpn_engine). `flutter analyze` clean across all 6 packages. The state-machine graph gained a `Connected -> Error` edge to support `simulateUnexpectedDisconnect()` (see ARCHITECTURE.md Section 3.1). **These changes are uncommitted and awaiting human review/commit** (the earlier `45b7c85` commit's non-conventional message is a permanent accepted deviation — see §6).
 - **P1-T6** (`ROADMAP.md:759`): `Not Started` — Feature-first folder structure convention + reference feature skeleton (this is the next planned task; work has not yet begun in the file).
+- **P3-T12** (`ROADMAP.md:2393`): `Ready for Human Review` — Pigeon schema defined with `@async` methods for `prepare()`, `start()`, `stop()`, and `getStatus()`. Generated Dart and Kotlin bindings committed and passing `melos run analyze`.
+- **P3-T13** (`ROADMAP.md:2439`): `Ready for Human Review` — Kotlin Pigeon host-API implementation (`PigeonVpnApiImpl.kt`, `CommandCoordinator.kt`, `VpnEngineAndroidPlugin.kt`) remediated (D1, D2, D3, R10). 74 host-JVM unit tests passing (0 failures, 0 errors); 20 on-device instrumented tests passing on SM-A205F (RZ8M53WPMPF, Android 10 / API 29).
 
 ---
 
@@ -466,12 +473,15 @@ Status tokens below are quoted verbatim from the corresponding `**Status:**` lin
 - **`packages/vpn_engine_android/` (Flutter Android platform plugin, verified):** Created in
   P3-T11. Wraps the proven Gate A native VPN engine (`BrickVpnService` + `LibboxTunnelEngine` +
   real libbox `BoxService`) as a Flutter Android platform plugin, replacing the deleted
-  `native/android/` standalone harness. Kotlin sources, both manifests, and all tests were
-  migrated **byte-identically**, so behaviour is unchanged by construction. Verified:
-  **36/36** JVM tests and **13/13** instrumented tests (13/13 not re-confirmed post-deletion —
-  device unavailable; see the P3-T11 entry in §1). `PlatformInterface` implements all **18**
-  libbox methods. Ships a structural, channel-free `VpnEngineAndroidPlugin`; the platform
-  channel is P3-T12, the Dart engine P3-T14. `minSdk` 24, `compileSdk`/`targetSdk` 36, AGP 9.1.0,
+  `native/android/` standalone harness. P3-T12 added the Pigeon schema (`pigeons/vpn_api.dart`)
+  and generated Dart/Kotlin bindings. P3-T13 implemented and remediated `PigeonVpnApiImpl.kt`,
+  `CommandCoordinator.kt`, and `VpnEngineAndroidPlugin.kt` (D1, D2, R10). Verified:
+  **74/74** JVM unit tests (0 failures, 0 errors across `CommandCoordinatorTest` [10], `CommandVerdictHubTest` [7],
+  `PigeonVpnApiImplTest` [13], `ServiceLifecycleHubTest` [7], `VpnStateMachineTest` [37]) and
+  **20/20** instrumented tests on `SM-A205F` (`RZ8M53WPMPF`, Android 10 / API 29, 0 failures across
+  `BrickVpnServiceTest` [4], `BrickVpnServiceVerdictRaceTest` [1], `BrickVpnServiceVerdictTest` [6],
+  `LibboxEngineTest` [9]). `PlatformInterface` implements all **18**
+  libbox methods. `minSdk` 24, `compileSdk`/`targetSdk` 36, AGP 9.1.0,
   Gradle 9.3.1, built-in Kotlin. Builds its own `libbox.aar` via
   `scripts/build_libbox_aar.sh` (sing-box v1.10.7, `with_utls`, 16 KB aligned).
 - **`packages/shared_utils/` (Pure Dart, verified):** Retroactively corrected P0-T6's scaffolding by removing all Flutter SDK transitives. Contains a hand-written, sealed `Result<T, E>` primitive with `Ok` and `Err` final subclasses (value-equality with `identical` fast path, intentionally no `toString` override so sensitive error payloads are not printed by default, `map`/`mapErr` transforms, and exhaustive `fold`/pattern-matching). Tested with 10 standalone unit tests running under `dart test`.

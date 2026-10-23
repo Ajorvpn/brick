@@ -4,14 +4,10 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import androidx.core.content.ContextCompat
-import io.flutter.embedding.engine.plugins.activity.ActivityAware
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import android.net.VpnService
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.withContext
 
 /**
@@ -23,7 +19,24 @@ class PigeonVpnApiImpl(
     private val coordinator: CommandCoordinator,
     private val prepareChecker: (Context) -> Intent? = { VpnService.prepare(it) },
     activityProvider: () -> Activity? = { null },
-) : VpnEngineHostApi, ActivityAware {
+    private val stateProvider: () -> VpnState = {
+        BrickVpnService.current?.stateMachine?.currentState ?: VpnState.Idle
+    },
+    private val startServiceLauncher: () -> Unit = {
+        ContextCompat.startForegroundService(
+            appContext,
+            Intent(appContext, BrickVpnService::class.java).setAction(BrickVpnService.ACTION_START),
+        )
+    },
+    private val stopServiceLauncher: () -> Unit = {
+        appContext.startService(
+            Intent(appContext, BrickVpnService::class.java).setAction(BrickVpnService.ACTION_STOP),
+        )
+    },
+    private val activityStarter: (Activity, Intent, Int) -> Unit = { act, intent, requestCode ->
+        act.startActivityForResult(intent, requestCode)
+    },
+) : VpnEngineHostApi {
 
     @Volatile
     private var activity: Activity? = activityProvider()
@@ -34,28 +47,32 @@ class PigeonVpnApiImpl(
     private var pendingPrepare: CompletableDeferred<VpnConsentStatus>? = null
     private var currentRequestCode: Int = 0
 
-    override fun onAttachedToActivity(binding: ActivityPluginBinding) {
+    fun handleActivityResult(requestCode: Int, resultCode: Int): Boolean {
+        if (requestCode != currentRequestCode || pendingPrepare == null) return false
+        val outcome = if (resultCode == Activity.RESULT_OK) VpnConsentStatus.GRANTED else VpnConsentStatus.DENIED
+        synchronized(prepareLock) {
+            pendingPrepare?.complete(outcome)
+            pendingPrepare = null
+        }
+        return true
+    }
+
+    fun onAttachedToActivity(binding: ActivityPluginBinding) {
         activity = binding.activity
         activityBinding = binding
         binding.addActivityResultListener { requestCode, resultCode, _ ->
-            if (requestCode != currentRequestCode || pendingPrepare == null) return@addActivityResultListener false
-            val outcome = if (resultCode == Activity.RESULT_OK) VpnConsentStatus.GRANTED else VpnConsentStatus.DENIED
-            synchronized(prepareLock) {
-                pendingPrepare?.complete(outcome)
-                pendingPrepare = null
-            }
-            true
+            handleActivityResult(requestCode, resultCode)
         }
     }
 
-    override fun onDetachedFromActivityForConfigChanges() {}
+    fun onDetachedFromActivityForConfigChanges() {}
 
-    override fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) {
+    fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) {
         activity = binding.activity
         activityBinding = binding
     }
 
-    override fun onDetachedFromActivity() {
+    fun onDetachedFromActivity() {
         synchronized(prepareLock) {
             pendingPrepare?.complete(VpnConsentStatus.DENIED)
             pendingPrepare = null
@@ -93,7 +110,7 @@ class PigeonVpnApiImpl(
         }
 
         withContext(Dispatchers.Main.immediate) {
-            act.startActivityForResult(intent, currentRequestCode)
+            activityStarter(act, intent, currentRequestCode)
         }
         return deferred.await()
     }
@@ -102,40 +119,32 @@ class PigeonVpnApiImpl(
         if (profileJson.isEmpty()) return VpnCommandOutcome.REJECTED_INVALID_CONFIG
         if (prepareChecker(appContext) != null) return VpnCommandOutcome.REJECTED_PERMISSION_DENIED
         return coordinator.run(CommandKind.START) {
-            val intent = Intent(appContext, BrickVpnService::class.java).setAction(BrickVpnService.ACTION_START)
-            ContextCompat.startForegroundService(appContext, intent)
+            startServiceLauncher()
         }
     }
 
     override suspend fun stop(): VpnCommandOutcome {
-        if (BrickVpnService.current == null) {
-            val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-            val machine = VpnStateMachine(scope = scope)
-            val result = machine.stop()
-            scope.cancel()
-            return result.toOutcome()
-        }
-        return coordinator.run(CommandKind.STOP) {
-            val intent = Intent(appContext, BrickVpnService::class.java).setAction(BrickVpnService.ACTION_STOP)
-            appContext.startService(intent)
+        return when (stateProvider()) {
+            VpnState.Idle,
+            VpnState.Stopped,
+            VpnState.Stopping,
+            VpnState.Revoked -> VpnCommandOutcome.REJECTED_BUSY
+
+            VpnState.Preparing,
+            VpnState.Starting,
+            VpnState.Running,
+            is VpnState.Error -> coordinator.run(CommandKind.STOP) {
+                stopServiceLauncher()
+            }
         }
     }
 
     override fun getStatus(): VpnStateEvent {
-        val state = BrickVpnService.current?.stateMachine?.currentState
-            ?: VpnStateMachine().currentState
+        val state = stateProvider()
         return VpnStateEvent(
             state = state.toNativeState(),
             errorReason = (state as? VpnState.Error)?.reason,
         )
-    }
-
-    private fun VpnCommandResult.toOutcome(): VpnCommandOutcome = when (this) {
-        VpnCommandResult.Accepted -> VpnCommandOutcome.ACCEPTED
-        VpnCommandResult.RejectedBusy -> VpnCommandOutcome.REJECTED_BUSY
-        VpnCommandResult.RejectedInvalidConfig -> VpnCommandOutcome.REJECTED_INVALID_CONFIG
-        VpnCommandResult.RejectedPermissionDenied -> VpnCommandOutcome.REJECTED_PERMISSION_DENIED
-        VpnCommandResult.Failed -> VpnCommandOutcome.FAILED
     }
 
     private fun VpnState.toNativeState(): VpnNativeState = when (this) {

@@ -39,7 +39,7 @@ class VpnEngineAndroidPlugin : FlutterPlugin, ActivityAware {
         override fun onListen(p0: Any?, sink: PigeonEventSink<VpnStateEvent>) {
             this.sink = sink
             attachedMachine?.let { collectMachine(it) }
-            val current = attachedMachine?.currentState ?: VpnStateMachine().currentState
+            val current = attachedMachine?.currentState ?: VpnState.Idle
             try { sink.success(VpnStateEvent(state = current.toNative(), errorReason = (current as? VpnState.Error)?.reason)) } catch (_: Throwable) {}
         }
 

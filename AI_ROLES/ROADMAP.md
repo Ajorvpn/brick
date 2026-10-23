@@ -2392,7 +2392,7 @@ protocol (that is P3-T12); the Dart engine (P3-T14) and provider override (P3-T1
 
 ### P3-T12 — Pigeon schema definition for VPN commands
 
-**Status:** Not Started
+**Status:** Ready for Human Review
 **Depends On:** P3-T11, P1-T4
 
 **Objective:** Define the Pigeon schema (per the finalized `ARCHITECTURE.md` Section 3.5 rule
@@ -2412,20 +2412,25 @@ data classes for connection state, command results, and any permission-request s
   actual Dart-side `VpnEngine` implementation (task after that).
 
 **Acceptance Criteria:**
-- [ ] Pigeon schema compiles and generates both Dart and Kotlin code without errors.
-- [ ] Every method/type needed by the `VpnEngine` interface (P1-T4) has a corresponding, faithful
+- [x] Pigeon schema compiles and generates both Dart and Kotlin code without errors.
+- [x] Every method/type needed by the `VpnEngine` interface (P1-T4) has a corresponding, faithful
       Pigeon representation — no information loss or semantic drift (e.g. the accepted-vs-final-
       state distinction must survive the translation exactly).
-- [ ] The Android permission-consent flow (the system dialog `VpnService` requires before first
+- [x] The Android permission-consent flow (the system dialog `VpnService` requires before first
       use, via `VpnService.prepare()`) is explicitly represented in the schema as a distinct
       command/result (e.g. a `prepare()` call returning whether consent is already granted or an
       intent needs to be launched) — this was not fully modeled in P1-T4's initial interface and
       must be added/reconciled now; if this requires revisiting `packages/core_vpn_engine`'s
       `VpnEngine` interface itself, do so and document the change clearly.
-- [ ] Generated code is committed or the codegen step is wired into the build process consistently
+- [x] Generated code is committed or the codegen step is wired into the build process consistently
       (decide once, document, follow project-wide convention already used for Riverpod codegen).
-- [ ] `melos run analyze` passes on generated Dart code (with any necessary, documented
+- [x] `melos run analyze` passes on generated Dart code (with any necessary, documented
       analyzer-exception patterns for generated files, per common Pigeon/codegen conventions).
+
+**Verification (2026-10-23):**
+- Schema committed in `pigeons/vpn_api.dart` with `@async` methods for `prepare()`, `start()`, `stop()`.
+- Generated code committed in `lib/src/vpn_engine_api.g.dart` and `android/src/main/kotlin/dev/brickvpn/harness/vpn/VpnEngineApi.g.kt`.
+- `melos run analyze` passes across all workspace packages with zero errors.
 
 **Notes for Agent:**
 - The permission-consent flow is a real gap between the original P1-T4 design (written before
@@ -2438,7 +2443,7 @@ data classes for connection state, command results, and any permission-request s
 
 ### P3-T13 — Kotlin-side Pigeon API implementation
 
-**Status:** Not Started
+**Status:** Ready for Human Review
 **Depends On:** P3-T12
 
 **Objective:** Implement the generated Pigeon host-API interface on the Kotlin side, delegating
@@ -2456,15 +2461,21 @@ adapter, not a place where new state-handling decisions get made.
   `VpnStateMachine`.
 
 **Acceptance Criteria:**
-- [ ] Every Pigeon-defined method has a correct, thin implementation with no additional lifecycle
+- [x] Every Pigeon-defined method has a correct, thin implementation with no additional lifecycle
       logic beyond argument translation and delegation.
-- [ ] Confirmed via code review (documented explicitly in the report) that this class introduces
+- [x] Confirmed via code review (documented explicitly in the report) that this class introduces
       zero new blocking calls, zero new threading decisions beyond what the state machine already
       dictates, and zero new state.
-- [ ] State/event streaming correctly delivers every `VpnStateMachine` transition to the Dart side
+- [x] State/event streaming correctly delivers every `VpnStateMachine` transition to the Dart side
       in order, with no drops (verified in the next task's integration tests, referenced here as a
       forward dependency).
-- [ ] `./gradlew build` and existing native tests still pass.
+- [x] `./gradlew build` and existing native tests still pass.
+
+**Verification (2026-10-23):**
+- Remediated D1: removed all throwaway `VpnStateMachine` instantiations from `PigeonVpnApiImpl.kt` and `VpnEngineAndroidPlugin.kt`.
+- Enforced native-state pre-check in `stop()`: returns `VpnCommandOutcome.REJECTED_BUSY` when in `Idle`, `Stopped`, `Stopping`, or `Revoked` with zero intents dispatched.
+- Host-JVM unit tests (`testDebugUnitTest`): **74/74 passed**, 0 failures, 0 errors across 5 test suites (`CommandCoordinatorTest`: 10, `CommandVerdictHubTest`: 7, `PigeonVpnApiImplTest`: 13, `ServiceLifecycleHubTest`: 7, `VpnStateMachineTest`: 37).
+- On-device instrumented tests on `SM-A205F` (`RZ8M53WPMPF`, Android 10 / API 29): **20/20 passed**, 0 failures across 4 test suites (`BrickVpnServiceTest`: 4, `BrickVpnServiceVerdictRaceTest`: 1, `BrickVpnServiceVerdictTest`: 6 including D2 Error/Stopped tests, `LibboxEngineTest`: 9).
 
 **Notes for Agent:**
 - If you find yourself writing anything that looks like a decision ("what should happen if X") at

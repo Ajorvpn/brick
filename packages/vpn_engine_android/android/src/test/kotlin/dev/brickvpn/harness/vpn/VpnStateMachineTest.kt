@@ -229,6 +229,17 @@ class VpnStateMachineTest {
     }
 
     @Test
+    fun `stop while Revoked returns Accepted and remains Revoked`() = runTest {
+        val m = VpnStateMachine(backgroundScope)
+        m.start()
+        m.onRevoke()
+        assertEquals(VpnState.Revoked, m.currentState)
+        assertEquals(VpnCommandResult.Accepted, m.stop())
+        assertEquals(VpnState.Revoked, m.currentState)
+        m.close()
+    }
+
+    @Test
     fun `stop is idempotent while Stopping`() = runTest {
         val m = VpnStateMachine(backgroundScope)
         m.start()

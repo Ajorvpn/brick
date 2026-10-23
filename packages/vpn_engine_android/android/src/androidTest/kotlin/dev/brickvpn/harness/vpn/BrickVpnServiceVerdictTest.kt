@@ -10,6 +10,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import kotlinx.coroutines.runBlocking
 import java.util.concurrent.CopyOnWriteArrayList
 
 /**
@@ -161,6 +162,7 @@ class BrickVpnServiceVerdictTest {
 
     @After
     fun tearDown() {
+        BrickVpnService.engineFactoryForTests = null
         if (started) {
             runCatching { sendActionStop() }
             Thread.sleep(1_500)
@@ -237,5 +239,62 @@ class BrickVpnServiceVerdictTest {
 
         assertEquals(listOf("created", "destroyed"), lifecycle.toList())
         assertTrue("verdicts must also be present", verdicts.isNotEmpty())
+    }
+
+    /**
+     * D2: ACTION_STOP sent while the service is in Error state publishes STOP / Accepted
+     * and transitions to Stopped.
+     */
+    @Test
+    fun stopWhileInErrorStatePublishesStopAcceptedAndReachesStopped() {
+        BrickVpnService.engineFactoryForTests = {
+            FakeTunnelEngine(failWith = IllegalStateException("forced engine failure for test"))
+        }
+        try {
+            startService()
+            val svc = awaitService()
+            awaitState(svc, { it is VpnState.Error }, "Error")
+
+            sendActionStop()
+            awaitVerdict(CommandKind.STOP, VpnCommandResult.Accepted, "stop while Error -> Accepted")
+            awaitState(svc, { it is VpnState.Stopped }, "Stopped")
+        } finally {
+            BrickVpnService.engineFactoryForTests = null
+        }
+    }
+
+    /**
+     * D2: ACTION_STOP sent when in Stopped publishes STOP / Accepted without crashing,
+     * and PigeonVpnApiImpl.stop() in that state returns REJECTED_BUSY without sending an intent.
+     */
+    @Test
+    fun stopWhileInStoppedStatePublishesAcceptedAndPigeonRejectsBusy() {
+        startService()
+        val svc = awaitService()
+        awaitState(svc, { it is VpnState.Running }, "Running")
+
+        sendActionStop()
+        awaitVerdict(CommandKind.STOP, VpnCommandResult.Accepted, "first stop -> Accepted")
+        awaitState(svc, { it is VpnState.Stopped }, "Stopped")
+
+        verdicts.clear()
+
+        // Direct ACTION_STOP intent while in Stopped state publishes Accepted.
+        sendActionStop()
+        awaitVerdict(CommandKind.STOP, VpnCommandResult.Accepted, "second stop while Stopped -> Accepted")
+
+        // PigeonVpnApiImpl.stop() pre-checks native state and rejects with REJECTED_BUSY.
+        verdicts.clear()
+        val coordinator = CommandCoordinator(
+            setListener = { CommandVerdictHub.listener = it },
+        )
+        val api = PigeonVpnApiImpl(
+            appContext = context,
+            coordinator = coordinator,
+        )
+
+        val outcome = runBlocking { api.stop() }
+        assertEquals(VpnCommandOutcome.REJECTED_BUSY, outcome)
+        assertTrue("PigeonVpnApiImpl.stop() must not send an intent while in Stopped", verdicts.isEmpty())
     }
 }
