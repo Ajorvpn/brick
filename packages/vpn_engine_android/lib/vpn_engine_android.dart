@@ -35,4 +35,5 @@
 /// Riverpod codegen convention) and must not be edited by hand.
 library;
 
+export 'src/android_vpn_engine.dart';
 export 'src/vpn_engine_api.g.dart';

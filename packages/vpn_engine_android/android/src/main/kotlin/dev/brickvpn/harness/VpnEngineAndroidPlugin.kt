@@ -21,26 +21,28 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 
 class VpnEngineAndroidPlugin : FlutterPlugin, ActivityAware {
 
-    private var scope: CoroutineScope? = null
-    private var activityBinding: ActivityPluginBinding? = null
-    private var impl: PigeonVpnApiImpl? = null
-    private var coordinator: CommandCoordinator? = null
+    internal var scope: CoroutineScope? = null
+    internal var activityBinding: ActivityPluginBinding? = null
+    internal var impl: PigeonVpnApiImpl? = null
+    internal var coordinator: CommandCoordinator? = null
 
-    private val stateHandler = object : StateEventsStreamHandler() {
+    internal inner class PluginStateEventsStreamHandler : StateEventsStreamHandler() {
         private var sink: PigeonEventSink<VpnStateEvent>? = null
         private var collectorJob: kotlinx.coroutines.Job? = null
         private var attachedMachine: VpnStateMachine? = null
 
         override fun onListen(p0: Any?, sink: PigeonEventSink<VpnStateEvent>) {
             this.sink = sink
-            attachedMachine?.let { collectMachine(it) }
             val current = attachedMachine?.currentState ?: VpnState.Idle
-            try { sink.success(VpnStateEvent(state = current.toNative(), errorReason = (current as? VpnState.Error)?.reason)) } catch (_: Throwable) {}
+            try {
+                sink.success(VpnStateEvent(state = current.toNative(), errorReason = (current as? VpnState.Error)?.reason))
+            } catch (_: Throwable) {}
+            attachedMachine?.let { collectMachine(it) }
         }
 
         override fun onCancel(p0: Any?) {
@@ -53,23 +55,34 @@ class VpnEngineAndroidPlugin : FlutterPlugin, ActivityAware {
             if (attachedMachine === machine) return
             collectorJob?.cancel()
             attachedMachine = machine
-            sink?.let { collectMachine(machine) }
+            sink?.let { s ->
+                val current = machine.currentState
+                try {
+                    s.success(VpnStateEvent(state = current.toNative(), errorReason = (current as? VpnState.Error)?.reason))
+                } catch (_: Throwable) {}
+                collectMachine(machine)
+            }
         }
 
         private fun collectMachine(machine: VpnStateMachine) {
             collectorJob?.cancel()
             collectorJob = scope?.launch {
-                machine.state.collect { st ->
+                machine.state.drop(1).collect { st ->
                     val s = sink ?: return@collect
-                    try { s.success(VpnStateEvent(state = st.toNative(), errorReason = (st as? VpnState.Error)?.reason)) } catch (_: Throwable) {}
+                    try {
+                        s.success(VpnStateEvent(state = st.toNative(), errorReason = (st as? VpnState.Error)?.reason))
+                    } catch (_: Throwable) {}
                 }
             }
         }
 
         fun onServiceDestroyed(lastState: VpnState?) {
-            val s = sink ?: return
-            if (lastState != null) {
-                try { s.success(VpnStateEvent(state = lastState.toNative(), errorReason = (lastState as? VpnState.Error)?.reason)) } catch (_: Throwable) {}
+            sink?.let { s ->
+                if (lastState != null) {
+                    try {
+                        s.success(VpnStateEvent(state = lastState.toNative(), errorReason = (lastState as? VpnState.Error)?.reason))
+                    } catch (_: Throwable) {}
+                }
             }
             collectorJob?.cancel()
             collectorJob = null
@@ -78,8 +91,28 @@ class VpnEngineAndroidPlugin : FlutterPlugin, ActivityAware {
 
         fun attachedMachineState(): VpnStateMachine? = attachedMachine
     }
+
+    internal val stateHandler = PluginStateEventsStreamHandler()
     private val trafficHandler = object : TrafficStatsEventsStreamHandler() {
         // documented stub: emits nothing
+    }
+
+    internal fun attachLifecycleObserver(
+        currentServiceMachine: () -> VpnStateMachine? = { BrickVpnService.current?.stateMachine },
+    ) {
+        ServiceLifecycleHub.observer = object : ServiceLifecycleObserver {
+            override fun onCreated(machine: VpnStateMachine) {
+                stateHandler.attachMachine(machine)
+            }
+            override fun onDestroyed() {
+                val last = stateHandler.attachedMachineState()?.currentState
+                stateHandler.onServiceDestroyed(last)
+                coordinator?.onServiceDestroyed()
+            }
+        }
+        currentServiceMachine()?.let { machine ->
+            stateHandler.attachMachine(machine)
+        }
     }
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
@@ -99,22 +132,14 @@ class VpnEngineAndroidPlugin : FlutterPlugin, ActivityAware {
         StateEventsStreamHandler.register(binding.binaryMessenger, stateHandler)
         TrafficStatsEventsStreamHandler.register(binding.binaryMessenger, trafficHandler)
 
-        ServiceLifecycleHub.observer = object : ServiceLifecycleObserver {
-            override fun onCreated(machine: VpnStateMachine) {
-                stateHandler.attachMachine(machine)
-            }
-            override fun onDestroyed() {
-                val last = stateHandler.attachedMachineState()?.currentState
-                stateHandler.onServiceDestroyed(last)
-                coordinator?.onServiceDestroyed()
-            }
-        }
-        BrickVpnService.current?.let { svc ->
-            stateHandler.attachMachine(svc.stateMachine)
-        }
+        attachLifecycleObserver()
     }
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
+        detach()
+    }
+
+    internal fun detach() {
         ServiceLifecycleHub.observer = null
         ServiceLifecycleHub.reset()
         CommandVerdictHub.listener = null
@@ -144,7 +169,7 @@ class VpnEngineAndroidPlugin : FlutterPlugin, ActivityAware {
         activityBinding = null
     }
 
-    private fun VpnState.toNative(): VpnNativeState = when (this) {
+    internal fun VpnState.toNative(): VpnNativeState = when (this) {
         VpnState.Idle -> VpnNativeState.IDLE
         VpnState.Preparing -> VpnNativeState.PREPARING
         VpnState.Starting -> VpnNativeState.STARTING

@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import androidx.core.content.ContextCompat
+import io.flutter.embedding.engine.plugins.activity.ActivityAware
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -36,7 +37,7 @@ class PigeonVpnApiImpl(
     private val activityStarter: (Activity, Intent, Int) -> Unit = { act, intent, requestCode ->
         act.startActivityForResult(intent, requestCode)
     },
-) : VpnEngineHostApi {
+) : VpnEngineHostApi, ActivityAware {
 
     @Volatile
     private var activity: Activity? = activityProvider()
@@ -57,7 +58,7 @@ class PigeonVpnApiImpl(
         return true
     }
 
-    fun onAttachedToActivity(binding: ActivityPluginBinding) {
+    override fun onAttachedToActivity(binding: ActivityPluginBinding) {
         activity = binding.activity
         activityBinding = binding
         binding.addActivityResultListener { requestCode, resultCode, _ ->
@@ -65,14 +66,14 @@ class PigeonVpnApiImpl(
         }
     }
 
-    fun onDetachedFromActivityForConfigChanges() {}
+    override fun onDetachedFromActivityForConfigChanges() {}
 
-    fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) {
+    override fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) {
         activity = binding.activity
         activityBinding = binding
     }
 
-    fun onDetachedFromActivity() {
+    override fun onDetachedFromActivity() {
         synchronized(prepareLock) {
             pendingPrepare?.complete(VpnConsentStatus.DENIED)
             pendingPrepare = null

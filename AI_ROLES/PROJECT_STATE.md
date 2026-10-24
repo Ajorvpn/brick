@@ -20,16 +20,17 @@
 > task's final report). Every AI agent must read this file first, before
 > `ARCHITECTURE.md` or `ROADMAP.md`, to get immediate situational awareness.
 
-**Last updated**: 2026-10-23 — P3-T12 and P3-T13 remediated and verified on device (Ready for Human Review)
-**Updated by**: Coding agent, during P3-T13 Part B remediation; D1/D2/R10 verified live via 74 JVM unit tests and 20 instrumented tests on SM-A205F
+**Last updated**: 2026-10-24 — P3-T14 implemented and verified (Ready for Human Review)
+**Updated by**: Coding agent, during P3-T14 implementation; full verification passing across Dart (18/18), JVM (74/74, 0 compiler warnings), and on-device instrumented tests (20/20 on SM-A205F)
 
 ---
 
 ## 1. Current Phase
 
-**Phase 3 — Android VPN Engine: P3-T12 and P3-T13 READY FOR HUMAN REVIEW.**
+**Phase 3 — Android VPN Engine: P3-T12, P3-T13, and P3-T14 READY FOR HUMAN REVIEW.**
 - **P3-T12 (Pigeon schema definition):** `pigeons/vpn_api.dart` defines `@HostApi() VpnEngineHostApi` (`prepare()`, `start()`, `stop()`, `getStatus()`) with `@async` methods, plus `VpnStateEvent` streaming via EventChannel. Generated bindings (`lib/src/vpn_engine_api.g.dart` and `android/.../VpnEngineApi.g.kt`) are committed and in sync.
 - **P3-T13 (Kotlin Pigeon layer remediation):** Remediated architectural defects D1 (eliminated throwaway `VpnStateMachine` instantiations in `PigeonVpnApiImpl.kt` and `VpnEngineAndroidPlugin.kt`, enforced native-state pre-check in `stop()` returning `REJECTED_BUSY` for `Idle`/`Stopped`/`Stopping`/`Revoked`), added comprehensive host-JVM test suites (R10: `CommandCoordinatorTest` [10/10], `PigeonVpnApiImplTest` [13/13], `VpnStateMachineTest` [37/37], `CommandVerdictHubTest` [7/7], `ServiceLifecycleHubTest` [7/7] → **74/74 JVM tests passing**, 0 failures, 0 errors).
+- **P3-T14 (Dart-side AndroidVpnEngine implementation):** Implemented `AndroidVpnEngine implements VpnEngine` in `packages/vpn_engine_android/lib/src/android_vpn_engine.dart` and exported via `lib/vpn_engine_android.dart`. Implements locked architectural decisions DECISION P3-T14-A through P3-T14-D: maps 8 native states to 5 core_domain states with deduplication, handles all command outcomes without throwing, absorbs stats errors per Invariant 2, and validates serialization. Comprehensive unit test suite in `packages/vpn_engine_android/test/android_vpn_engine_test.dart` passes **18/18 tests**. Fixed 2 Kotlin compiler warnings in `VpnStateMachineTest.kt` (now 0 warnings across whole project).
 - **On-device instrumented verification (SM-A205F / RZ8M53WPMPF, Android 10 / API 29):** Tested with D2 `ACTION_STOP` tests for `Error` and `Stopped` states. Full suite passed **20/20** (`BrickVpnServiceTest` 4, `BrickVpnServiceVerdictRaceTest` 1, `BrickVpnServiceVerdictTest` 6, `LibboxEngineTest` 9).
 
 P3-T1 (toolchain
@@ -464,6 +465,7 @@ Status tokens below are quoted verbatim from the corresponding `**Status:**` lin
 - **P1-T6** (`ROADMAP.md:759`): `Not Started` — Feature-first folder structure convention + reference feature skeleton (this is the next planned task; work has not yet begun in the file).
 - **P3-T12** (`ROADMAP.md:2393`): `Ready for Human Review` — Pigeon schema defined with `@async` methods for `prepare()`, `start()`, `stop()`, and `getStatus()`. Generated Dart and Kotlin bindings committed and passing `melos run analyze`.
 - **P3-T13** (`ROADMAP.md:2439`): `Ready for Human Review` — Kotlin Pigeon host-API implementation (`PigeonVpnApiImpl.kt`, `CommandCoordinator.kt`, `VpnEngineAndroidPlugin.kt`) remediated (D1, D2, D3, R10). 74 host-JVM unit tests passing (0 failures, 0 errors); 20 on-device instrumented tests passing on SM-A205F (RZ8M53WPMPF, Android 10 / API 29).
+- **P3-T14** (`ROADMAP.md:2488`): `Ready for Human Review` — Dart-side `AndroidVpnEngine implements VpnEngine` in `packages/vpn_engine_android/lib/src/android_vpn_engine.dart` wrapping Pigeon channels with 18 unit tests passing. Implements DECISION P3-T14-A..D with 0 compiler warnings, full analyzer pass, 74 JVM tests, and 20 instrumented device tests.
 
 ---
 

@@ -2487,7 +2487,7 @@ adapter, not a place where new state-handling decisions get made.
 
 ### P3-T14 — Dart-side `AndroidVpnEngine` implementation
 
-**Status:** Not Started
+**Status:** Ready for Human Review
 **Depends On:** P3-T13, P1-T4
 
 **Objective:** Implement `AndroidVpnEngine implements VpnEngine` in
@@ -2503,15 +2503,23 @@ tests — that's what instrumented/integration tests are for, next task).
 - Excluded: any real device testing (next task); any UI wiring (task after that).
 
 **Acceptance Criteria:**
-- [ ] `AndroidVpnEngine` correctly implements every member of the `VpnEngine` interface from
+- [x] `AndroidVpnEngine` correctly implements every member of the `VpnEngine` interface from
       P1-T4 (as possibly amended by P3-T12's permission-flow discovery).
-- [ ] Unit tests, using a mocked Pigeon client, prove correct type translation in both directions
+- [x] Unit tests, using a mocked Pigeon client, prove correct type translation in both directions
       and correct stream forwarding (state and stats streams from the mock produce correctly
       mapped Dart-side values).
-- [ ] Error/edge cases are handled without throwing: a malformed or unexpected value arriving
+- [x] Error/edge cases are handled without throwing: a malformed or unexpected value arriving
       from the native side (simulated in the mock) results in a well-formed `Err`/`Error` state,
       never an uncaught exception propagating to UI code.
-- [ ] `melos run analyze` and `melos run test` pass.
+- [x] `melos run analyze` and `melos run test` pass.
+
+**Verification Performed:**
+- `dart format --output=none --set-exit-if-changed packages/vpn_engine_android`: Clean (0 changed).
+- `melos run analyze --no-select`: All packages clean with 0 issues.
+- `flutter test --reporter expanded` in `packages/vpn_engine_android`: 18/18 tests pass.
+- `melos run test --no-select`: All pure-Dart and Flutter test suites pass.
+- Kotlin JVM tests: 74/74 pass with 0 compiler warnings.
+- Physical device tests on SM-A205F (RZ8M53WPMPF): 20/20 pass.
 
 **Notes for Agent:**
 - Keep this class as thin and mechanical as its Kotlin-side counterpart from P3-T13 — the same

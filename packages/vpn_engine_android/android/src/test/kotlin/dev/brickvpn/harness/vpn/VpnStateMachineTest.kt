@@ -115,8 +115,8 @@ class VpnStateMachineTest {
         assertEquals(VpnState.ID_IDLE, touched.id)
 
         for ((id, targets) in VpnState.LEGAL) {
-            assertTrue("table key must not be null (got $id)", id != null)
-            for (t in targets) assertTrue("target must not be null (in $id)", t != null)
+            assertTrue("table key must not be blank (got $id)", id.isNotBlank())
+            for (t in targets) assertTrue("target must not be blank (in $id)", t.isNotBlank())
         }
         assertEquals(8, VpnState.LEGAL.size)
         assertTrue(VpnState.Idle.canTransitionTo(VpnState.Preparing))

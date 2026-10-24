@@ -1,9 +1,8 @@
 name: vpn_engine_android
 description: >-
   Flutter Android platform plugin wrapping the proven Gate A native VPN engine
-  (BrickVpnService + libbox). P3-T11: structural packaging only — the
-  platform-channel/Pigeon layer is P3-T12 and the Dart VpnEngine
-  implementation is P3-T14.
+  (BrickVpnService + libbox), the Pigeon bridge (P3-T12/P3-T13), and the
+  AndroidVpnEngine implementation (P3-T14).
 version: 0.0.1
 publish_to: 'none'
 # P3-T11: required for pub workspace membership — every existing member in this
@@ -19,6 +18,9 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  config_parser:
+  core_domain:
+  core_vpn_engine:
 
 dev_dependencies:
   flutter_test:

@@ -106,9 +106,10 @@ dependencies {
     // Host-JVM unit tests — JUnit 4, deliberately. The stock Flutter template
     // ships `useJUnitPlatform()` + JUnit 5; adopting that would make Gradle
     // discover ZERO JUnit-4 tests and still report BUILD SUCCESSFUL, which is a
-    // silent false green. The suite must keep running all 36 tests.
+    // silent false green. The suite must keep running all tests (84 host-JVM tests across all suites).
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
+    testImplementation("io.flutter:flutter_embedding_debug:1.0.0-06a2e2a110089dff50fe635cffd2a61e1b24fbcd")
 
     // P3-T6/P3-T7: instrumented tests, re-run on the real device.
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
@@ -116,4 +117,5 @@ dependencies {
     androidTestImplementation("androidx.test:rules:1.6.1")
     androidTestImplementation("androidx.test:core:1.6.1")
     androidTestImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
+    androidTestImplementation("io.flutter:flutter_embedding_debug:1.0.0-06a2e2a110089dff50fe635cffd2a61e1b24fbcd")
 }

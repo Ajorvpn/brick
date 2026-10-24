@@ -91,8 +91,3 @@ melos:
           - core_domain
           - core_vpn_engine
           - config_parser
-          # P3-T11: dual-list rule edit #2 of 2 for vpn_engine_android. It is a
-          # Flutter package, so it must NOT be routed to `dart test`. Paired
-          # with the `test:dart` → `scope:` edit above AND the `workspace:` entry
-          # — all three are required together, per the rule documented above.
-          - vpn_engine_android
