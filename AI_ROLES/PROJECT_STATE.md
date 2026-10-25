@@ -20,8 +20,8 @@
 > task's final report). Every AI agent must read this file first, before
 > `ARCHITECTURE.md` or `ROADMAP.md`, to get immediate situational awareness.
 
-**Last updated**: 2026-10-24 — P3-T14 implemented and verified (Ready for Human Review)
-**Updated by**: Coding agent, during P3-T14 implementation; full verification passing across Dart (18/18), JVM (74/74, 0 compiler warnings), and on-device instrumented tests (20/20 on SM-A205F)
+**Last updated**: 2026-10-25 — P3-T12, P3-T13, P3-T14 implemented and verified (Ready for Human Review)
+**Updated by**: Coding agent, during P3 remediation; full verification passing across Dart/Flutter (768 total monorepo tests via melos, including 19/19 in vpn_engine_android), host-JVM (84/84 across 6 suites, 0 compiler warnings), and on-device instrumented tests (23/23 on SM-A205F across 5 suites)
 
 ---
 
@@ -29,12 +29,11 @@
 
 **Phase 3 — Android VPN Engine: P3-T12, P3-T13, and P3-T14 READY FOR HUMAN REVIEW.**
 - **P3-T12 (Pigeon schema definition):** `pigeons/vpn_api.dart` defines `@HostApi() VpnEngineHostApi` (`prepare()`, `start()`, `stop()`, `getStatus()`) with `@async` methods, plus `VpnStateEvent` streaming via EventChannel. Generated bindings (`lib/src/vpn_engine_api.g.dart` and `android/.../VpnEngineApi.g.kt`) are committed and in sync.
-- **P3-T13 (Kotlin Pigeon layer remediation):** Remediated architectural defects D1 (eliminated throwaway `VpnStateMachine` instantiations in `PigeonVpnApiImpl.kt` and `VpnEngineAndroidPlugin.kt`, enforced native-state pre-check in `stop()` returning `REJECTED_BUSY` for `Idle`/`Stopped`/`Stopping`/`Revoked`), added comprehensive host-JVM test suites (R10: `CommandCoordinatorTest` [10/10], `PigeonVpnApiImplTest` [13/13], `VpnStateMachineTest` [37/37], `CommandVerdictHubTest` [7/7], `ServiceLifecycleHubTest` [7/7] → **74/74 JVM tests passing**, 0 failures, 0 errors).
-- **P3-T14 (Dart-side AndroidVpnEngine implementation):** Implemented `AndroidVpnEngine implements VpnEngine` in `packages/vpn_engine_android/lib/src/android_vpn_engine.dart` and exported via `lib/vpn_engine_android.dart`. Implements locked architectural decisions DECISION P3-T14-A through P3-T14-D: maps 8 native states to 5 core_domain states with deduplication, handles all command outcomes without throwing, absorbs stats errors per Invariant 2, and validates serialization. Comprehensive unit test suite in `packages/vpn_engine_android/test/android_vpn_engine_test.dart` passes **18/18 tests**. Fixed 2 Kotlin compiler warnings in `VpnStateMachineTest.kt` (now 0 warnings across whole project).
-- **On-device instrumented verification (SM-A205F / RZ8M53WPMPF, Android 10 / API 29):** Tested with D2 `ACTION_STOP` tests for `Error` and `Stopped` states. Full suite passed **20/20** (`BrickVpnServiceTest` 4, `BrickVpnServiceVerdictRaceTest` 1, `BrickVpnServiceVerdictTest` 6, `LibboxEngineTest` 9).
+- **P3-T13 (Kotlin Pigeon layer remediation):** Remediated architectural defects D1 (eliminated throwaway `VpnStateMachine` instantiations in `PigeonVpnApiImpl.kt` and `VpnEngineAndroidPlugin.kt`, enforced native-state pre-check in `stop()` returning `REJECTED_BUSY` for `Idle`/`Stopped`/`Stopping`/`Revoked`), restored `ActivityAware` on `PigeonVpnApiImpl`, added comprehensive host-JVM test suites (R10: `CommandCoordinatorTest` [10/10], `CommandVerdictHubTest` [7/7], `VpnEngineAndroidPluginTest` [10/10], `PigeonVpnApiImplTest` [13/13], `ServiceLifecycleHubTest` [7/7], `VpnStateMachineTest` [37/37] → **84/84 JVM tests passing**, 0 failures, 0 errors, 0 compiler warnings).
+- **P3-T14 (Dart-side AndroidVpnEngine implementation):** Implemented `AndroidVpnEngine implements VpnEngine` in `packages/vpn_engine_android/lib/src/android_vpn_engine.dart` and exported via `lib/vpn_engine_android.dart`. Implements locked architectural decisions DECISION P3-T14-A through P3-T14-D: maps 8 native states to 5 core_domain states with deduplication, handles all command outcomes without throwing, absorbs stats errors per Invariant 2, and validates serialization with real `SingBoxOutboundSerializer` rejection of runtime-unsupported protocols. Comprehensive unit test suite in `packages/vpn_engine_android/test/android_vpn_engine_test.dart` passes **19/19 tests**. Wired into root `pubspec.yaml` (`test:flutter`) so `melos run test` executes all **768 Dart/Flutter tests** across the workspace.
+- **On-device instrumented verification (SM-A205F / RZ8M53WPMPF, Android 10 / API 29):** Tested with D2 `ACTION_STOP` tests for `Error` and `Stopped` states plus full `PigeonVpnApiImplInstrumentedTest` suite. Full suite passed **23/23** (`BrickVpnServiceTest` 4, `BrickVpnServiceVerdictRaceTest` 1, `BrickVpnServiceVerdictTest` 6, `LibboxEngineTest` 9, `PigeonVpnApiImplInstrumentedTest` 3).
 
-P3-T1 (toolchain
-research) is delivered and `TOOLCHAIN_VERSIONS.md` is pinned. P3-T2 scaffolded
+P3-T1 (toolchain research) is delivered and `TOOLCHAIN_VERSIONS.md` is pinned. P3-T2 scaffolded
 `native/android/` as a standalone, CLI-buildable Android Gradle project and **proven
 `./gradlew assembleDebug`**, producing a real 3.2 MB debug APK; **as of P3-T11 that project
 has been migrated to the Flutter plugin package `packages/vpn_engine_android/` and deleted.**
@@ -464,8 +463,8 @@ Status tokens below are quoted verbatim from the corresponding `**Status:**` lin
 - **P1-T5** (`ROADMAP.md:721`): `Completed ✅` — `MockVpnEngine` reference implementation (541 lines) fully implemented: simulated lifecycle, configurable rejections, independent failure domains, session tokens, a 5000 ms stop watchdog, and idempotent `stop()`/`dispose()`. 30 `mock_vpn_engine_test.dart` tests (43 total in the package, up from 13 at P1-T4). 147 pure-Dart tests pass monorepo-wide (10 shared_utils + 94 core_domain + 43 core_vpn_engine). `flutter analyze` clean across all 6 packages. The state-machine graph gained a `Connected -> Error` edge to support `simulateUnexpectedDisconnect()` (see ARCHITECTURE.md Section 3.1). **These changes are uncommitted and awaiting human review/commit** (the earlier `45b7c85` commit's non-conventional message is a permanent accepted deviation — see §6).
 - **P1-T6** (`ROADMAP.md:759`): `Not Started` — Feature-first folder structure convention + reference feature skeleton (this is the next planned task; work has not yet begun in the file).
 - **P3-T12** (`ROADMAP.md:2393`): `Ready for Human Review` — Pigeon schema defined with `@async` methods for `prepare()`, `start()`, `stop()`, and `getStatus()`. Generated Dart and Kotlin bindings committed and passing `melos run analyze`.
-- **P3-T13** (`ROADMAP.md:2439`): `Ready for Human Review` — Kotlin Pigeon host-API implementation (`PigeonVpnApiImpl.kt`, `CommandCoordinator.kt`, `VpnEngineAndroidPlugin.kt`) remediated (D1, D2, D3, R10). 74 host-JVM unit tests passing (0 failures, 0 errors); 20 on-device instrumented tests passing on SM-A205F (RZ8M53WPMPF, Android 10 / API 29).
-- **P3-T14** (`ROADMAP.md:2488`): `Ready for Human Review` — Dart-side `AndroidVpnEngine implements VpnEngine` in `packages/vpn_engine_android/lib/src/android_vpn_engine.dart` wrapping Pigeon channels with 18 unit tests passing. Implements DECISION P3-T14-A..D with 0 compiler warnings, full analyzer pass, 74 JVM tests, and 20 instrumented device tests.
+- **P3-T13** (`ROADMAP.md:2444`): `Ready for Human Review` — Kotlin Pigeon host-API implementation (`PigeonVpnApiImpl.kt`, `CommandCoordinator.kt`, `VpnEngineAndroidPlugin.kt`) remediated (D1, D2, D3, R10, `ActivityAware` restored). 84 host-JVM unit tests passing across 6 suites (0 failures, 0 errors, 0 compiler warnings); 23 on-device instrumented tests passing on SM-A205F (RZ8M53WPMPF, Android 10 / API 29) across 5 suites.
+- **P3-T14** (`ROADMAP.md:2488`): `Ready for Human Review` — Dart-side `AndroidVpnEngine implements VpnEngine` in `packages/vpn_engine_android/lib/src/android_vpn_engine.dart` wrapping Pigeon channels with 19 unit tests passing (including real `SingBoxOutboundSerializer` rejection of runtime-unsupported protocols). Implements DECISION P3-T14-A..D with 0 compiler warnings, full analyzer pass, and fully wired into `melos run test` (768 total monorepo tests passing).
 
 ---
 
@@ -477,14 +476,18 @@ Status tokens below are quoted verbatim from the corresponding `**Status:**` lin
   real libbox `BoxService`) as a Flutter Android platform plugin, replacing the deleted
   `native/android/` standalone harness. P3-T12 added the Pigeon schema (`pigeons/vpn_api.dart`)
   and generated Dart/Kotlin bindings. P3-T13 implemented and remediated `PigeonVpnApiImpl.kt`,
-  `CommandCoordinator.kt`, and `VpnEngineAndroidPlugin.kt` (D1, D2, R10). Verified:
-  **74/74** JVM unit tests (0 failures, 0 errors across `CommandCoordinatorTest` [10], `CommandVerdictHubTest` [7],
-  `PigeonVpnApiImplTest` [13], `ServiceLifecycleHubTest` [7], `VpnStateMachineTest` [37]) and
-  **20/20** instrumented tests on `SM-A205F` (`RZ8M53WPMPF`, Android 10 / API 29, 0 failures across
+  `CommandCoordinator.kt`, and `VpnEngineAndroidPlugin.kt` (D1, D2, R10, `ActivityAware` restored).
+  P3-T14 implemented `AndroidVpnEngine implements VpnEngine` in Dart. Verified:
+  **84/84** host-JVM unit tests (0 failures, 0 errors, 0 compiler warnings across `CommandCoordinatorTest` [10],
+  `CommandVerdictHubTest` [7], `VpnEngineAndroidPluginTest` [10], `PigeonVpnApiImplTest` [13],
+  `ServiceLifecycleHubTest` [7], `VpnStateMachineTest` [37]);
+  **23/23** instrumented tests on `SM-A205F` (`RZ8M53WPMPF`, Android 10 / API 29, 0 failures across
   `BrickVpnServiceTest` [4], `BrickVpnServiceVerdictRaceTest` [1], `BrickVpnServiceVerdictTest` [6],
-  `LibboxEngineTest` [9]). `PlatformInterface` implements all **18**
-  libbox methods. `minSdk` 24, `compileSdk`/`targetSdk` 36, AGP 9.1.0,
-  Gradle 9.3.1, built-in Kotlin. Builds its own `libbox.aar` via
+  `LibboxEngineTest` [9], `PigeonVpnApiImplInstrumentedTest` [3]); and
+  **19/19** Dart/Flutter unit tests in `test/android_vpn_engine_test.dart`.
+  Wired into workspace test discovery with **768/768** total Dart/Flutter tests passing monorepo-wide.
+  `PlatformInterface` implements all **18** libbox methods. `minSdk` 24, `compileSdk`/`targetSdk` 36,
+  AGP 9.1.0, Gradle 9.3.1, built-in Kotlin. Builds its own `libbox.aar` via
   `scripts/build_libbox_aar.sh` (sing-box v1.10.7, `with_utls`, 16 KB aligned).
 - **`packages/shared_utils/` (Pure Dart, verified):** Retroactively corrected P0-T6's scaffolding by removing all Flutter SDK transitives. Contains a hand-written, sealed `Result<T, E>` primitive with `Ok` and `Err` final subclasses (value-equality with `identical` fast path, intentionally no `toString` override so sensitive error payloads are not printed by default, `map`/`mapErr` transforms, and exhaustive `fold`/pattern-matching). Tested with 10 standalone unit tests running under `dart test`.
 - **`packages/core_domain/` (Pure Dart, verified):** Contains the complete polymorphic `OutboundConfig` hierarchy — sealed `TcpBasedOutbound` family (VLESS, VMess, Trojan), sealed `QuicBasedOutbound` family (Hysteria2, TUIC — mandatory non-nullable TLS, `zeroRttHandshake` defaulting to false), and standalone `ShadowsocksOutbound` — plus 7 shared composition types (`TlsSettings`, `TransportSettings` with 4 transports, `QuicSettings`, `MultiplexSettings`, and the REALITY/uTLS/fragment blocks), the `ProtocolType` enum (6 values with canonical URI schemes), and the `ServerProfile` container with `copyWith`. Ships alongside sealed `ConnectionState` (5 variants), sealed `ConnectionErrorReason` (4 variants), and immutable `TrafficStats`. All value types are const-constructible with `identical`-fast-path equality, implement discriminated snake_case `toJson()`, and intentionally have no `toString` override (SECURITY.md). Tested with 89 standalone unit tests running under `dart test`.

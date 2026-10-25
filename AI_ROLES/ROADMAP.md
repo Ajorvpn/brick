@@ -2467,15 +2467,19 @@ adapter, not a place where new state-handling decisions get made.
       zero new blocking calls, zero new threading decisions beyond what the state machine already
       dictates, and zero new state.
 - [x] State/event streaming correctly delivers every `VpnStateMachine` transition to the Dart side
-      in order, with no drops (verified in the next task's integration tests, referenced here as a
-      forward dependency).
+      in order, with no drops (Kotlin-side `PluginStateEventsStreamHandler` 8-state ordered
+      streaming with zero drops is verified across all 8 states in `VpnEngineAndroidPluginTest`
+      [JVM] and `PigeonVpnApiImplInstrumentedTest` [on-device]; Dart-side stream consumption
+      and translation are verified in `android_vpn_engine_test.dart` [P3-T14]; full
+      Flutter-UI-to-native cross-engine integration on device is verified in P3-T15).
 - [x] `./gradlew build` and existing native tests still pass.
 
-**Verification (2026-10-23):**
+**Verification (2026-10-25 Stage 2 Redo):**
 - Remediated D1: removed all throwaway `VpnStateMachine` instantiations from `PigeonVpnApiImpl.kt` and `VpnEngineAndroidPlugin.kt`.
 - Enforced native-state pre-check in `stop()`: returns `VpnCommandOutcome.REJECTED_BUSY` when in `Idle`, `Stopped`, `Stopping`, or `Revoked` with zero intents dispatched.
-- Host-JVM unit tests (`testDebugUnitTest`): **74/74 passed**, 0 failures, 0 errors across 5 test suites (`CommandCoordinatorTest`: 10, `CommandVerdictHubTest`: 7, `PigeonVpnApiImplTest`: 13, `ServiceLifecycleHubTest`: 7, `VpnStateMachineTest`: 37).
-- On-device instrumented tests on `SM-A205F` (`RZ8M53WPMPF`, Android 10 / API 29): **20/20 passed**, 0 failures across 4 test suites (`BrickVpnServiceTest`: 4, `BrickVpnServiceVerdictRaceTest`: 1, `BrickVpnServiceVerdictTest`: 6 including D2 Error/Stopped tests, `LibboxEngineTest`: 9).
+- Restored `ActivityAware` on `PigeonVpnApiImpl` and verified with genuine test doubles in `VpnEngineAndroidPluginTest`.
+- Host-JVM unit tests (`testDebugUnitTest`): **84/84 passed**, 0 failures, 0 errors, 0 compiler warnings across 6 test suites (`CommandCoordinatorTest`: 10, `CommandVerdictHubTest`: 7, `VpnEngineAndroidPluginTest`: 10, `PigeonVpnApiImplTest`: 13, `ServiceLifecycleHubTest`: 7, `VpnStateMachineTest`: 37).
+- On-device instrumented tests on `SM-A205F` (`RZ8M53WPMPF`, Android 10 / API 29): **23/23 passed**, 0 failures across 5 test suites (`BrickVpnServiceTest`: 4, `BrickVpnServiceVerdictRaceTest`: 1, `BrickVpnServiceVerdictTest`: 6 including D2 Error/Stopped tests, `LibboxEngineTest`: 9, `PigeonVpnApiImplInstrumentedTest`: 3 covering `prepare()`, happy-path `start()`/`getStatus()`/live stream/`stop()`/second-stop() `REJECTED_BUSY`, and Error-path state + `errorReason` propagation and `stop()` recovery).
 
 **Notes for Agent:**
 - If you find yourself writing anything that looks like a decision ("what should happen if X") at
@@ -2513,13 +2517,13 @@ tests — that's what instrumented/integration tests are for, next task).
       never an uncaught exception propagating to UI code.
 - [x] `melos run analyze` and `melos run test` pass.
 
-**Verification Performed:**
+**Verification Performed (2026-10-25 Stage 3):**
 - `dart format --output=none --set-exit-if-changed packages/vpn_engine_android`: Clean (0 changed).
-- `melos run analyze --no-select`: All packages clean with 0 issues.
-- `flutter test --reporter expanded` in `packages/vpn_engine_android`: 18/18 tests pass.
-- `melos run test --no-select`: All pure-Dart and Flutter test suites pass.
-- Kotlin JVM tests: 74/74 pass with 0 compiler warnings.
-- Physical device tests on SM-A205F (RZ8M53WPMPF): 20/20 pass.
+- `melos run analyze --no-select`: All 7 packages clean with 0 issues.
+- `flutter test --reporter expanded` in `packages/vpn_engine_android`: **19/19 tests pass** in `test/android_vpn_engine_test.dart` (including real `SingBoxOutboundSerializer` rejection of runtime-unsupported `AmneziaWgOutbound`).
+- Wired into root `pubspec.yaml` (`test:flutter`) so `melos run test` executes all **768 Dart/Flutter tests** across the monorepo (`test:dart`: 706 across 4 pure-Dart packages; `test:flutter`: 62 across `ui_theme` [1], `mobile` [42], and `vpn_engine_android` [19]).
+- Kotlin JVM tests: **84/84 pass** across 6 suites with 0 compiler warnings.
+- Physical device tests on SM-A205F (RZ8M53WPMPF, Android 10 / API 29): **23/23 pass** across 5 suites.
 
 **Notes for Agent:**
 - Keep this class as thin and mechanical as its Kotlin-side counterpart from P3-T13 — the same

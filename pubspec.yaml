@@ -11,10 +11,9 @@ workspace:
   - packages/config_parser
   - packages/ui_theme
   - packages/shared_utils
-  # P3-T11: the native Gate A engine, now a Flutter Android platform plugin.
-  # NOTE: this package depends on Flutter, so it must appear in `test:flutter`
-  # → `ignore:` below (it has no `test/` dir yet, but the dual-list rule
-  # documented below requires both edits together for every new package).
+  # P3-T11..T14: the native Gate A engine wrapped as a Flutter Android platform plugin.
+  # Its Dart unit tests (test/android_vpn_engine_test.dart) depend on Flutter and
+  # are discovered and executed by `test:flutter`.
   - packages/vpn_engine_android
 
 dev_dependencies:
@@ -71,15 +70,14 @@ melos:
           - core_domain
           - core_vpn_engine
           - config_parser
-          # P3-T11 — deliberate ABSENCE, documented deliberately.
-          # `vpn_engine_android` is a FLUTTER package, so it must NOT be routed
-          # to `dart test`. The dual-list rule above states the pairing for a new
-          # **pure-Dart** package ("present in `scope:` + present in `ignore:`").
-          # For a Flutter package the correct pairing is the mirror image:
-          # **absent from `scope:` + present in `ignore:`** (edit made below).
-          # Adding it here would make `dart test` run against a package that
-          # imports `dart:ui`, breaking the load-bearing "pure-Dart packages have
-          # no Flutter dependency" invariant documented above.
+          # Dual-list routing rule for workspace test discovery:
+          # - Pure-Dart packages (shared_utils, core_domain, core_vpn_engine, config_parser)
+          #   are present in `test:dart` → `scope:` (allowlist) and present in
+          #   `test:flutter` → `ignore:` (denylist).
+          # - Flutter packages (apps/mobile, packages/ui_theme, packages/vpn_engine_android)
+          #   are absent from `test:dart` → `scope:` (preventing `dart test` from executing
+          #   packages depending on Flutter) and absent from `test:flutter` → `ignore:`
+          #   so `melos run test:flutter` discovers and runs their `test/` suites.
 
     test:flutter:
       description: Run `flutter test` for packages that depend on Flutter.
