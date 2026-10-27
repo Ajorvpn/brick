@@ -15,6 +15,7 @@ import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -31,6 +32,7 @@ class PigeonVpnApiImplTest {
     fun setUp() {
         Dispatchers.setMain(testDispatcher)
         hubListener = null
+        PendingConfigHolder.clear()
         coordinator = CommandCoordinator(
             setListener = { hubListener = it },
             mainDispatcher = testDispatcher,
@@ -41,6 +43,7 @@ class PigeonVpnApiImplTest {
     fun tearDown() {
         Dispatchers.resetMain()
         hubListener = null
+        PendingConfigHolder.clear()
     }
 
     // ------------------------------------------------------------- start()
@@ -75,7 +78,7 @@ class PigeonVpnApiImplTest {
             startServiceLauncher = { startLauncherCalled = true },
         )
 
-        val outcome = impl.start(mapOf("profile" to "test-data"))
+        val outcome = impl.start(mapOf("outbound" to mapOf("type" to "block")))
 
         assertEquals(VpnCommandOutcome.REJECTED_PERMISSION_DENIED, outcome)
         assertFalse("startServiceLauncher must not be called", startLauncherCalled)
@@ -92,12 +95,77 @@ class PigeonVpnApiImplTest {
             startServiceLauncher = { startLauncherCalled = true },
         )
 
+        val profile = mapOf("outbound" to mapOf("type" to "block"))
+
         val deferredOutcome = async {
-            impl.start(mapOf("profile" to "test-data"))
+            impl.start(profile)
         }
         runCurrent()
 
         assertTrue("startServiceLauncher must be dispatched", startLauncherCalled)
+        hubListener?.invoke(CommandKind.START, VpnCommandResult.Accepted)
+        runCurrent()
+
+        assertEquals(VpnCommandOutcome.ACCEPTED, deferredOutcome.await())
+    }
+
+    @Test
+    fun `start with missing outbound returns REJECTED_INVALID_CONFIG`() = runTest(testDispatcher) {
+        var startLauncherCalled = false
+
+        val impl = PigeonVpnApiImpl(
+            appContext = dummyContext,
+            coordinator = coordinator,
+            prepareChecker = { null },
+            startServiceLauncher = { startLauncherCalled = true },
+        )
+
+        val outcome = impl.start(mapOf("profile" to "test-data"))
+
+        assertEquals(VpnCommandOutcome.REJECTED_INVALID_CONFIG, outcome)
+        assertFalse("startServiceLauncher must not be called", startLauncherCalled)
+    }
+
+    @Test
+    fun `start with empty outbound returns REJECTED_INVALID_CONFIG`() = runTest(testDispatcher) {
+        var startLauncherCalled = false
+
+        val impl = PigeonVpnApiImpl(
+            appContext = dummyContext,
+            coordinator = coordinator,
+            prepareChecker = { null },
+            startServiceLauncher = { startLauncherCalled = true },
+        )
+
+        val outcome = impl.start(mapOf("outbound" to emptyMap<String, Any?>()))
+
+        assertEquals(VpnCommandOutcome.REJECTED_INVALID_CONFIG, outcome)
+        assertFalse("startServiceLauncher must not be called", startLauncherCalled)
+    }
+
+    @Test
+    fun `start with valid config places generated JSON into PendingConfigHolder`() = runTest(testDispatcher) {
+        var startLauncherCalled = false
+
+        val impl = PigeonVpnApiImpl(
+            appContext = dummyContext,
+            coordinator = coordinator,
+            prepareChecker = { null },
+            startServiceLauncher = { startLauncherCalled = true },
+        )
+
+        val profile = mapOf("outbound" to mapOf("type" to "direct", "tag" to "proxy"))
+
+        val deferredOutcome = async {
+            impl.start(profile)
+        }
+        runCurrent()
+
+        val pending = PendingConfigHolder.take()
+        assertNotNull(pending)
+        assertTrue("pending config must contain dns block for non-block outbound", pending!!.contains("\"dns\""))
+        assertTrue("pending config must not be blank", pending.isNotBlank())
+
         hubListener?.invoke(CommandKind.START, VpnCommandResult.Accepted)
         runCurrent()
 
