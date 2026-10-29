@@ -11,7 +11,7 @@ import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.util.Log
 import androidx.core.app.NotificationCompat
-import dev.brickvpn.harness.MainActivity
+import dev.brickvpn.harness.LibboxBootstrap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -143,6 +143,7 @@ class BrickVpnService : VpnService() {
     }
 
     override fun onDestroy() {
+        PendingConfigHolder.clear()
         Log.i(TAG, "onDestroy")
         // Deliberately NOT cancelling ioScope before the descriptor is closed.
         // Force a final stop, then close on cleanupScope, which outlives the
@@ -170,11 +171,15 @@ class BrickVpnService : VpnService() {
     // ------------------------------------------------------------- transitions
 
     private fun requestStart() {
+        val pendingConfig = PendingConfigHolder.take()
         val result = stateMachine.start()
         CommandVerdictHub.publish(CommandKind.START, result)
         when (result) {
-            VpnCommandResult.Accepted -> ioScope.launch { runStartSequence() }
-            else -> Log.w(TAG, "start rejected: $result (state=${stateMachine.currentState})")
+            VpnCommandResult.Accepted -> ioScope.launch { runStartSequence(pendingConfig) }
+            else -> {
+                PendingConfigHolder.clear()
+                Log.w(TAG, "start rejected: $result (state=${stateMachine.currentState})")
+            }
         }
     }
 
@@ -191,10 +196,13 @@ class BrickVpnService : VpnService() {
      * below is therefore not just a legality guard: when it is refused, this
      * sequence owns a descriptor nobody else will close, so it releases it.
      */
-    private suspend fun runStartSequence() {
+    private suspend fun runStartSequence(configJson: String? = null) {
         val token = stateMachine.activeSession ?: return
         try {
-            val pfd = withContext(Dispatchers.IO) { establishTun() }
+            val isReal = !configJson.isNullOrBlank() &&
+                configJson.contains("\"type\": \"block\"") != true &&
+                configJson.contains("\"type\":\"block\"") != true
+            val pfd = withContext(Dispatchers.IO) { establishTun(isReal) }
             if (pfd == null) {
                 Log.e(TAG, "establish() returned null; treating as permission/revocation")
                 stateMachine.onFailure(token, "establish() returned null")
@@ -214,7 +222,8 @@ class BrickVpnService : VpnService() {
             }
             Log.i(TAG, "state -> Starting")
 
-            engine.start(pfd.fd) // real: Libbox.newService(...) + BoxService.start()
+            LibboxBootstrap.ensureSetup(this)
+            engine.start(pfd.fd, configJson) // real: Libbox.newService(...) + BoxService.start()
 
             if (stateMachine.onRunning(token)) Log.i(TAG, "state -> Running")
         } catch (t: Throwable) {
@@ -297,13 +306,23 @@ class BrickVpnService : VpnService() {
      *  - DNS `10.111.222.2` — inside the same reserved range and therefore
      *    unroutable, so DNS cannot be perturbed.
      */
-    private fun establishTun(): ParcelFileDescriptor? =
-        Builder()
-            .setSession("Brick VPN Gate A")
-            .addAddress(TUN_ADDRESS, TUN_PREFIX)
-            .addRoute(TUN_SUBNET, TUN_PREFIX)
-            .addDnsServer(TUN_DNS)
-            .establish()
+    private fun establishTun(isRealConfig: Boolean = false): ParcelFileDescriptor? =
+        if (isRealConfig) {
+            Builder()
+                .setSession("Brick VPN")
+                .addAddress(TUN_ADDRESS, TUN_PREFIX)
+                .addRoute("0.0.0.0", 0)
+                .addDnsServer("1.1.1.1")
+                .addDnsServer("8.8.8.8")
+                .establish()
+        } else {
+            Builder()
+                .setSession("Brick VPN")
+                .addAddress(TUN_ADDRESS, TUN_PREFIX)
+                .addRoute(TUN_SUBNET, TUN_PREFIX)
+                .addDnsServer(TUN_DNS)
+                .establish()
+        }
 
     // ---------------------------------------------------- foreground / notification
 
@@ -331,16 +350,21 @@ class BrickVpnService : VpnService() {
     }
 
     private fun buildNotification(): Notification {
-        val contentIntent = PendingIntent.getActivity(
-            this, 0, Intent(this, MainActivity::class.java),
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-        )
+        val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
+        val contentIntent = launchIntent?.let {
+            PendingIntent.getActivity(
+                this,
+                0,
+                it,
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+            )
+        }
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_lock_lock)
             .setContentTitle("Brick VPN")
             .setContentText("Tunnel active")
             .setOngoing(true)
-            .setContentIntent(contentIntent)
+            .apply { if (contentIntent != null) setContentIntent(contentIntent) }
             .build()
     }
 

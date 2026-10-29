@@ -27,29 +27,10 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!--
-      P3-T7: `android:name` installs BrickVpnApplication, which is the only
-      place `Libbox.setup(SetupOptions)` can be called. Without it sing-box
-      resolves its cache file against the process CWD (`/` on Android, read-only)
-      and every BoxService.start() fails with:
-        proxyerror: pre-start cache file: open cache.db: read-only file system
-      It must run before any VpnService, which Application.onCreate guarantees.
+      LibboxBootstrap.ensureSetup initializes libbox idempotent process-wide
+      storage before BrickVpnService starts, avoiding cache.db path errors.
     -->
-    <application
-        android:name=".BrickVpnApplication"
-        android:allowBackup="false"
-        android:label="@string/app_name"
-        android:supportsRtl="true"
-        android:theme="@style/Theme.BrickVpnHarness">
-        <activity
-            android:name=".MainActivity"
-            android:exported="true"
-            android:label="@string/app_name">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity>
-
+    <application>
         <service
             android:name=".vpn.BrickVpnService"
             android:exported="false"

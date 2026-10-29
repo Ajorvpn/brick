@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import 'dart:io';
+
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:mobile/core/providers/vpn_engine_provider.dart';
 import 'package:mobile/core/router/app_router.dart';
+import 'package:vpn_engine_android/vpn_engine_android.dart';
 
 Future<void> main() async {
   // Required before any plugin (including the localization asset loader and
@@ -29,7 +33,13 @@ Future<void> main() async {
       supportedLocales: const <Locale>[Locale('en')],
       path: 'assets/translations',
       fallbackLocale: const Locale('en'),
-      child: const ProviderScope(child: MyApp()),
+      child: ProviderScope(
+        overrides: [
+          if (Platform.isAndroid)
+            vpnEngineProvider.overrideWith((ref) => AndroidVpnEngine()),
+        ],
+        child: const MyApp(),
+      ),
     ),
   );
 }

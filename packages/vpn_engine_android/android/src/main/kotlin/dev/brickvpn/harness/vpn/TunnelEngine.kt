@@ -23,8 +23,11 @@ interface TunnelEngine {
      * Bring the tunnel up on [tunFd], returning normally when it is usable.
      * Throwing signals failure, which the service maps to a state-machine
      * `onFailure` (never a silent swallow).
+     *
+     * [configJson] is an optional sing-box config delivered in memory; when
+     * null/blank the implementation falls back to its own provider.
      */
-    suspend fun start(tunFd: Int)
+    suspend fun start(tunFd: Int, configJson: String? = null)
 
     /** Tear the tunnel down. Must be idempotent and safe after a failed [start]. */
     suspend fun stop()
@@ -50,7 +53,13 @@ class FakeTunnelEngine(
     private val failWith: Throwable? = null,
 ) : TunnelEngine {
 
-    override suspend fun start(tunFd: Int) {
+    /** Last config JSON passed to [start], for tests. */
+    @Volatile
+    var lastConfigJson: String? = null
+        private set
+
+    override suspend fun start(tunFd: Int, configJson: String?) {
+        lastConfigJson = configJson
         delay(connectDelayMillis)
         failWith?.let { throw it }
     }

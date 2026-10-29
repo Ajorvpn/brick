@@ -44,6 +44,10 @@ kotlin {
     }
 }
 
+dependencies {
+    implementation(files("../../../../packages/vpn_engine_android/android/libs/libbox.aar"))
+}
+
 flutter {
     source = "../.."
 }

@@ -45,7 +45,8 @@ pluginManagement {
     resolutionStrategy {
         eachPlugin {
             if (requested.id.id == "com.android.library") {
-                useModule("com.android.tools.build:gradle:${requested.version}")
+                val version = requested.version ?: "9.1.0"
+                useModule("com.android.tools.build:gradle:$version")
             }
         }
     }

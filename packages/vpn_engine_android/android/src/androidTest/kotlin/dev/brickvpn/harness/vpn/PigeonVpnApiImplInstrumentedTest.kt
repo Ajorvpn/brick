@@ -181,7 +181,7 @@ class PigeonVpnApiImplInstrumentedTest {
         assertEquals(VpnNativeState.IDLE, initialStatus.state)
 
         // 1. Calling impl.start() with valid profile starts BrickVpnService and returns ACCEPTED
-        val startOutcome = impl.start(mapOf("id" to "test-e2e-profile", "name" to "Test Profile"))
+        val startOutcome = impl.start(mapOf("id" to "test-e2e-profile", "name" to "Test Profile", "outbound" to mapOf("type" to "block", "tag" to "block-out")))
         assertEquals(
             "start() must await real verdict and return ACCEPTED",
             VpnCommandOutcome.ACCEPTED,
@@ -242,7 +242,7 @@ class PigeonVpnApiImplInstrumentedTest {
         }
         try {
             // 1. start() returns ACCEPTED (command acceptance is separate from async startup failure)
-            val startOutcome = impl.start(mapOf("id" to "err-test", "name" to "Error Test"))
+            val startOutcome = impl.start(mapOf("id" to "err-test", "name" to "Error Test", "outbound" to mapOf("type" to "block", "tag" to "block-out")))
             assertEquals(
                 "start() must return ACCEPTED even when engine will fail asynchronously",
                 VpnCommandOutcome.ACCEPTED,
@@ -299,5 +299,54 @@ class PigeonVpnApiImplInstrumentedTest {
         } finally {
             BrickVpnService.engineFactoryForTests = null
         }
+    }
+
+    /**
+     * Test 4: start() with untagged VLESS outbound proves that buildConfigJson
+     * injects "tag": "proxy", "direct-out", and DNS detour, allowing sing-box
+     * to reach RUNNING on a real device without detour or cache errors, and stop cleanly.
+     */
+    @Test
+    fun startWithUntaggedVlessOutboundReachesRunningAndStopsCleanly(): Unit = runBlocking {
+        val initialStatus = impl.getStatus()
+        assertEquals(VpnNativeState.IDLE, initialStatus.state)
+
+        val vlessProfile = mapOf(
+            "id" to "vless-e2e-profile",
+            "name" to "VLESS E2E Test",
+            "outbound" to mapOf(
+                "type" to "vless",
+                "server" to "example.com",
+                "server_port" to 443,
+                "uuid" to "00000000-0000-0000-0000-000000000000",
+            ),
+        )
+
+        // 1. Calling impl.start() with untagged VLESS returns ACCEPTED
+        val startOutcome = impl.start(vlessProfile)
+        assertEquals(
+            "start() with untagged VLESS outbound must return ACCEPTED",
+            VpnCommandOutcome.ACCEPTED,
+            startOutcome,
+        )
+
+        // 2. Service reaches RUNNING; proves sing-box parsed VLESS config without detour errors
+        awaitService()
+        awaitStatus({ it == VpnNativeState.RUNNING }, "RUNNING")
+        val runningStatus = impl.getStatus()
+        assertEquals(VpnNativeState.RUNNING, runningStatus.state)
+
+        // 3. Calling impl.stop() while Running returns ACCEPTED and settles to STOPPED or IDLE
+        val stopOutcome = impl.stop()
+        assertEquals(
+            "stop() while Running must await verdict and return ACCEPTED",
+            VpnCommandOutcome.ACCEPTED,
+            stopOutcome,
+        )
+
+        awaitStatus(
+            { it == VpnNativeState.STOPPED || it == VpnNativeState.IDLE },
+            "STOPPED or IDLE",
+        )
     }
 }

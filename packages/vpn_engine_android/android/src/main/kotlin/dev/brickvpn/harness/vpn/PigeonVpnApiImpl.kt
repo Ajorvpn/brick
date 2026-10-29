@@ -10,6 +10,8 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import android.net.VpnService
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
 
 /**
  * P3-T13 Part B: thin adapter from the Pigeon host API to the proven Gate A
@@ -118,10 +120,59 @@ class PigeonVpnApiImpl(
 
     override suspend fun start(profileJson: Map<String, Any?>): VpnCommandOutcome {
         if (profileJson.isEmpty()) return VpnCommandOutcome.REJECTED_INVALID_CONFIG
+        val outbound = profileJson["outbound"] as? Map<*, *>
+        if (outbound == null || outbound.isEmpty()) return VpnCommandOutcome.REJECTED_INVALID_CONFIG
         if (prepareChecker(appContext) != null) return VpnCommandOutcome.REJECTED_PERMISSION_DENIED
+
+        val isBlock = outbound["type"] == "block"
+        val configJson = buildConfigJson(outbound, isBlock)
+
         return coordinator.run(CommandKind.START) {
+            PendingConfigHolder.put(configJson)
             startServiceLauncher()
         }
+    }
+
+    private fun buildConfigJson(outbound: Map<*, *>, isBlock: Boolean): String {
+        val root = JSONObject()
+        root.put("log", JSONObject().put("level", "info").put("timestamp", false))
+        val inbounds = JSONArray()
+        inbounds.put(
+            JSONObject()
+                .put("type", "tun")
+                .put("tag", "tun-in")
+                .put("address", JSONArray().put("10.111.222.1/24"))
+                .put("mtu", 9000),
+        )
+        root.put("inbounds", inbounds)
+        val outbounds = JSONArray()
+        if (isBlock) {
+            outbounds.put(JSONObject().put("type", "block").put("tag", "block-out"))
+            root.put("outbounds", outbounds)
+            root.put("route", JSONObject().put("auto_detect_interface", true))
+        } else {
+            val outboundTag = (outbound["tag"] as? String)?.takeIf { it.isNotBlank() } ?: "proxy"
+            val primaryOutbound = JSONObject(outbound).put("tag", outboundTag)
+            outbounds.put(primaryOutbound)
+            outbounds.put(JSONObject().put("type", "direct").put("tag", "direct-out"))
+            root.put("outbounds", outbounds)
+
+            val dnsServers = JSONArray()
+            dnsServers.put(
+                JSONObject()
+                    .put("address", "1.1.1.1")
+                    .put("tag", "dns-direct")
+                    .put("detour", "direct-out"),
+            )
+            root.put("dns", JSONObject().put("servers", dnsServers))
+            root.put(
+                "route",
+                JSONObject()
+                    .put("auto_detect_interface", true)
+                    .put("final", outboundTag),
+            )
+        }
+        return root.toString()
     }
 
     override suspend fun stop(): VpnCommandOutcome {

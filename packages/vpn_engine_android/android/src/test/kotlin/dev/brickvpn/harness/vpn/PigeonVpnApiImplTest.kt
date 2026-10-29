@@ -24,7 +24,7 @@ import org.junit.Test
 class PigeonVpnApiImplTest {
 
     private val testDispatcher = StandardTestDispatcher()
-    private val dummyContext: Context = object : ContextWrapper(null) {}
+    private val dummyContext: Context = ContextWrapper(null)
     private var hubListener: ((CommandKind, VpnCommandResult) -> Unit)? = null
     private lateinit var coordinator: CommandCoordinator
 
@@ -163,12 +163,88 @@ class PigeonVpnApiImplTest {
 
         val pending = PendingConfigHolder.take()
         assertNotNull(pending)
-        assertTrue("pending config must contain dns block for non-block outbound", pending!!.contains("\"dns\""))
-        assertTrue("pending config must not be blank", pending.isNotBlank())
+        val json = org.json.JSONObject(pending!!)
+        assertTrue("pending config must contain dns block for non-block outbound", json.has("dns"))
+        val outbounds = json.getJSONArray("outbounds")
+        val firstOutbound = outbounds.getJSONObject(0)
+        assertEquals("proxy", firstOutbound.getString("tag"))
+        val secondOutbound = outbounds.getJSONObject(1)
+        assertEquals("direct", secondOutbound.getString("type"))
+        assertEquals("direct-out", secondOutbound.getString("tag"))
+        assertEquals("proxy", json.getJSONObject("route").getString("final"))
+        val dnsServer = json.getJSONObject("dns").getJSONArray("servers").getJSONObject(0)
+        assertEquals("direct-out", dnsServer.getString("detour"))
 
         hubListener?.invoke(CommandKind.START, VpnCommandResult.Accepted)
         runCurrent()
 
+        assertEquals(VpnCommandOutcome.ACCEPTED, deferredOutcome.await())
+    }
+
+    @Test
+    fun `start with outbound lacking tag injects tag proxy and matching route final`() = runTest(testDispatcher) {
+        val impl = PigeonVpnApiImpl(
+            appContext = dummyContext,
+            coordinator = coordinator,
+            prepareChecker = { null },
+            startServiceLauncher = {},
+        )
+
+        val profile = mapOf(
+            "outbound" to mapOf(
+                "type" to "vless",
+                "server" to "example.com",
+                "server_port" to 443,
+                "uuid" to "00000000-0000-0000-0000-000000000000",
+            ),
+        )
+
+        val deferredOutcome = async { impl.start(profile) }
+        runCurrent()
+
+        val pending = PendingConfigHolder.take()
+        assertNotNull(pending)
+        val json = org.json.JSONObject(pending!!)
+        val outbounds = json.getJSONArray("outbounds")
+        val firstOutbound = outbounds.getJSONObject(0)
+        assertEquals("proxy", firstOutbound.getString("tag"))
+        val secondOutbound = outbounds.getJSONObject(1)
+        assertEquals("direct", secondOutbound.getString("type"))
+        assertEquals("direct-out", secondOutbound.getString("tag"))
+        assertEquals("proxy", json.getJSONObject("route").getString("final"))
+        val dnsServer = json.getJSONObject("dns").getJSONArray("servers").getJSONObject(0)
+        assertEquals("direct-out", dnsServer.getString("detour"))
+
+        hubListener?.invoke(CommandKind.START, VpnCommandResult.Accepted)
+        runCurrent()
+        assertEquals(VpnCommandOutcome.ACCEPTED, deferredOutcome.await())
+    }
+
+    @Test
+    fun `start with block outbound places valid block config into PendingConfigHolder`() = runTest(testDispatcher) {
+        val impl = PigeonVpnApiImpl(
+            appContext = dummyContext,
+            coordinator = coordinator,
+            prepareChecker = { null },
+            startServiceLauncher = {},
+        )
+
+        val profile = mapOf("outbound" to mapOf("type" to "block"))
+
+        val deferredOutcome = async { impl.start(profile) }
+        runCurrent()
+
+        val pending = PendingConfigHolder.take()
+        assertNotNull(pending)
+        val json = org.json.JSONObject(pending!!)
+        val outbounds = json.getJSONArray("outbounds")
+        val firstOutbound = outbounds.getJSONObject(0)
+        assertEquals("block", firstOutbound.getString("type"))
+        assertEquals("block-out", firstOutbound.getString("tag"))
+        assertFalse(json.has("dns"))
+
+        hubListener?.invoke(CommandKind.START, VpnCommandResult.Accepted)
+        runCurrent()
         assertEquals(VpnCommandOutcome.ACCEPTED, deferredOutcome.await())
     }
 

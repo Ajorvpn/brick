@@ -8,6 +8,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
+import org.junit.Ignore
 import org.junit.Test
 import org.junit.runner.RunWith
 import kotlinx.coroutines.runBlocking
@@ -28,6 +29,7 @@ import java.util.concurrent.CopyOnWriteArrayList
  *   adb shell appops set dev.brickvpn.native.harness ACTIVATE_VPN allow
  */
 @RunWith(AndroidJUnit4::class)
+@Ignore("Legacy Gate A - Superseded by PigeonVpnApiImplInstrumentedTest")
 class BrickVpnServiceVerdictTest {
 
     private val context = InstrumentationRegistry.getInstrumentation().targetContext

@@ -3,6 +3,7 @@
 import 'dart:async';
 
 import 'package:core_domain/core_domain.dart' show ServerProfile;
+import 'package:core_vpn_engine/core_vpn_engine.dart';
 import 'package:mobile/core/providers/vpn_engine_provider.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
@@ -53,7 +54,12 @@ class ConnectionController extends _$ConnectionController {
     }
     _busy = true;
     try {
-      await ref.read(vpnEngineProvider).start(profile);
+      final engine = ref.read(vpnEngineProvider);
+      final prepareResult = await engine.prepare();
+      if (prepareResult is! VpnCommandAccepted) {
+        return false;
+      }
+      await engine.start(profile);
       return true;
     } finally {
       _busy = false;

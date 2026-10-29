@@ -2,7 +2,8 @@
 
 import 'package:core_domain/core_domain.dart'
     show Connected, Connecting, Disconnected, Disconnecting, TrafficStats;
-import 'package:flutter/material.dart';
+import 'package:core_vpn_engine/core_vpn_engine.dart';
+import 'package:flutter/material.dart' hide ConnectionState;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/features/connection/data/datasources/server_profile_local_data_source.dart';
@@ -25,6 +26,16 @@ String badgeText(WidgetTester tester) {
 
 /// The key on the connection state badge's [Chip].
 const Key badgeKey = ValueKey<String>('connection_state_badge');
+
+/// A [VpnEngine] fake whose [prepare] is rejected (permission denied),
+/// used to verify [ConnectionController.connect] aborts without starting.
+class _PermissionDeniedVpnEngine extends FakeVpnEngine {
+  @override
+  Future<VpnCommandResult> prepare() async {
+    prepareCalls++;
+    return const VpnCommandRejectedPermissionDenied();
+  }
+}
 
 void main() {
   setUpAll(initTestLocalization);
@@ -403,6 +414,29 @@ void main() {
       expect(badgeText(tester), 'Connected');
 
       expect(engine.startCalls, hasLength(1));
+    });
+
+    testWidgets('connect aborts when prepare() is rejected', (tester) async {
+      final engine = _PermissionDeniedVpnEngine();
+      final dataSource = FakeServerProfileDataSource();
+      addTearDown(engine.dispose);
+      await buildRepository(dataSource).addServer(validVlessUri);
+
+      await pumpConnectionMaterialApp(
+        tester,
+        const HomeScreen(),
+        engine: engine,
+        dataSource: dataSource,
+      );
+
+      expect(engine.startCalls, isEmpty);
+      expect(engine.prepareCalls, 0);
+
+      await tester.tap(find.text('Connect'));
+      await tester.pumpAndSettle();
+
+      expect(engine.prepareCalls, 1);
+      expect(engine.startCalls, isEmpty);
     });
 
     testWidgets('tapping Disconnect calls engine.stop once', (tester) async {

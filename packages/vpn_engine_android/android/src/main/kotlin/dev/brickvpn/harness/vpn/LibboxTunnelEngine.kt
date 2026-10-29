@@ -103,12 +103,12 @@ class LibboxTunnelEngine(
      * @throws Exception propagated from libbox, so the caller can map it to a
      *   specific `VpnState.Error` reason.
      */
-    override suspend fun start(tunFd: Int) {
+    override suspend fun start(tunFd: Int, configJson: String?) {
         check(service == null) { "start() called while a libbox service is already running" }
         lentFd = tunFd
         val pi = LibboxPlatformInterface({ currentLentFd() }, socketProtector)
         platformInterface = pi
-        val config = configJsonProvider()
+        val config = configJson?.takeIf { it.isNotBlank() } ?: configJsonProvider()
         try {
             val created = withContext(Dispatchers.IO) { Libbox.newService(config, pi) }
             service = created

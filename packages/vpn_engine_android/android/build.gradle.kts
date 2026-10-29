@@ -29,7 +29,7 @@ plugins {
     // Declared here (not via `apply(plugin = ...)`) because Kotlin DSL
     // type-safe accessors — `implementation(...)`, `testImplementation(...)`,
     // `android { }` — are only generated for plugins applied via `plugins {}`.
-    id("com.android.library") version "9.1.0"
+    id("com.android.library")
 }
 
 group = "dev.brickvpn.vpn_engine_android"
@@ -70,6 +70,10 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    sourceSets {
+        getByName("main").java.srcDir("src/main/kotlin")
+    }
+
     testOptions {
         unitTests {
             isIncludeAndroidResources = true
@@ -94,7 +98,9 @@ dependencies {
     // `-tags with_utls`). Gitignored; a fresh clone MUST run
     // scripts/build_libbox_aar.sh before this module compiles. No graceful
     // fallback on purpose — a missing AAR must fail loudly at build time.
-    implementation(files("libs/libbox.aar"))
+    compileOnly(files("libs/libbox.aar"))
+    testImplementation(files("libs/libbox.aar"))
+    androidTestImplementation(files("libs/libbox.aar"))
 
     // P3-T11: Flutter embedding, `compileOnly` (never `implementation`) so the
     // plugin class compiles without forcing a Flutter runtime onto a native
@@ -107,6 +113,9 @@ dependencies {
     // ships `useJUnitPlatform()` + JUnit 5; adopting that would make Gradle
     // discover ZERO JUnit-4 tests and still report BUILD SUCCESSFUL, which is a
     // silent false green. The suite must keep running all tests (84 host-JVM tests across all suites).
+    // org.json is an Android SDK class whose JVM stub throws "not mocked"; pull
+    // the pure-Java implementation so host-JVM tests exercising config building pass.
+    testImplementation("org.json:json:20231013")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
     testImplementation("io.flutter:flutter_embedding_debug:1.0.0-06a2e2a110089dff50fe635cffd2a61e1b24fbcd")
