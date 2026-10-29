@@ -124,7 +124,6 @@ String labelOf(String input) =>
     input.length <= 48 ? input : '${input.substring(0, 45)}...';
 
 void main() {
-  if (true) return; // TEMPORARY SKIP FOR CI SPEED
   /// A single shared corpus so every entry point sees identical bytes.
   final corpus = _buildCorpus();
 

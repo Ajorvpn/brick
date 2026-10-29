@@ -11,7 +11,6 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
-import org.junit.Ignore
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -34,7 +33,6 @@ import org.junit.runner.RunWith
  * P3-T7 AC1 and it remains OUTSTANDING pending a human-provided test server.
  */
 @RunWith(AndroidJUnit4::class)
-@Ignore("Legacy Gate A - Superseded by PigeonVpnApiImplInstrumentedTest")
 class LibboxEngineTest {
 
     private val context = InstrumentationRegistry.getInstrumentation().targetContext

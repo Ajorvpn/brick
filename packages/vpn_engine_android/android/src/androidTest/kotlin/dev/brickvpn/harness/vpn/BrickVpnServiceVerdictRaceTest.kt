@@ -9,7 +9,6 @@ import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Before
-import org.junit.Ignore
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.util.concurrent.CopyOnWriteArrayList
@@ -63,7 +62,6 @@ import java.util.concurrent.CopyOnWriteArrayList
  * stop with the wrong answer.
  */
 @RunWith(AndroidJUnit4::class)
-@Ignore("Legacy Gate A - Superseded by PigeonVpnApiImplInstrumentedTest")
 class BrickVpnServiceVerdictRaceTest {
 
     private val context = InstrumentationRegistry.getInstrumentation().targetContext

@@ -2533,7 +2533,7 @@ tests — that's what instrumented/integration tests are for, next task).
 
 ### P3-T15 — Wire `AndroidVpnEngine` into the app via Riverpod provider override
 
-**Status:** Not Started
+**Status:** Completed ✅ — verified E2E on physical SM-A205F device with real VLESS server routing internet traffic through Flutter UI, Pigeon platform channels, BrickVpnService, and sing-box engine.
 **Depends On:** P3-T14, P1-T7
 
 **Objective:** Replace `MockVpnEngine` with the real `AndroidVpnEngine` as the bound
@@ -2552,18 +2552,18 @@ override seam.
   `ServerProfile` for manual testing purposes only.
 
 **Acceptance Criteria:**
-- [ ] Running `apps/mobile` on the real connected Android device shows a functional (not
+- [x] Running `apps/mobile` on the real connected Android device shows a functional (not
       polished) screen with a connect button, a disconnect button, live connection-state text,
       and live traffic-stats text.
-- [ ] Tapping connect triggers the real Android `VpnService.prepare()` consent dialog on first
+- [x] Tapping connect triggers the real Android `VpnService.prepare()` consent dialog on first
       use (if not already granted), and correctly proceeds after consent.
-- [ ] Connecting via this real Flutter UI produces a real, verified change in outbound IP
+- [x] Connecting via this real Flutter UI produces a real, verified change in outbound IP
       (same manual verification method as P3-T7, now proven through the full stack) — this is the
       first true end-to-end proof that Flutter → Pigeon → Kotlin → libbox → real network traffic
       works.
-- [ ] Disconnecting cleanly returns to `Disconnected` state in the UI, with the native service
+- [x] Disconnecting cleanly returns to `Disconnected` state in the UI, with the native service
       fully torn down (re-verified via the same `adb`-based fd/process checks used in Gate A).
-- [ ] `melos run analyze` and `melos run test` pass; manual end-to-end verification is documented
+- [x] `melos run analyze` and `melos run test` pass; manual end-to-end verification is documented
       with evidence in the task report.
 
 **Notes for Agent:**
