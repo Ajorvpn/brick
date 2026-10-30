@@ -45,7 +45,7 @@ dependencies:
   core_vpn_engine:
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class in your code.
-  cupertino_icons: ^1.0.8
+  cupertino_icons: ^2.0.0
   easy_localization: ^3.0.8
   flutter:
     sdk: flutter
