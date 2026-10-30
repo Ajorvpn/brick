@@ -135,6 +135,7 @@ final class MockVpnEngine implements VpnEngine {
 
   final _stateController = StreamController<ConnectionState>.broadcast();
   final _statsController = StreamController<TrafficStats>.broadcast();
+  final _logController = StreamController<String>.broadcast();
 
   ConnectionState _state = const Disconnected();
 
@@ -161,6 +162,16 @@ final class MockVpnEngine implements VpnEngine {
 
   @override
   Stream<TrafficStats> get trafficStats => _statsController.stream;
+
+  @override
+  Stream<String> get logEvents => _logController.stream;
+
+  /// Test hook to simulate a native log line.
+  void emitLog(String log) {
+    if (!_disposed && !_logController.isClosed) {
+      _logController.add(log);
+    }
+  }
 
   /// Requests a simulated connection to [profile].
   ///
@@ -322,6 +333,7 @@ final class MockVpnEngine implements VpnEngine {
     _stopWatchdogTimer = null;
     await _stateController.close();
     await _statsController.close();
+    await _logController.close();
   }
 
   void _assertNotDisposed() {

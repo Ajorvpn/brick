@@ -5,6 +5,7 @@ import 'dart:async';
 import 'package:config_parser/config_parser.dart';
 import 'package:core_domain/core_domain.dart';
 import 'package:core_vpn_engine/core_vpn_engine.dart';
+import 'package:flutter/services.dart' show EventChannel;
 
 import 'vpn_engine_api.g.dart';
 
@@ -19,17 +20,26 @@ final class AndroidVpnEngine implements VpnEngine {
     VpnEngineHostApi? hostApi,
     Stream<VpnStateEvent>? stateEventsStream,
     Stream<TrafficStatsEvent>? trafficStatsEventsStream,
+    Stream<String>? logEventsStream,
     Map<String, dynamic> Function(OutboundConfig config)? outboundSerializer,
   })  : _hostApi = hostApi ?? VpnEngineHostApi(),
         _stateEvents = stateEventsStream ?? stateEvents(),
         _trafficStatsEvents = trafficStatsEventsStream ?? trafficStatsEvents(),
+        _logEvents = logEventsStream ??
+            const EventChannel('dev.brickvpn.harness/log_events')
+                .receiveBroadcastStream()
+                .map((dynamic event) => event.toString()),
         _outboundSerializer = outboundSerializer ?? buildSingBoxOutbound;
 
   final VpnEngineHostApi _hostApi;
   final Stream<VpnStateEvent> _stateEvents;
   final Stream<TrafficStatsEvent> _trafficStatsEvents;
+  final Stream<String> _logEvents;
   final Map<String, dynamic> Function(OutboundConfig config)
       _outboundSerializer;
+
+  @override
+  Stream<String> get logEvents => _logEvents;
 
   @override
   late final Stream<ConnectionState> connectionState = _stateEvents

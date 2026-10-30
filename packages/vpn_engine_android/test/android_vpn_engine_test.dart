@@ -427,4 +427,31 @@ void main() {
       await subState.cancel();
     });
   });
+
+  group('logEvents', () {
+    test('emits engine log events from injected stream', () async {
+      final logController = StreamController<String>.broadcast();
+      final localEngine = AndroidVpnEngine(
+        hostApi: fakeHostApi,
+        stateEventsStream: stateController.stream,
+        trafficStatsEventsStream: statsController.stream,
+        logEventsStream: logController.stream,
+      );
+
+      final received = <String>[];
+      final sub = localEngine.logEvents.listen(received.add);
+
+      logController.add('libbox: starting inbound');
+      logController.add('libbox: tun opened');
+      await pumpEventQueue();
+
+      expect(received, [
+        'libbox: starting inbound',
+        'libbox: tun opened',
+      ]);
+
+      await sub.cancel();
+      await logController.close();
+    });
+  });
 }

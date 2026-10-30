@@ -50,6 +50,9 @@ abstract interface class VpnEngine {
   /// [connectionState] (Invariant 2).
   Stream<TrafficStats> get trafficStats;
 
+  /// Real-time diagnostic logs emitted by the underlying engine.
+  Stream<String> get logEvents;
+
   /// Requests a tunnel start for [profile].
   ///
   /// Returns quickly with an acceptance/rejection result (Invariant 1) —

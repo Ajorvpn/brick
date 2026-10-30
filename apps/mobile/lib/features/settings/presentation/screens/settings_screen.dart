@@ -27,20 +27,36 @@ class SettingsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: Text('settings.title'.tr())),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text('settings.label'.tr()),
-            const SizedBox(height: 16),
-            TextButton(
-              // `pop` returns to the previous route (Home), which is the
-              // behaviour the placeholder is meant to demonstrate.
+      body: ListView(
+        children: [
+          ListTile(
+            leading: const Icon(Icons.language),
+            title: Text('settings.language'.tr()),
+            onTap: () {},
+          ),
+          const Divider(height: 1),
+          ListTile(
+            leading: const Icon(Icons.palette_outlined),
+            title: Text('settings.theme'.tr()),
+            onTap: () {},
+          ),
+          const Divider(height: 1),
+          ListTile(
+            leading: const Icon(Icons.terminal),
+            title: Text('settings.live_logs'.tr()),
+            subtitle: Text('settings.live_logs_subtitle'.tr()),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.go('/settings/logs'),
+          ),
+          const Divider(height: 1),
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: TextButton(
               onPressed: () => context.pop(),
               child: Text('settings.back_to_home'.tr()),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

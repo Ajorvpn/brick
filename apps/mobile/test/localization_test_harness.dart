@@ -64,6 +64,11 @@ class TestAssetLoader extends AssetLoader {
                 'title': 'Settings',
                 'label': 'Settings',
                 'back_to_home': 'Back to Home',
+                'language': 'Language',
+                'theme': 'Theme',
+                'live_logs': 'Live Logs',
+                'live_logs_subtitle': 'Real-time diagnostic logs',
+                'no_logs': 'No log entries yet',
               },
               'connection': {
                 'add_server': 'Add Server',
@@ -117,6 +122,8 @@ class FakeVpnEngine implements VpnEngine {
       StreamController<ConnectionState>.broadcast();
   final StreamController<TrafficStats> _statsController =
       StreamController<TrafficStats>.broadcast();
+  final StreamController<String> _logController =
+      StreamController<String>.broadcast();
 
   /// Every profile passed to [start], in call order.
   final List<ServerProfile> startCalls = <ServerProfile>[];
@@ -135,6 +142,12 @@ class FakeVpnEngine implements VpnEngine {
 
   @override
   Stream<TrafficStats> get trafficStats => _statsController.stream;
+
+  @override
+  Stream<String> get logEvents => _logController.stream;
+
+  /// Pushes [log] to every listener of [logEvents].
+  void emitLog(String log) => _logController.add(log);
 
   /// Pushes [state] to every listener of [connectionState].
   void emit(ConnectionState state) {
@@ -287,6 +300,11 @@ Map<String, dynamic> testEnglishTranslations() => const {
     'title': 'Settings',
     'label': 'Settings',
     'back_to_home': 'Back to Home',
+    'language': 'Language',
+    'theme': 'Theme',
+    'live_logs': 'Live Logs',
+    'live_logs_subtitle': 'Real-time diagnostic logs',
+    'no_logs': 'No log entries yet',
   },
   'connection': {
     'add_server': 'Add Server',

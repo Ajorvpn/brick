@@ -16,6 +16,7 @@ class _FakeVpnEngine implements VpnEngine {
   final ConnectionState initialState;
   final _stateController = StreamController<ConnectionState>.broadcast();
   final _statsController = StreamController<TrafficStats>.broadcast();
+  final _logController = StreamController<String>.broadcast();
 
   /// Pushes a stats snapshot through the stats pipeline only.
   void emitStats(TrafficStats stats) {
@@ -30,6 +31,7 @@ class _FakeVpnEngine implements VpnEngine {
   void dispose() {
     unawaited(_stateController.close());
     unawaited(_statsController.close());
+    unawaited(_logController.close());
   }
 
   @override
@@ -37,6 +39,9 @@ class _FakeVpnEngine implements VpnEngine {
 
   @override
   Stream<TrafficStats> get trafficStats => _statsController.stream;
+
+  @override
+  Stream<String> get logEvents => _logController.stream;
 
   @override
   Future<VpnCommandResult> start(ServerProfile profile) async {

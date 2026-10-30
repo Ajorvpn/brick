@@ -1,10 +1,13 @@
 package dev.brickvpn.harness
 
 import android.net.TrafficStats
+import android.os.Handler
+import android.os.Looper
 import android.os.Process
 import dev.brickvpn.harness.vpn.BrickVpnService
 import dev.brickvpn.harness.vpn.CommandCoordinator
 import dev.brickvpn.harness.vpn.CommandVerdictHub
+import dev.brickvpn.harness.vpn.LibboxTunnelEngine
 import dev.brickvpn.harness.vpn.PigeonEventSink
 import dev.brickvpn.harness.vpn.PigeonVpnApiImpl
 import dev.brickvpn.harness.vpn.ServiceLifecycleHub
@@ -20,6 +23,7 @@ import dev.brickvpn.harness.vpn.VpnStateMachine
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.embedding.engine.plugins.activity.ActivityAware
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
+import io.flutter.plugin.common.EventChannel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -165,8 +169,32 @@ class VpnEngineAndroidPlugin : FlutterPlugin, ActivityAware {
         }
     }
 
+    internal inner class PluginLogEventsStreamHandler : EventChannel.StreamHandler {
+        private var sink: EventChannel.EventSink? = null
+        private val mainHandler = Handler(Looper.getMainLooper())
+
+        override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+            this.sink = events
+        }
+
+        override fun onCancel(arguments: Any?) {
+            this.sink = null
+        }
+
+        fun onLog(log: String) {
+            val s = sink ?: return
+            mainHandler.post {
+                try {
+                    sink?.success(log)
+                } catch (_: Throwable) {}
+            }
+        }
+    }
+
     internal val stateHandler = PluginStateEventsStreamHandler()
     internal val trafficHandler = PluginTrafficStatsEventsStreamHandler()
+    internal val logHandler = PluginLogEventsStreamHandler()
+    private var logEventChannel: EventChannel? = null
 
     internal fun attachLifecycleObserver(
         currentServiceMachine: () -> VpnStateMachine? = { BrickVpnService.current?.stateMachine },
@@ -206,6 +234,11 @@ class VpnEngineAndroidPlugin : FlutterPlugin, ActivityAware {
         StateEventsStreamHandler.register(binding.binaryMessenger, stateHandler)
         TrafficStatsEventsStreamHandler.register(binding.binaryMessenger, trafficHandler)
 
+        val logChannel = EventChannel(binding.binaryMessenger, "dev.brickvpn.harness/log_events")
+        logChannel.setStreamHandler(logHandler)
+        logEventChannel = logChannel
+        LibboxTunnelEngine.globalLogConsumer = { log -> logHandler.onLog(log) }
+
         attachLifecycleObserver()
     }
 
@@ -218,6 +251,10 @@ class VpnEngineAndroidPlugin : FlutterPlugin, ActivityAware {
         ServiceLifecycleHub.reset()
         CommandVerdictHub.listener = null
         CommandVerdictHub.reset()
+        LibboxTunnelEngine.globalLogConsumer = null
+        logEventChannel?.setStreamHandler(null)
+        logEventChannel = null
+        logHandler.onCancel(null)
         scope?.cancel()
         scope = null
         impl = null

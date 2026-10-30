@@ -58,6 +58,7 @@ class LibboxTunnelEngine(
      * Defaults to a no-op so unit tests that never dial are unaffected.
      */
     private val socketProtector: (Int) -> Unit = {},
+    private val onLogReceived: (String) -> Unit = {},
 ) : TunnelEngine {
 
     private val tag = "LibboxTunnelEngine"
@@ -106,7 +107,14 @@ class LibboxTunnelEngine(
     override suspend fun start(tunFd: Int, configJson: String?) {
         check(service == null) { "start() called while a libbox service is already running" }
         lentFd = tunFd
-        val pi = LibboxPlatformInterface({ currentLentFd() }, socketProtector)
+        val pi = LibboxPlatformInterface(
+            tunFdProvider = { currentLentFd() },
+            socketProtector = socketProtector,
+            onLogReceived = { log ->
+                onLogReceived(log)
+                globalLogConsumer?.invoke(log)
+            },
+        )
         platformInterface = pi
         val config = configJson?.takeIf { it.isNotBlank() } ?: configJsonProvider()
         try {
@@ -166,6 +174,9 @@ class LibboxTunnelEngine(
     fun isRunning(): Boolean = running.get()
 
     companion object {
+        @Volatile
+        var globalLogConsumer: ((String) -> Unit)? = null
+
         /**
          * The Gate A lifecycle-test config: a TUN inbound and a **`block`**
          * outbound, nothing else.

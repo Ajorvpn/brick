@@ -12,7 +12,12 @@
   "settings": {
     "title": "Settings",
     "label": "Settings",
-    "back_to_home": "Back to Home"
+    "back_to_home": "Back to Home",
+    "language": "Language",
+    "theme": "Theme",
+    "live_logs": "Live Logs",
+    "live_logs_subtitle": "Real-time diagnostic logs",
+    "no_logs": "No log entries yet"
   },
   "connection": {
     "add_server": "Add Server",

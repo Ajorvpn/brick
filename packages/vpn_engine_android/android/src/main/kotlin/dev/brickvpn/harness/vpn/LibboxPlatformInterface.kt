@@ -69,6 +69,11 @@ class LibboxPlatformInterface(
      * recording double and assert the callback actually fires.
      */
     private val socketProtector: (Int) -> Unit,
+
+    /**
+     * Callback receiving libbox log messages for streaming to Dart.
+     */
+    private val onLogReceived: (String) -> Unit = {},
 ) : PlatformInterface {
 
     // ------------------------------------------------------------- 1. routing
@@ -183,6 +188,7 @@ class LibboxPlatformInterface(
      */
     override fun writeLog(log: String) {
         Log.i(TAG, "libbox: $log")
+        onLogReceived(log)
     }
 
     // ------------------------------------------------------------ 4. handover
