@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobile/core/providers/vpn_engine_provider.dart';
 import 'package:mobile/core/router/app_router.dart';
+import 'package:mobile/features/connection/presentation/providers/connection_state_provider.dart';
 import 'package:vpn_engine_android/vpn_engine_android.dart';
 
 Future<void> main() async {
@@ -55,6 +56,11 @@ class MyApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Eagerly listen to connectionStateProvider so the lifecycle observer
+    // and native status reconciliation are active from app root without
+    // causing unnecessary rebuilds of MaterialApp.
+    ref.listen(connectionStateProvider, (_, _) {});
+
     final router = ref.watch(appRouterProvider);
 
     return MaterialApp.router(

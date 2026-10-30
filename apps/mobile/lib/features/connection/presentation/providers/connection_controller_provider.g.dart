@@ -76,7 +76,7 @@ final class ConnectionControllerProvider
 }
 
 String _$connectionControllerHash() =>
-    r'd893a671ecd548e1bd4ff4b69dff0c7646bde712';
+    r'efc7f2270a8d4ba590807f2f7a83034065172ad5';
 
 /// Dispatches connect/disconnect intents to the engine.
 ///

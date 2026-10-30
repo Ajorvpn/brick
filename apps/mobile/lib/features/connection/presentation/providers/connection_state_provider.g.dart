@@ -8,38 +8,44 @@ part of 'connection_state_provider.dart';
 
 // GENERATED CODE - DO NOT MODIFY BY HAND
 // ignore_for_file: type=lint, type=warning
-/// Exposes the engine's authoritative [VpnEngine.connectionState] stream.
+/// Exposes the engine's authoritative connection state stream, reconciled with
+/// app lifecycle events.
 ///
-/// This is the **only** source the UI is allowed to render connection state
-/// from. `VpnEngine` Invariant 1 (`vpn_engine.dart`) states that `start()`
-/// and `stop()` report only whether a command was *accepted*, and that the
-/// real lifecycle transition arrives exclusively on this stream; the
-/// legacy prototype coupled the two and displayed "Connected" over a dead
-/// tunnel, which is the exact bug `connection/presentation/README.md`
-/// forbids repeating.
+/// **This is the only source the UI is allowed to render connection state
+/// from.**
 ///
-/// Reading `vpnEngineProvider` here (rather than accepting the engine as a
-/// parameter) keeps this provider working under a plain
-/// `overrideWithValue` in tests while still resolving the real keepAlive
-/// engine in the app.
+/// In Phase 4 (P4-T1), this stream is hardened against OS suspension and
+/// background state-desync:
+/// 1. Cold start: queries [VpnEngine.getStatus] on initial subscription so the
+///    UI immediately displays true native state without waiting for a
+///    transition event.
+/// 2. Live transitions: forwards [VpnEngine.connectionState] emissions.
+/// 3. Resume from background: an [AppLifecycleListener] triggers an explicit
+///    [VpnEngine.getStatus] probe on `onResume`, pushing the true native state
+///    if the native layer transitioned while the Dart VM was suspended.
+///
+/// Distinct emissions ensure no redundant UI rebuilds.
 
 @ProviderFor(connectionState)
 final connectionStateProvider = ConnectionStateProvider._();
 
-/// Exposes the engine's authoritative [VpnEngine.connectionState] stream.
+/// Exposes the engine's authoritative connection state stream, reconciled with
+/// app lifecycle events.
 ///
-/// This is the **only** source the UI is allowed to render connection state
-/// from. `VpnEngine` Invariant 1 (`vpn_engine.dart`) states that `start()`
-/// and `stop()` report only whether a command was *accepted*, and that the
-/// real lifecycle transition arrives exclusively on this stream; the
-/// legacy prototype coupled the two and displayed "Connected" over a dead
-/// tunnel, which is the exact bug `connection/presentation/README.md`
-/// forbids repeating.
+/// **This is the only source the UI is allowed to render connection state
+/// from.**
 ///
-/// Reading `vpnEngineProvider` here (rather than accepting the engine as a
-/// parameter) keeps this provider working under a plain
-/// `overrideWithValue` in tests while still resolving the real keepAlive
-/// engine in the app.
+/// In Phase 4 (P4-T1), this stream is hardened against OS suspension and
+/// background state-desync:
+/// 1. Cold start: queries [VpnEngine.getStatus] on initial subscription so the
+///    UI immediately displays true native state without waiting for a
+///    transition event.
+/// 2. Live transitions: forwards [VpnEngine.connectionState] emissions.
+/// 3. Resume from background: an [AppLifecycleListener] triggers an explicit
+///    [VpnEngine.getStatus] probe on `onResume`, pushing the true native state
+///    if the native layer transitioned while the Dart VM was suspended.
+///
+/// Distinct emissions ensure no redundant UI rebuilds.
 
 final class ConnectionStateProvider
     extends
@@ -49,27 +55,30 @@ final class ConnectionStateProvider
           Stream<ConnectionState>
         >
     with $FutureModifier<ConnectionState>, $StreamProvider<ConnectionState> {
-  /// Exposes the engine's authoritative [VpnEngine.connectionState] stream.
+  /// Exposes the engine's authoritative connection state stream, reconciled with
+  /// app lifecycle events.
   ///
-  /// This is the **only** source the UI is allowed to render connection state
-  /// from. `VpnEngine` Invariant 1 (`vpn_engine.dart`) states that `start()`
-  /// and `stop()` report only whether a command was *accepted*, and that the
-  /// real lifecycle transition arrives exclusively on this stream; the
-  /// legacy prototype coupled the two and displayed "Connected" over a dead
-  /// tunnel, which is the exact bug `connection/presentation/README.md`
-  /// forbids repeating.
+  /// **This is the only source the UI is allowed to render connection state
+  /// from.**
   ///
-  /// Reading `vpnEngineProvider` here (rather than accepting the engine as a
-  /// parameter) keeps this provider working under a plain
-  /// `overrideWithValue` in tests while still resolving the real keepAlive
-  /// engine in the app.
+  /// In Phase 4 (P4-T1), this stream is hardened against OS suspension and
+  /// background state-desync:
+  /// 1. Cold start: queries [VpnEngine.getStatus] on initial subscription so the
+  ///    UI immediately displays true native state without waiting for a
+  ///    transition event.
+  /// 2. Live transitions: forwards [VpnEngine.connectionState] emissions.
+  /// 3. Resume from background: an [AppLifecycleListener] triggers an explicit
+  ///    [VpnEngine.getStatus] probe on `onResume`, pushing the true native state
+  ///    if the native layer transitioned while the Dart VM was suspended.
+  ///
+  /// Distinct emissions ensure no redundant UI rebuilds.
   ConnectionStateProvider._()
     : super(
         from: null,
         argument: null,
         retry: null,
         name: r'connectionStateProvider',
-        isAutoDispose: true,
+        isAutoDispose: false,
         dependencies: null,
         $allTransitiveDependencies: null,
       );
@@ -89,7 +98,7 @@ final class ConnectionStateProvider
   }
 }
 
-String _$connectionStateHash() => r'8dc8798836389d951a9e92cd3bada3a83649ef81';
+String _$connectionStateHash() => r'3bb6aa50614b6739ae25ef54a72f59d41ffcdd27';
 
 /// Exposes the engine's [VpnEngine.trafficStats] stream.
 ///
