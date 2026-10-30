@@ -162,6 +162,29 @@ text
   block. This directly addresses the predecessor project's pattern of 
   silently swallowing native bridge failures.
 
+### 5.1 Presentation of Errors & Transient Feedback (P4-T3)
+
+- **Single Global Presentation Pattern**: All user-facing error notifications
+  and transient feedback (snackbars, banners) must be presented via
+  `AppFeedback` (`apps/mobile/lib/core/presentation/utils/app_feedback.dart`).
+  Individual features (Phase 5+) must NOT invent their own snackbar or error
+  UI ad-hoc.
+- **Domain Error to User-Message Mapping**: Domain errors, `Result.err(E)`, and
+  stream failure states must be mapped to localized user-facing strings using
+  `ErrorMapper` (`apps/mobile/lib/core/presentation/utils/error_mapper.dart`).
+- **Convention for Future Features (Phase 5+)**:
+  1. Any new domain error or failure type should either be registered in
+     `ErrorMapper.mapToUserMessage()`, or implement the `HasUserMessage`
+     interface declaring `String toUserMessage()`.
+  2. All user-visible strings returned by `ErrorMapper` or `HasUserMessage`
+     MUST be localized via `easy_localization` (`.tr()`) and defined in
+     `assets/translations/<locale>.json`. Hardcoded strings are forbidden
+     (Section 2.1).
+  3. Presentation layer widgets observing state streams or async operations
+     must use `ref.listen` to capture transitions to error states and call
+     `AppFeedback.showError(context, ErrorMapper.mapToUserMessage(error))`
+     without disturbing steady-state layout widgets.
+
 ---
 
 ## 6. Native Bridge Code (Android/Kotlin — applies to `packages/vpn_engine_android/`)

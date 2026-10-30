@@ -2,12 +2,16 @@
 
 import 'dart:async';
 
+import 'package:core_domain/core_domain.dart' show ConnectionState;
 import 'package:easy_localization/easy_localization.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide ConnectionState;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:mobile/core/presentation/utils/app_feedback.dart';
+import 'package:mobile/core/presentation/utils/error_mapper.dart';
 import 'package:mobile/features/connection/domain/entities/saved_server.dart';
 import 'package:mobile/features/connection/presentation/providers/connection_controller_provider.dart';
+import 'package:mobile/features/connection/presentation/providers/connection_state_provider.dart';
 import 'package:mobile/features/connection/presentation/providers/saved_servers_provider.dart';
 import 'package:mobile/features/connection/presentation/widgets/connection_state_badge.dart';
 import 'package:mobile/features/connection/presentation/widgets/server_tile.dart';
@@ -40,6 +44,25 @@ class HomeScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    ref.listen<AsyncValue<ConnectionState>>(connectionStateProvider, (
+      previous,
+      next,
+    ) {
+      next.when(
+        data: (state) {
+          final errorMessage = ErrorMapper.mapConnectionState(state);
+          if (errorMessage != null) {
+            AppFeedback.showError(context, errorMessage);
+          }
+        },
+        error: (error, _) {
+          final errorMessage = ErrorMapper.mapToUserMessage(error);
+          AppFeedback.showError(context, errorMessage);
+        },
+        loading: () {},
+      );
+    });
+
     final servers = ref.watch(savedServersProvider);
 
     return Scaffold(

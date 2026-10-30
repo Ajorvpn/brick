@@ -96,6 +96,15 @@ class TestAssetLoader extends AssetLoader {
                 'traffic_none': 'No traffic data',
                 'traffic_unavailable': 'Traffic data unavailable',
               },
+              'error': {
+                'generic': 'An unexpected error occurred',
+                'vpn_permission_denied':
+                    'VPN permission was denied by the system',
+                'invalid_config': 'The server configuration is invalid',
+                'platform_error': 'VPN engine encountered an internal error',
+                'unknown': 'An unknown connection error occurred',
+                'server_busy': 'A VPN operation is already in progress',
+              },
             },
           };
 
@@ -336,6 +345,14 @@ Map<String, dynamic> testEnglishTranslations() => const {
     'traffic': '{tx} up / {rx} down',
     'traffic_none': 'No traffic data',
     'traffic_unavailable': 'Traffic data unavailable',
+  },
+  'error': {
+    'generic': 'An unexpected error occurred',
+    'vpn_permission_denied': 'VPN permission was denied by the system',
+    'invalid_config': 'The server configuration is invalid',
+    'platform_error': 'VPN engine encountered an internal error',
+    'unknown': 'An unknown connection error occurred',
+    'server_busy': 'A VPN operation is already in progress',
   },
 };
 
