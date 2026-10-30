@@ -61,7 +61,7 @@ dependencies:
   # feature can prove its Riverpod + state-stream wiring end to end against
   # `MockVpnEngine` before any native engine exists. It MUST be replaced by
   # secure storage before Phase 11 / any release build.
-  shared_preferences: ^2.5.3
+  shared_preferences: ^2.5.6
   shared_utils:
   # P3-T11: the native VPN engine, packaged as a Flutter Android platform
   # plugin. Pubspec-only wiring: the `AndroidVpnEngine` engine swap is P3-T14
