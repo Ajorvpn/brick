@@ -5,6 +5,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/features/connection/presentation/screens/home_screen.dart';
+import 'package:mobile/features/logs/presentation/screens/logs_screen.dart';
+import 'package:mobile/features/servers/presentation/screens/servers_screen.dart';
 import 'package:mobile/features/settings/presentation/screens/settings_screen.dart';
 
 import 'localization_test_harness.dart';
@@ -53,6 +55,34 @@ void main() {
       // The raw lookup key must never be displayed to a user.
       expect(find.text('connection.add_server'), findsNothing);
       expect(find.text('home.title'), findsNothing);
+    });
+
+    testWidgets('ServersScreen renders translated strings, not keys', (
+      tester,
+    ) async {
+      await pumpLocalizedApp(
+        tester,
+        localizedMaterialApp(home: const ServersScreen()),
+      );
+
+      expect(find.widgetWithText(AppBar, 'Servers'), findsOneWidget);
+      expect(find.text('Server list will appear here'), findsOneWidget);
+      expect(find.text('servers.title'), findsNothing);
+      expect(find.text('servers.placeholder'), findsNothing);
+    });
+
+    testWidgets('LogsScreen renders translated strings, not keys', (
+      tester,
+    ) async {
+      await pumpLocalizedApp(
+        tester,
+        localizedMaterialApp(home: const LogsScreen()),
+      );
+
+      expect(find.widgetWithText(AppBar, 'Live Logs'), findsOneWidget);
+      expect(find.text('settings.live_logs'), findsNothing);
+      expect(find.text('No log entries yet'), findsOneWidget);
+      expect(find.text('settings.no_logs'), findsNothing);
     });
 
     testWidgets('SettingsScreen renders translated strings, not keys', (

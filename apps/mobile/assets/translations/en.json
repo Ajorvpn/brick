@@ -2,7 +2,13 @@
   "app_title": "Brick VPN",
   "navigation": {
     "home": "Home",
+    "servers": "Servers",
+    "logs": "Logs",
     "settings": "Settings"
+  },
+  "servers": {
+    "title": "Servers",
+    "placeholder": "Server list will appear here"
   },
   "home": {
     "title": "Brick VPN",

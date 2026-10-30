@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/core/router/app_router.dart';
 import 'package:mobile/features/connection/presentation/screens/home_screen.dart';
+import 'package:mobile/features/logs/presentation/screens/logs_screen.dart';
+import 'package:mobile/features/servers/presentation/screens/servers_screen.dart';
 import 'package:mobile/features/settings/presentation/screens/settings_screen.dart';
 import 'package:mobile/main.dart';
 
@@ -26,6 +28,35 @@ void main() {
       expect(find.widgetWithText(AppBar, 'Brick VPN'), findsOneWidget);
       expect(find.text('No saved servers yet'), findsOneWidget);
       expect(find.byType(SettingsScreen), findsNothing);
+    });
+
+    testWidgets('navigating to /servers renders ServersScreen', (tester) async {
+      await pumpLocalizedApp(
+        tester,
+        const MyApp(),
+        overrides: repositoryOverride(),
+      );
+
+      await tester.tap(find.byIcon(Icons.dns));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ServersScreen), findsOneWidget);
+      expect(find.widgetWithText(AppBar, 'Servers'), findsOneWidget);
+      expect(find.byType(HomeScreen), findsNothing);
+    });
+
+    testWidgets('navigating to /logs renders LogsScreen', (tester) async {
+      await pumpLocalizedApp(
+        tester,
+        const MyApp(),
+        overrides: repositoryOverride(),
+      );
+
+      await tester.tap(find.byIcon(Icons.article_outlined));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(LogsScreen), findsOneWidget);
+      expect(find.byType(HomeScreen), findsNothing);
     });
 
     testWidgets('navigating to /settings renders SettingsScreen', (

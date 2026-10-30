@@ -15,9 +15,9 @@ part of 'app_router.dart';
 /// one entry to this list rather than threading navigation state through the
 /// widget tree.
 ///
-/// In Phase 4 (P4-T16), top-level tabs (Home and Settings) are hosted within
-/// a [StatefulShellRoute.indexedStack] so that each tab preserves its own
-/// navigation stack and scroll state.
+/// In Phase 4 (P4-T5 remediation), top-level tabs (Home, Servers, Logs,
+/// Settings) are hosted within a [StatefulShellRoute.indexedStack] so that
+/// each tab preserves its own navigation stack and scroll state.
 ///
 /// `keepAlive: true` is deliberate and load-bearing (same reasoning as
 /// `vpnEngineProvider`): a bare `@riverpod` generates an auto-dispose
@@ -35,9 +35,9 @@ final appRouterProvider = AppRouterProvider._();
 /// one entry to this list rather than threading navigation state through the
 /// widget tree.
 ///
-/// In Phase 4 (P4-T16), top-level tabs (Home and Settings) are hosted within
-/// a [StatefulShellRoute.indexedStack] so that each tab preserves its own
-/// navigation stack and scroll state.
+/// In Phase 4 (P4-T5 remediation), top-level tabs (Home, Servers, Logs,
+/// Settings) are hosted within a [StatefulShellRoute.indexedStack] so that
+/// each tab preserves its own navigation stack and scroll state.
 ///
 /// `keepAlive: true` is deliberate and load-bearing (same reasoning as
 /// `vpnEngineProvider`): a bare `@riverpod` generates an auto-dispose
@@ -55,9 +55,9 @@ final class AppRouterProvider
   /// one entry to this list rather than threading navigation state through the
   /// widget tree.
   ///
-  /// In Phase 4 (P4-T16), top-level tabs (Home and Settings) are hosted within
-  /// a [StatefulShellRoute.indexedStack] so that each tab preserves its own
-  /// navigation stack and scroll state.
+  /// In Phase 4 (P4-T5 remediation), top-level tabs (Home, Servers, Logs,
+  /// Settings) are hosted within a [StatefulShellRoute.indexedStack] so that
+  /// each tab preserves its own navigation stack and scroll state.
   ///
   /// `keepAlive: true` is deliberate and load-bearing (same reasoning as
   /// `vpnEngineProvider`): a bare `@riverpod` generates an auto-dispose
@@ -97,4 +97,4 @@ final class AppRouterProvider
   }
 }
 
-String _$appRouterHash() => r'2ed4ddcc8bf88b6683ff46cf93e3502d112687b3';
+String _$appRouterHash() => r'e85d756eb7e896b8751f1aa4ac178f3e82b7a6c0';

@@ -31,6 +31,14 @@ class AppShell extends StatelessWidget {
             label: 'navigation.home'.tr(),
           ),
           NavigationDestination(
+            icon: const Icon(Icons.dns),
+            label: 'navigation.servers'.tr(),
+          ),
+          NavigationDestination(
+            icon: const Icon(Icons.article_outlined),
+            label: 'navigation.logs'.tr(),
+          ),
+          NavigationDestination(
             icon: const Icon(Icons.settings),
             label: 'navigation.settings'.tr(),
           ),

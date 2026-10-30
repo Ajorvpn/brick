@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 import 'package:mobile/core/presentation/widgets/app_shell.dart';
 import 'package:mobile/features/connection/presentation/screens/add_server_screen.dart';
 import 'package:mobile/features/connection/presentation/screens/home_screen.dart';
+import 'package:mobile/features/logs/presentation/screens/logs_screen.dart';
+import 'package:mobile/features/servers/presentation/screens/servers_screen.dart';
 import 'package:mobile/features/settings/presentation/screens/live_logs_screen.dart';
 import 'package:mobile/features/settings/presentation/screens/settings_screen.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -17,9 +19,9 @@ part 'app_router.g.dart';
 /// one entry to this list rather than threading navigation state through the
 /// widget tree.
 ///
-/// In Phase 4 (P4-T16), top-level tabs (Home and Settings) are hosted within
-/// a [StatefulShellRoute.indexedStack] so that each tab preserves its own
-/// navigation stack and scroll state.
+/// In Phase 4 (P4-T5 remediation), top-level tabs (Home, Servers, Logs,
+/// Settings) are hosted within a [StatefulShellRoute.indexedStack] so that
+/// each tab preserves its own navigation stack and scroll state.
 ///
 /// `keepAlive: true` is deliberate and load-bearing (same reasoning as
 /// `vpnEngineProvider`): a bare `@riverpod` generates an auto-dispose
@@ -42,6 +44,24 @@ GoRouter appRouter(Ref ref) {
                 path: '/',
                 name: 'home',
                 builder: (context, state) => const HomeScreen(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/servers',
+                name: 'servers',
+                builder: (context, state) => const ServersScreen(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/logs',
+                name: 'logs',
+                builder: (context, state) => const LogsScreen(),
               ),
             ],
           ),
