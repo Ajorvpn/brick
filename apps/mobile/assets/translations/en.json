@@ -15,6 +15,11 @@
     "back_to_home": "Back to Home",
     "language": "Language",
     "theme": "Theme",
+    "theme_system": "System",
+    "theme_light": "Light",
+    "theme_dark": "Dark",
+    "lang_en": "English",
+    "lang_de": "Deutsch",
     "live_logs": "Live Logs",
     "live_logs_subtitle": "Real-time diagnostic logs",
     "no_logs": "No log entries yet"

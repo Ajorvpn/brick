@@ -66,6 +66,11 @@ class TestAssetLoader extends AssetLoader {
                 'back_to_home': 'Back to Home',
                 'language': 'Language',
                 'theme': 'Theme',
+                'theme_system': 'System',
+                'theme_light': 'Light',
+                'theme_dark': 'Dark',
+                'lang_en': 'English',
+                'lang_de': 'Deutsch',
                 'live_logs': 'Live Logs',
                 'live_logs_subtitle': 'Real-time diagnostic logs',
                 'no_logs': 'No log entries yet',
@@ -99,7 +104,7 @@ class TestAssetLoader extends AssetLoader {
   @override
   Future<Map<String, dynamic>> load(String path, Locale locale) async {
     final key = locale.languageCode;
-    final data = _translations[key];
+    final data = _translations[key] ?? _translations['en'];
     if (data == null) {
       throw FlutterError('No test translations for locale "$key".');
     }
@@ -302,6 +307,11 @@ Map<String, dynamic> testEnglishTranslations() => const {
     'back_to_home': 'Back to Home',
     'language': 'Language',
     'theme': 'Theme',
+    'theme_system': 'System',
+    'theme_light': 'Light',
+    'theme_dark': 'Dark',
+    'lang_en': 'English',
+    'lang_de': 'Deutsch',
     'live_logs': 'Live Logs',
     'live_logs_subtitle': 'Real-time diagnostic logs',
     'no_logs': 'No log entries yet',
@@ -375,9 +385,7 @@ Widget localizedApp({
   Locale startLocale = const Locale('en'),
 }) {
   return EasyLocalization(
-    supportedLocales: startLocale.languageCode == 'en'
-        ? const <Locale>[Locale('en')]
-        : const <Locale>[Locale('en'), Locale('de')],
+    supportedLocales: const <Locale>[Locale('en'), Locale('de')],
     path: 'assets/translations',
     startLocale: startLocale,
     fallbackLocale: const Locale('en'),

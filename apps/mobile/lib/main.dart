@@ -5,9 +5,12 @@ import 'dart:io';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:mobile/core/data/repositories/app_preferences_repository.dart';
+import 'package:mobile/core/providers/app_preferences_provider.dart';
 import 'package:mobile/core/providers/vpn_engine_provider.dart';
 import 'package:mobile/core/router/app_router.dart';
 import 'package:mobile/features/connection/presentation/providers/connection_state_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vpn_engine_android/vpn_engine_android.dart';
 
 Future<void> main() async {
@@ -18,6 +21,8 @@ Future<void> main() async {
   // Loads the saved locale from device storage so the app starts in the
   // user's chosen language rather than always the fallback.
   await EasyLocalization.ensureInitialized();
+
+  final prefs = await SharedPreferences.getInstance();
 
   // `ProviderScope` is the root of the Riverpod container: every provider
   // in the app (`lib/core/`, and each feature's `presentation/providers/`)
@@ -31,11 +36,14 @@ Future<void> main() async {
   // `test/localization_test_harness.dart`.
   runApp(
     EasyLocalization(
-      supportedLocales: const <Locale>[Locale('en')],
+      supportedLocales: const <Locale>[Locale('en'), Locale('de')],
       path: 'assets/translations',
       fallbackLocale: const Locale('en'),
       child: ProviderScope(
         overrides: [
+          appPreferencesRepositoryProvider.overrideWithValue(
+            SharedPreferencesAppPreferencesRepository(prefs),
+          ),
           if (Platform.isAndroid)
             vpnEngineProvider.overrideWith((ref) => AndroidVpnEngine()),
         ],
@@ -47,10 +55,10 @@ Future<void> main() async {
 
 /// Application root.
 ///
-/// [ConsumerWidget] because it reads exactly one provider — the router —
-/// and nothing else. Per CODING_STANDARDS.md Section 4, widgets should
-/// watch only the specific providers they need; keeping this list at one
-/// entry means unrelated state changes never rebuild the root.
+/// [ConsumerWidget] because it reads the router and themeMode providers.
+/// Per CODING_STANDARDS.md Section 4, widgets should watch only the specific
+/// providers they need; keeping this list focused means unrelated state
+/// changes never rebuild the root.
 class MyApp extends ConsumerWidget {
   const MyApp({super.key});
 
@@ -62,14 +70,18 @@ class MyApp extends ConsumerWidget {
     ref.listen(connectionStateProvider, (_, _) {});
 
     final router = ref.watch(appRouterProvider);
+    final themeMode = ref.watch(themeModeProvider);
 
     return MaterialApp.router(
       routerConfig: router,
+      themeMode: themeMode,
+      darkTheme: ThemeData.dark(),
       // `EasyLocalization` does not insert its delegate automatically: the
       // app must register it on `MaterialApp` or `.tr()` silently falls back
       // to returning the raw key.
       localizationsDelegates: context.localizationDelegates,
       supportedLocales: context.supportedLocales,
+      locale: context.locale,
       // Localized: no hardcoded user-facing string (CODING_STANDARDS.md).
       onGenerateTitle: (context) => 'app_title'.tr(),
     );

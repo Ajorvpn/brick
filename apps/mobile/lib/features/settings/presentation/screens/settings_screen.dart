@@ -1,30 +1,35 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import 'dart:async';
+
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:mobile/core/providers/app_preferences_provider.dart';
 
-/// Placeholder Settings screen (P1-T8).
+/// Settings screen for configuring non-secret application preferences.
 ///
-/// Intentionally minimal: a plain [Scaffold] with a text label and a
-/// back-navigation button. Visual polish and real settings content are out
-/// of scope until Phase 11 and the later feature tasks (ROADMAP P1-T8).
-///
-/// The `settings` feature folder exists only to the extent needed for this
-/// placeholder; its `domain/` and `data/` layers follow the P1-T6
-/// convention and are empty until Settings gains real functionality.
-///
-/// Every user-facing string is looked up via `.tr()` from
-/// `assets/translations/en.json`; hardcoded strings are forbidden
-/// (CODING_STANDARDS.md).
-///
-/// Layering: this is a `presentation/` file. It may depend on `domain/`
-/// but never on `data/` (CODING_STANDARDS.md Section 3.2).
-class SettingsScreen extends StatelessWidget {
+/// Manages theme mode, display language, and provides navigation to diagnostics
+/// such as Live Logs.
+class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final themeMode = ref.watch(themeModeProvider);
+    final locale = ref.watch(localeProvider) ?? context.locale;
+
+    final themeSubtitle = switch (themeMode) {
+      ThemeMode.system => 'settings.theme_system'.tr(),
+      ThemeMode.light => 'settings.theme_light'.tr(),
+      ThemeMode.dark => 'settings.theme_dark'.tr(),
+    };
+
+    final langSubtitle = locale.languageCode == 'de'
+        ? 'settings.lang_de'.tr()
+        : 'settings.lang_en'.tr();
+
     return Scaffold(
       appBar: AppBar(title: Text('settings.title'.tr())),
       body: ListView(
@@ -32,13 +37,15 @@ class SettingsScreen extends StatelessWidget {
           ListTile(
             leading: const Icon(Icons.language),
             title: Text('settings.language'.tr()),
-            onTap: () {},
+            subtitle: Text(langSubtitle),
+            onTap: () => _showLanguageDialog(context, ref),
           ),
           const Divider(height: 1),
           ListTile(
             leading: const Icon(Icons.palette_outlined),
             title: Text('settings.theme'.tr()),
-            onTap: () {},
+            subtitle: Text(themeSubtitle),
+            onTap: () => _showThemeDialog(context, ref),
           ),
           const Divider(height: 1),
           ListTile(
@@ -57,6 +64,91 @@ class SettingsScreen extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  void _showThemeDialog(BuildContext context, WidgetRef ref) {
+    unawaited(
+      showDialog<void>(
+        context: context,
+        builder: (dialogContext) {
+          return SimpleDialog(
+            title: Text('settings.theme'.tr()),
+            children: [
+              SimpleDialogOption(
+                onPressed: () {
+                  unawaited(
+                    ref
+                        .read(themeModeProvider.notifier)
+                        .setThemeMode(ThemeMode.system),
+                  );
+                  Navigator.of(dialogContext).pop();
+                },
+                child: Text('settings.theme_system'.tr()),
+              ),
+              SimpleDialogOption(
+                onPressed: () {
+                  unawaited(
+                    ref
+                        .read(themeModeProvider.notifier)
+                        .setThemeMode(ThemeMode.light),
+                  );
+                  Navigator.of(dialogContext).pop();
+                },
+                child: Text('settings.theme_light'.tr()),
+              ),
+              SimpleDialogOption(
+                onPressed: () {
+                  unawaited(
+                    ref
+                        .read(themeModeProvider.notifier)
+                        .setThemeMode(ThemeMode.dark),
+                  );
+                  Navigator.of(dialogContext).pop();
+                },
+                child: Text('settings.theme_dark'.tr()),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  void _showLanguageDialog(BuildContext context, WidgetRef ref) {
+    unawaited(
+      showDialog<void>(
+        context: context,
+        builder: (dialogContext) {
+          return SimpleDialog(
+            title: Text('settings.language'.tr()),
+            children: [
+              SimpleDialogOption(
+                onPressed: () {
+                  const newLocale = Locale('en');
+                  unawaited(
+                    ref.read(localeProvider.notifier).setLocale(newLocale),
+                  );
+                  unawaited(context.setLocale(newLocale));
+                  Navigator.of(dialogContext).pop();
+                },
+                child: Text('settings.lang_en'.tr()),
+              ),
+              SimpleDialogOption(
+                onPressed: () {
+                  const newLocale = Locale('de');
+                  unawaited(
+                    ref.read(localeProvider.notifier).setLocale(newLocale),
+                  );
+                  unawaited(context.setLocale(newLocale));
+                  Navigator.of(dialogContext).pop();
+                },
+                child: Text('settings.lang_de'.tr()),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
