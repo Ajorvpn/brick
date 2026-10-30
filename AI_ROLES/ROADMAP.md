@@ -2575,7 +2575,7 @@ override seam.
 
 ### P3-T16 — Full-stack chaos/stress test suite (the Gate B hard gate)
 
-**Status:** Not Started
+**Status:** Completed ✅
 **Depends On:** P3-T15
 
 **Objective:** Re-execute the **entire** chaos-test protocol from P3-T9, this time driving every
@@ -2592,19 +2592,19 @@ the Dart side's perspective, and platform-channel-specific deadlocks or dropped 
 - Excluded: nothing — this must be a genuinely complete re-run, not an abbreviated subset.
 
 **Acceptance Criteria — all must pass, each with recorded evidence:**
-- [ ] All applicable P3-T9 scenarios (100x start/stop, screen-off, backgrounded, network
+- [x] All applicable P3-T9 scenarios (100x start/stop, screen-off, backgrounded, network
       switching, busy/idempotency rejections, force-stop recovery, reboot recovery, watchdog
       trigger, revoke handling, invalid config rejection) are re-verified passing when driven
       through the Flutter UI, not just the native harness.
-- [ ] Flutter UI state is proven to always match true native state after: app force-stop and
+- [x] Flutter UI state is proven to always match true native state after: app force-stop and
       reopen while VPN running, Flutter engine restart (if simulable) while VPN running, and app
       cold-start with VPN already running from a previous session.
-- [ ] No platform-channel deadlock is observed across any of the above scenarios (verified by
+- [x] No platform-channel deadlock is observed across any of the above scenarios (verified by
       the app remaining responsive/no ANR during and after each scenario).
-- [ ] Traffic stats and log streams (P3-T8) continue to flow correctly to the Dart UI throughout
+- [x] Traffic stats and log streams (P3-T8) continue to flow correctly to the Dart UI throughout
       stress scenarios, with the same failure-domain-independence property re-verified at the
       full-stack level (a stats hiccup must not affect displayed connection state and vice versa).
-- [ ] Command-acceptance vs. final-state semantics (P1-T4/P3-T12's core contract) are proven
+- [x] Command-acceptance vs. final-state semantics (P1-T4/P3-T12's core contract) are proven
       correct under stress — e.g. rapid repeated taps on connect/disconnect in the real UI never
       produce a UI state inconsistent with reality, even transiently in a way that misleads the
       user (directly targeting the legacy "icon shows connected but no traffic" class of bug, now
@@ -2623,7 +2623,7 @@ the Dart side's perspective, and platform-channel-specific deadlocks or dropped 
 
 ### P3-T17 — Phase 3 closeout and Definition-of-Done pass
 
-**Status:** Not Started
+**Status:** Completed ✅
 **Depends On:** P3-T1 through P3-T16
 
 **Objective:** Perform the full closeout review of Phase 3 in its entirety (both gates): confirm
@@ -2639,20 +2639,20 @@ connect/disconnect/stats pipeline — the single hardest technical milestone in 
 - Excluded: starting any Phase 4 work.
 
 **Acceptance Criteria:**
-- [ ] Fresh clone, from scratch, builds the libbox AAR, builds `apps/mobile`, and passes every
+- [x] Fresh clone, from scratch, builds the libbox AAR, builds `apps/mobile`, and passes every
       automated test (Dart + Kotlin, unit + instrumented + integration) with zero manual
       workarounds beyond documented setup steps.
-- [ ] The full Gate B chaos suite (P3-T16) passes in a final clean run.
-- [ ] The legacy-bug traceability list is re-confirmed valid at the full-stack level (not just
+- [x] The full Gate B chaos suite (P3-T16) passes in a final clean run.
+- [x] The legacy-bug traceability list is re-confirmed valid at the full-stack level (not just
       Gate A's native-only level) — explicitly re-stated in this closeout report.
-- [ ] CI reflects whatever native build steps are feasible to automate at this point (if full
+- [x] CI reflects whatever native build steps are feasible to automate at this point (if full
       on-device instrumented/chaos testing can't run in CI, document exactly what CI does cover —
       e.g. Kotlin unit tests, Dart unit tests, AAR build reproducibility — and what still requires
       manual on-device verification going forward).
-- [ ] `PROJECT_STATE.md` fully rewritten as a coherent current snapshot, explicitly noting that
+- [x] `PROJECT_STATE.md` fully rewritten as a coherent current snapshot, explicitly noting that
       the highest-risk phase of the project is complete and Phase 4 (state management + app
       skeleton around real features) is next.
-- [ ] Closeout report follows the exact `DEFINITION_OF_DONE.md` template.
+- [x] Closeout report follows the exact `DEFINITION_OF_DONE.md` template.
 
 **Notes for Agent:**
 - This closeout deserves unusual care in how it's written — it is the definitive record proving

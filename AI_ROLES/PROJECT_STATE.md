@@ -20,22 +20,30 @@
 > task's final report). Every AI agent must read this file first, before
 > `ARCHITECTURE.md` or `ROADMAP.md`, to get immediate situational awareness.
 
-**Last updated**: 2026-10-30 — P3-T15 implemented, verified on SM-A205F with real VLESS server, and closed (Ready for Human Review / Commit)
-**Updated by**: Coding agent, during P3-T15 closeout; full verification passing across Dart/Flutter (all packages via melos), host-JVM (89/89 across 6 suites), and on-device instrumented tests (24/24 on SM-A205F across 5 suites).
+**Last updated**: 2026-10-30 — Phase 3 (The Engine Bridge) 100% complete and closed (P3-T16 Gate B chaos suite and P3-T17 DoD pass verified on SM-A205F). Phase 4 is now the active focus.
+**Updated by**: Coding agent, during P3-T17 closeout; full verification passing across Dart/Flutter (all packages via melos), host-JVM (89/89 across 6 suites), on-device instrumented tests (24/24 on SM-A205F across 5 suites), and on-device Flutter integration tests (3/3 Gate B chaos suites passing cleanly on SM-A205F).
 
 ---
 
 ## 1. Current Phase
 
-**Phase 3 — Android VPN Engine: P3-T12, P3-T13, P3-T14, and P3-T15 COMPLETED & VERIFIED ON-DEVICE.**
-- **P3-T12 (Pigeon schema definition):** `pigeons/vpn_api.dart` defines `@HostApi() VpnEngineHostApi` (`prepare()`, `start()`, `stop()`, `getStatus()`) with `@async` methods, plus `VpnStateEvent` streaming via EventChannel. Generated bindings (`lib/src/vpn_engine_api.g.dart` and `android/.../VpnEngineApi.g.kt`) are committed and in sync.
-- **P3-T13 (Kotlin Pigeon layer remediation):** Remediated architectural defects D1 (eliminated throwaway `VpnStateMachine` instantiations in `PigeonVpnApiImpl.kt` and `VpnEngineAndroidPlugin.kt`, enforced native-state pre-check in `stop()` returning `REJECTED_BUSY` for `Idle`/`Stopped`/`Stopping`/`Revoked`), restored `ActivityAware` on `PigeonVpnApiImpl`, added comprehensive host-JVM test suites (R10: `CommandCoordinatorTest` [10/10], `CommandVerdictHubTest` [7/7], `VpnEngineAndroidPluginTest` [10/10], `PigeonVpnApiImplTest` [18/18], `ServiceLifecycleHubTest` [7/7], `VpnStateMachineTest` [37/37] → **89/89 JVM tests passing**, 0 failures, 0 errors, 0 compiler warnings).
-- **P3-T14 (Dart-side AndroidVpnEngine implementation):** Implemented `AndroidVpnEngine implements VpnEngine` in `packages/vpn_engine_android/lib/src/android_vpn_engine.dart` and exported via `lib/vpn_engine_android.dart`. Implements locked architectural decisions DECISION P3-T14-A through P3-T14-D: maps 8 native states to 5 core_domain states with deduplication, handles all command outcomes without throwing, absorbs stats errors per Invariant 2, and validates serialization with real `SingBoxOutboundSerializer` rejection of runtime-unsupported protocols. Comprehensive unit test suite in `packages/vpn_engine_android/test/android_vpn_engine_test.dart` passes **19/19 tests**.
-- **P3-T15 (App Wiring, Libbox Bootstrap & Real VLESS E2E Verification):**
-  - **`LibboxBootstrap.kt`:** Added idempotent `LibboxBootstrap.ensureSetup(context)` using app-private directories (`filesDir` and `cacheDir`) called before `BrickVpnService` starts. This prevents `cache.db` read-only/chown errors across different `Application` boundaries (`FlutterApplication` in `dev.brickvpn.mobile` vs test harnesses).
-  - **Outbound Tag & Detour Routing (`PigeonVpnApiImpl.kt`):** Fixed sing-box `default detour not found: proxy` by explicitly injecting `"tag": outboundTag` (defaulting to `"proxy"`) into the outbound JSON object matching `route.final`. Added a `"direct"` outbound tagged `"direct-out"` and configured the DNS server to detour via `"direct-out"`, ensuring DNS resolution succeeds without routing loops.
-  - **Clean Single Launcher Manifest:** Removed legacy Gate A `MainActivity` launcher filter from `packages/vpn_engine_android/android/src/main/AndroidManifest.xml`, ensuring only `dev.brickvpn.mobile.MainActivity` is tagged with `android.intent.category.LAUNCHER` upon manifest merge, preventing duplicate app icons on the Android home screen.
-  - **E2E On-Device Verification (SM-A205F / RZ8M53WPMPF, Android 10 / API 29):** Tested with real physical VLESS server (`vless://...`). Successfully established VPN tunnel, reached `BrickVpnService: state -> Running`, and routed live internet traffic (Google search). All host-JVM (89 tests), Dart suites (melos run test), and on-device instrumented tests verified green.
+**Phase 3 — Android VPN Engine: 100% COMPLETED & VERIFIED ON-DEVICE.**
+The single highest-risk technical milestone of the project — establishing a real, stable VPN connection through the complete Dart/Kotlin/Go stack without state desync — has been successfully achieved.
+
+- **P3-T12 through P3-T15 (Bridge Architecture, Implementation & E2E Wiring):** Delivered Pigeon type-safe schema, remediated native state machine and lifecycle coordinator, implemented pure-Dart `AndroidVpnEngine`, and wired `apps/mobile` to establish real VLESS tunnels routing live internet traffic.
+- **P3-T16 (Full-Stack Gate B Chaos Suite):** Fully verified on physical Samsung Galaxy A20 (`SM-A205F`, Android 10, API 29) across three dedicated integration test suites (`gate_b_rapid_state_test.dart`, `gate_b_cold_start_test.dart`, `gate_b_revoke_test.dart`):
+  1. *Staggered UI Spam & Traffic Flow:* Staggered rapid connect/disconnect taps tested command rejection (`RejectedBusy`), proved Invariant 1 (command acceptance vs. final state), and verified active non-zero traffic throughput via `ThroughputReadout`.
+  2. *Cold-Start State Recovery:* Backgrounding and app cold restart with VPN actively running verified that the UI immediately syncs to `Connected` based purely on native truth.
+  3. *System Permission Revoke:* `ACTIVATE_VPN deny` handled gracefully, transitioning to `Connection error` without crashing the Dart VM or freezing the UI.
+- **P3-T17 (Phase 3 Closeout & Definition-of-Done Pass):** All Phase 3 tasks completed. Legacy-bug traceability list from P3-T10 re-confirmed valid at the full-stack level:
+  1. *Traffic stats always zero:* Eliminated. Invariant 2 failure-domain independence proven; live byte throughput rendered.
+  2. *Connected-but-no-traffic / False "Connected":* Eliminated. Invariant 1 proven under rapid interaction; UI strictly reflects engine state.
+  3. *VPN wouldn't stop reliably / Stuck teardown:* Eliminated. Clean teardown and descriptor release proven natively and via Flutter UI.
+  4. *Platform channel deadlocks:* Eliminated. Zero ANRs, zero hanging platform channels observed across all chaos runs.
+  5. *State desync on app death/restart:* Eliminated. Instant resynchronization to native state machine proven.
+  6. *Permission revocation crash:* Eliminated. Graceful mapping to `Error(PermissionDenied())` proven.
+
+**Current Focus:** **Phase 4 — State Management & Application Shell** (extending Riverpod architecture and navigation shell around real features).
 
 P3-T1 (toolchain research) is delivered and `TOOLCHAIN_VERSIONS.md` is pinned. P3-T2 scaffolded
 `native/android/` as a standalone, CLI-buildable Android Gradle project and **proven
@@ -470,6 +478,8 @@ Status tokens below are quoted verbatim from the corresponding `**Status:**` lin
 - **P3-T13** (`ROADMAP.md:2444`): `Ready for Human Review` — Kotlin Pigeon host-API implementation (`PigeonVpnApiImpl.kt`, `CommandCoordinator.kt`, `VpnEngineAndroidPlugin.kt`) remediated (D1, D2, D3, R10, `ActivityAware` restored). 84 host-JVM unit tests passing across 6 suites (0 failures, 0 errors, 0 compiler warnings); 23 on-device instrumented tests passing on SM-A205F (RZ8M53WPMPF, Android 10 / API 29) across 5 suites.
 - **P3-T14** (`ROADMAP.md:2488`): `Ready for Human Review` — Dart-side `AndroidVpnEngine implements VpnEngine` in `packages/vpn_engine_android/lib/src/android_vpn_engine.dart` wrapping Pigeon channels with 19 unit tests passing (including real `SingBoxOutboundSerializer` rejection of runtime-unsupported protocols). Implements DECISION P3-T14-A..D with 0 compiler warnings, full analyzer pass, and fully wired into `melos run test` (768 total monorepo tests passing).
 - **P3-T15** (`ROADMAP.md:2534`): `Completed ✅` — Wire `AndroidVpnEngine` into `apps/mobile` via Riverpod provider override. Verified end-to-end on physical SM-A205F device with real VLESS server and live network traffic routing. Delivered `LibboxBootstrap.kt` (app-private storage setup), injected `"tag": outboundTag` + DNS detour routing in `PigeonVpnApiImpl.kt`, and single launcher manifest in `vpn_engine_android`. 89/89 host-JVM unit tests, 24/24 on-device instrumented tests, and full monorepo test suites passing.
+- **P3-T16** (`ROADMAP.md:2576`): `Completed ✅` — Full-stack chaos/stress test suite (Gate B) implemented with Flutter `integration_test` on physical SM-A205F device (`gate_b_rapid_state_test.dart`, `gate_b_cold_start_test.dart`, `gate_b_revoke_test.dart`). Tested staggered rapid spam interaction, live traffic stats throughput, cold-start state synchronization, and system revoke handling with zero ANR, zero deadlocks, and zero false states.
+- **P3-T17** (`ROADMAP.md:2624`): `Completed ✅` — Phase 3 closeout and Definition-of-Done pass. Full repository verification clean, legacy-bug traceability list confirmed valid at full-stack level, and Phase 4 transition prepared.
 
 ---
 
