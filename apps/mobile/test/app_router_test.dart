@@ -37,7 +37,7 @@ void main() {
         overrides: repositoryOverride(),
       );
 
-      await tester.tap(find.text('Go to Settings'));
+      await tester.tap(find.byIcon(Icons.settings));
       await tester.pumpAndSettle();
 
       expect(find.byType(SettingsScreen), findsOneWidget);
@@ -56,11 +56,11 @@ void main() {
         overrides: repositoryOverride(),
       );
 
-      await tester.tap(find.text('Go to Settings'));
+      await tester.tap(find.byIcon(Icons.settings));
       await tester.pumpAndSettle();
       expect(find.byType(SettingsScreen), findsOneWidget);
 
-      await tester.tap(find.text('Back to Home'));
+      await tester.tap(find.byIcon(Icons.home));
       await tester.pumpAndSettle();
 
       expect(find.byType(HomeScreen), findsOneWidget);

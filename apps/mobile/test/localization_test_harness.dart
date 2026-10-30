@@ -54,6 +54,7 @@ class TestAssetLoader extends AssetLoader {
           const {
             'en': {
               'app_title': 'Brick VPN',
+              'navigation': {'home': 'Home', 'settings': 'Settings'},
               'home': {
                 'title': 'Brick VPN',
                 'label': 'Home',
@@ -276,6 +277,7 @@ Future<void> pumpConnectionMaterialApp(
 /// The translations that [TestAssetLoader] serves, for drift assertions.
 Map<String, dynamic> testEnglishTranslations() => const {
   'app_title': 'Brick VPN',
+  'navigation': {'home': 'Home', 'settings': 'Settings'},
   'home': {
     'title': 'Brick VPN',
     'label': 'Home',

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import 'package:go_router/go_router.dart';
+import 'package:mobile/core/presentation/widgets/app_shell.dart';
 import 'package:mobile/features/connection/presentation/screens/add_server_screen.dart';
 import 'package:mobile/features/connection/presentation/screens/home_screen.dart';
 import 'package:mobile/features/settings/presentation/screens/settings_screen.dart';
@@ -15,38 +16,49 @@ part 'app_router.g.dart';
 /// one entry to this list rather than threading navigation state through the
 /// widget tree.
 ///
+/// In Phase 4 (P4-T16), top-level tabs (Home and Settings) are hosted within
+/// a [StatefulShellRoute.indexedStack] so that each tab preserves its own
+/// navigation stack and scroll state.
+///
 /// `keepAlive: true` is deliberate and load-bearing (same reasoning as
 /// `vpnEngineProvider`): a bare `@riverpod` generates an auto-dispose
 /// provider, and a [GoRouter] that were disposed whenever the last watcher
 /// unmounted would lose its navigation state. The router must live exactly
 /// as long as the app.
-///
-/// API note: `go_router` 18.x offers both the `GoRouter(routes: ...)`
-/// constructor and the newer `GoRouter.routingConfig(routingConfig: ...)`
-/// factory. Both are current and neither is deprecated; the constructor is
-/// used here because it is the simplest form for a static route table, and
-/// `routingConfig` is the right upgrade path if dynamic route lists are
-/// needed later (verified against go_router 18.0.1 in the pub cache, not
-/// assumed from training data).
 @Riverpod(keepAlive: true)
 GoRouter appRouter(Ref ref) {
   return GoRouter(
     initialLocation: '/',
     routes: [
-      GoRoute(
-        path: '/',
-        name: 'home',
-        builder: (context, state) => const HomeScreen(),
+      StatefulShellRoute.indexedStack(
+        builder: (context, state, navigationShell) {
+          return AppShell(navigationShell: navigationShell);
+        },
+        branches: [
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/',
+                name: 'home',
+                builder: (context, state) => const HomeScreen(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/settings',
+                name: 'settings',
+                builder: (context, state) => const SettingsScreen(),
+              ),
+            ],
+          ),
+        ],
       ),
       GoRoute(
         path: '/add-server',
         name: 'add-server',
         builder: (context, state) => const AddServerScreen(),
-      ),
-      GoRoute(
-        path: '/settings',
-        name: 'settings',
-        builder: (context, state) => const SettingsScreen(),
       ),
     ],
   );

@@ -15,19 +15,15 @@ part of 'app_router.dart';
 /// one entry to this list rather than threading navigation state through the
 /// widget tree.
 ///
+/// In Phase 4 (P4-T16), top-level tabs (Home and Settings) are hosted within
+/// a [StatefulShellRoute.indexedStack] so that each tab preserves its own
+/// navigation stack and scroll state.
+///
 /// `keepAlive: true` is deliberate and load-bearing (same reasoning as
 /// `vpnEngineProvider`): a bare `@riverpod` generates an auto-dispose
 /// provider, and a [GoRouter] that were disposed whenever the last watcher
 /// unmounted would lose its navigation state. The router must live exactly
 /// as long as the app.
-///
-/// API note: `go_router` 18.x offers both the `GoRouter(routes: ...)`
-/// constructor and the newer `GoRouter.routingConfig(routingConfig: ...)`
-/// factory. Both are current and neither is deprecated; the constructor is
-/// used here because it is the simplest form for a static route table, and
-/// `routingConfig` is the right upgrade path if dynamic route lists are
-/// needed later (verified against go_router 18.0.1 in the pub cache, not
-/// assumed from training data).
 
 @ProviderFor(appRouter)
 final appRouterProvider = AppRouterProvider._();
@@ -39,19 +35,15 @@ final appRouterProvider = AppRouterProvider._();
 /// one entry to this list rather than threading navigation state through the
 /// widget tree.
 ///
+/// In Phase 4 (P4-T16), top-level tabs (Home and Settings) are hosted within
+/// a [StatefulShellRoute.indexedStack] so that each tab preserves its own
+/// navigation stack and scroll state.
+///
 /// `keepAlive: true` is deliberate and load-bearing (same reasoning as
 /// `vpnEngineProvider`): a bare `@riverpod` generates an auto-dispose
 /// provider, and a [GoRouter] that were disposed whenever the last watcher
 /// unmounted would lose its navigation state. The router must live exactly
 /// as long as the app.
-///
-/// API note: `go_router` 18.x offers both the `GoRouter(routes: ...)`
-/// constructor and the newer `GoRouter.routingConfig(routingConfig: ...)`
-/// factory. Both are current and neither is deprecated; the constructor is
-/// used here because it is the simplest form for a static route table, and
-/// `routingConfig` is the right upgrade path if dynamic route lists are
-/// needed later (verified against go_router 18.0.1 in the pub cache, not
-/// assumed from training data).
 
 final class AppRouterProvider
     extends $FunctionalProvider<GoRouter, GoRouter, GoRouter>
@@ -63,19 +55,15 @@ final class AppRouterProvider
   /// one entry to this list rather than threading navigation state through the
   /// widget tree.
   ///
+  /// In Phase 4 (P4-T16), top-level tabs (Home and Settings) are hosted within
+  /// a [StatefulShellRoute.indexedStack] so that each tab preserves its own
+  /// navigation stack and scroll state.
+  ///
   /// `keepAlive: true` is deliberate and load-bearing (same reasoning as
   /// `vpnEngineProvider`): a bare `@riverpod` generates an auto-dispose
   /// provider, and a [GoRouter] that were disposed whenever the last watcher
   /// unmounted would lose its navigation state. The router must live exactly
   /// as long as the app.
-  ///
-  /// API note: `go_router` 18.x offers both the `GoRouter(routes: ...)`
-  /// constructor and the newer `GoRouter.routingConfig(routingConfig: ...)`
-  /// factory. Both are current and neither is deprecated; the constructor is
-  /// used here because it is the simplest form for a static route table, and
-  /// `routingConfig` is the right upgrade path if dynamic route lists are
-  /// needed later (verified against go_router 18.0.1 in the pub cache, not
-  /// assumed from training data).
   AppRouterProvider._()
     : super(
         from: null,
@@ -109,4 +97,4 @@ final class AppRouterProvider
   }
 }
 
-String _$appRouterHash() => r'978f23048eeab6d5b766dfd42ede5d272d8e9357';
+String _$appRouterHash() => r'2340a0c46fbbdafc65adcb1ed9a49427832c31c9';

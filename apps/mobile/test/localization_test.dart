@@ -49,9 +49,9 @@ void main() {
       // does NOT render `home.label` ('Home') anywhere, so asserting on that
       // string would only ever pass by coincidence.
       expect(find.text('No saved servers yet'), findsOneWidget);
-      expect(find.text('Go to Settings'), findsOneWidget);
+      expect(find.text('Add Server'), findsOneWidget);
       // The raw lookup key must never be displayed to a user.
-      expect(find.text('home.go_to_settings'), findsNothing);
+      expect(find.text('connection.add_server'), findsNothing);
       expect(find.text('home.title'), findsNothing);
     });
 
@@ -78,15 +78,17 @@ void main() {
           'en': testEnglishTranslations(),
           'de': {
             'app_title': 'Ziegel VPN',
-            'home': {
-              'title': 'Ziegel VPN',
-              'label': 'Startseite',
-              'go_to_settings': 'Zu den Einstellungen',
-            },
+            'home': {'title': 'Ziegel VPN', 'label': 'Startseite'},
             'settings': {
               'title': 'Einstellungen',
               'label': 'Einstellungen',
               'back_to_home': 'Zurück zur Startseite',
+            },
+            'connection': {
+              'add_server': 'Server hinzufügen',
+              'no_servers': 'Noch keine Server gespeichert',
+              'state_disconnected': 'Getrennt',
+              'traffic_none': 'Keine Verkehrsdaten',
             },
           },
         },
@@ -104,7 +106,7 @@ void main() {
       );
 
       expect(find.text('Ziegel VPN'), findsOneWidget);
-      expect(find.text('Zu den Einstellungen'), findsOneWidget);
+      expect(find.text('Server hinzufügen'), findsOneWidget);
       // `home.label` is translated but HomeScreen never renders it, so the
       // German value must be absent — this pins the assertion to the keys the
       // screen actually uses.

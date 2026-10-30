@@ -98,7 +98,7 @@ final class ConnectionStateProvider
   }
 }
 
-String _$connectionStateHash() => r'3bb6aa50614b6739ae25ef54a72f59d41ffcdd27';
+String _$connectionStateHash() => r'1ffcabd5bcfebbc79ab74009e759be33168d96ea';
 
 /// Exposes the engine's [VpnEngine.trafficStats] stream.
 ///

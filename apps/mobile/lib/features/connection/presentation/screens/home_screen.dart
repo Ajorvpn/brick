@@ -63,15 +63,6 @@ class HomeScreen extends ConsumerWidget {
             ),
           ),
           Expanded(child: _buildList(context, ref, servers)),
-          Padding(
-            padding: const EdgeInsets.all(8),
-            child: TextButton(
-              // `context.push` keeps the route on the navigation stack so the
-              // Settings screen can pop back here.
-              onPressed: () => context.push('/settings'),
-              child: Text('home.go_to_settings'.tr()),
-            ),
-          ),
         ],
       ),
     );

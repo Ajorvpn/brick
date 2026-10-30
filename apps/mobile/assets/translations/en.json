@@ -1,5 +1,9 @@
 {
   "app_title": "Brick VPN",
+  "navigation": {
+    "home": "Home",
+    "settings": "Settings"
+  },
   "home": {
     "title": "Brick VPN",
     "label": "Home",
