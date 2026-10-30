@@ -20,6 +20,8 @@ const Key connectionBadgeKey = ValueKey<String>('connection_state_badge');
 const Key throughputKey = ValueKey<String>('throughput_readout');
 
 /// Fake VLESS URI used for testing (contains dummy credentials only).
+// TEMP-ARTIFACT: Hardcoded test URI from P3-T15 scaffolding.
+// Phase 5 will introduce dynamic server profiles and QR scan.
 const String dummyVlessUri =
     'vless://11111111-2222-3333-4444-555555555555@example.com:443#Chaos%20Node';
 

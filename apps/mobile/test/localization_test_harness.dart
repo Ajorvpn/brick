@@ -212,6 +212,8 @@ class FakeVpnEngine implements VpnEngine {
 }
 
 /// A valid VLESS URI. The UUID and host are fake; only the shape matters.
+// TEMP-ARTIFACT: Hardcoded test URI from P3-T15 scaffolding.
+// Phase 5 will introduce dynamic server profiles.
 const String validVlessUri =
     'vless://11111111-2222-3333-4444-555555555555@example.com:443#My%20Server';
 

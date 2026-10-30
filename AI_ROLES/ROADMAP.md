@@ -2675,7 +2675,7 @@ that a real `AndroidVpnEngine` (Phase 3) exists behind the `VpnEngine` provider.
 
 ### P4-T1 — App lifecycle observer: resync VPN state on resume
 
-**Status:** Not Started
+**Status:** Completed ✅
 **Depends On:** P3-T17
 
 **Objective:** Implement an app-lifecycle observer that, whenever the Flutter app returns to the
@@ -2696,17 +2696,17 @@ gone stale while the UI wasn't listening.
   minimal Home screen from P3-T15.
 
 **Acceptance Criteria:**
-- [ ] On cold start, before any user interaction, the UI queries and displays the true native VPN
+- [x] On cold start, before any user interaction, the UI queries and displays the true native VPN
       state (e.g. if the VPN was left running from a previous session, the UI reflects "Connected"
       immediately, not a default "Disconnected" that later flips).
-- [ ] On resume from background, the same resync occurs, verified manually by: connecting,
+- [x] On resume from background, the same resync occurs, verified manually by: connecting,
       backgrounding the app, waiting, foregrounding again, and confirming the UI never shows a
       stale/incorrect state even transiently in an observable way.
-- [ ] Unit tests cover the resync notifier's logic against a mocked `VpnEngine` returning various
+- [x] Unit tests cover the resync notifier's logic against a mocked `VpnEngine` returning various
       states, including simulating a resync call that itself fails (should not crash the app or
       leave the UI in an ambiguous state — falls back to a clear "Error"/"Unknown" indicator with
       a retry affordance rather than silently guessing).
-- [ ] `melos run analyze` and `melos run test` pass; manual resume-resync scenario documented.
+- [x] `melos run analyze` and `melos run test` pass; manual resume-resync scenario documented.
 
 **Notes for Agent:**
 - This directly targets a subtler variant of the legacy "JS overwrote native stopping state" bug
@@ -2717,7 +2717,7 @@ gone stale while the UI wasn't listening.
 
 ### P4-T2 — Non-secret local persistence skeleton
 
-**Status:** Not Started
+**Status:** Completed ✅
 **Depends On:** P1-T11
 
 **Objective:** Establish the mechanism for persisting non-secret app preferences (e.g. selected
@@ -2738,14 +2738,14 @@ secure-storage design.
   cross-referencing `SECURITY.md`, to prevent future misuse as a dumping ground for sensitive data.
 
 **Acceptance Criteria:**
-- [ ] `AppPreferencesRepository` (or similarly named) interface exists with a concrete
+- [x] `AppPreferencesRepository` (or similarly named) interface exists with a concrete
       implementation backed by the chosen persistence package, plus a fake implementation for
       tests.
-- [ ] A doc comment on the interface explicitly states the sensitivity boundary and points to
+- [x] A doc comment on the interface explicitly states the sensitivity boundary and points to
       `SECURITY.md`'s data classification table.
-- [ ] At least one real preference (e.g. theme mode) round-trips correctly: set it, restart the
+- [x] At least one real preference (e.g. theme mode) round-trips correctly: set it, restart the
       app, confirm it persisted.
-- [ ] `melos run analyze` and `melos run test` pass.
+- [x] `melos run analyze` and `melos run test` pass.
 
 **Notes for Agent:**
 - If genuinely unsure whether a given piece of data belongs here or must wait for Phase 8's
@@ -2756,7 +2756,7 @@ secure-storage design.
 
 ### P4-T3 — Global error / feedback presentation pattern
 
-**Status:** Not Started
+**Status:** Completed ✅
 **Depends On:** P1-T10
 
 **Objective:** Establish one consistent, app-wide pattern for surfacing errors and transient
@@ -2778,14 +2778,14 @@ own error UI ad hoc.
   pattern (e.g. reusing the connect/disconnect flow from P3-T15 as the demonstration case).
 
 **Acceptance Criteria:**
-- [ ] A working, demonstrated example exists: forcing a connect failure (e.g. via
+- [x] A working, demonstrated example exists: forcing a connect failure (e.g. via
       `MockVpnEngine`'s configurable failure mode from P1-T5, used in a test, or a real device
       scenario) results in a consistent, localized, non-crashing user-facing message via the new
       pattern.
-- [ ] The convention for mapping domain errors to user messages is documented clearly enough that
+- [x] The convention for mapping domain errors to user messages is documented clearly enough that
       a future agent implementing Phase 5's "add server" feature can follow it without
       re-deriving the pattern.
-- [ ] `melos run analyze` and `melos run test` pass.
+- [x] `melos run analyze` and `melos run test` pass.
 
 **Notes for Agent:**
 - Keep this visually minimal (a plain `SnackBar` or equivalent is entirely sufficient) — the value
@@ -2796,7 +2796,7 @@ own error UI ad hoc.
 
 ### P4-T4 — Connectivity change awareness
 
-**Status:** Not Started
+**Status:** Completed ✅
 **Depends On:** P4-T1
 
 **Objective:** Add a basic, app-wide awareness of underlying network connectivity changes (Wi-Fi
@@ -2813,12 +2813,12 @@ establishes the observability, not any reactive behavior yet.
 - Excluded: any actual reconnect logic (explicitly Phase 7's job) — this task is observation-only.
 
 **Acceptance Criteria:**
-- [ ] `ConnectivityStatus` provider correctly reflects real connectivity changes, verified
+- [x] `ConnectivityStatus` provider correctly reflects real connectivity changes, verified
       manually by toggling Wi-Fi/airplane mode on the test device and observing the provider's
       value change accordingly (can be observed via a temporary debug log or the existing minimal
       Home screen).
-- [ ] Unit tests cover the provider's logic against a faked connectivity stream.
-- [ ] `melos run analyze` and `melos run test` pass; manual verification documented.
+- [x] Unit tests cover the provider's logic against a faked connectivity stream.
+- [x] `melos run analyze` and `melos run test` pass; manual verification documented.
 
 **Notes for Agent:**
 - Do not wire this into `VpnEngine` or attempt any auto-reconnect behavior here — that's
@@ -2829,7 +2829,7 @@ establishes the observability, not any reactive behavior yet.
 
 ### P4-T5 — Real navigation shell (bottom navigation + route structure)
 
-**Status:** Not Started
+**Status:** Completed ✅
 **Depends On:** P1-T8, P1-T6
 
 **Objective:** Replace the minimal two-route `go_router` skeleton from P1-T8 with the real
@@ -2849,12 +2849,12 @@ representing the app's real information architecture for Phase 5+ to build into.
   only, following the same "intentionally minimal" principle as earlier placeholder screens.
 
 **Acceptance Criteria:**
-- [ ] All four destinations are reachable via bottom navigation, each preserving its own
+- [x] All four destinations are reachable via bottom navigation, each preserving its own
       navigation state independently if the user navigates deeper within one tab (verify current
       `go_router` nested-navigation/state-preservation behavior works as expected — don't assume).
-- [ ] The existing functional Home screen content (connect/disconnect buttons, live state/stats
+- [x] The existing functional Home screen content (connect/disconnect buttons, live state/stats
       display from P3-T15) is preserved and now lives correctly within this new shell.
-- [ ] `melos run analyze` and `melos run test` pass; manual navigation verified on device.
+- [x] `melos run analyze` and `melos run test` pass; manual navigation verified on device.
 
 **Notes for Agent:**
 - Verify current `go_router` documentation for nested/shell-route patterns rather than assuming a
@@ -2865,7 +2865,7 @@ representing the app's real information architecture for Phase 5+ to build into.
 
 ### P4-T6 — Minimal theming skeleton (light/dark, no visual design work)
 
-**Status:** Not Started
+**Status:** Completed ✅
 **Depends On:** P4-T2, P4-T5
 
 **Objective:** Establish a minimal `ThemeData`/`ColorScheme` setup supporting light and dark mode,
@@ -2882,12 +2882,12 @@ visual design later without re-plumbing this infrastructure.
   Phase 11.
 
 **Acceptance Criteria:**
-- [ ] User can switch between light/dark/system theme mode from the Settings placeholder screen,
+- [x] User can switch between light/dark/system theme mode from the Settings placeholder screen,
       and the change is immediately reflected app-wide.
-- [ ] The chosen mode persists across app restarts.
-- [ ] "System" mode correctly follows the OS-level light/dark setting (verified manually by
+- [x] The chosen mode persists across app restarts.
+- [x] "System" mode correctly follows the OS-level light/dark setting (verified manually by
       toggling the device's system theme).
-- [ ] `melos run analyze` and `melos run test` pass; manual verification documented.
+- [x] `melos run analyze` and `melos run test` pass; manual verification documented.
 
 **Notes for Agent:**
 - Do not spend any effort on visual polish, custom fonts, or branding here — if you find yourself
@@ -2898,7 +2898,7 @@ visual design later without re-plumbing this infrastructure.
 
 ### P4-T7 — App startup sequencing
 
-**Status:** Not Started
+**Status:** Completed ✅
 **Depends On:** P4-T1, P4-T2, P4-T6
 
 **Objective:** Define and implement an explicit, ordered app-startup sequence (initialize
@@ -2916,12 +2916,12 @@ Phase 11).
 - Excluded: any actual splash-screen visual design (Phase 11); any native-side startup changes.
 
 **Acceptance Criteria:**
-- [ ] Startup sequence is explicit and linear in code, documented with a comment listing the
+- [x] Startup sequence is explicit and linear in code, documented with a comment listing the
       exact order and why it matters (e.g. "preferences must load before theme is applied").
-- [ ] A simulated failure in any one startup step (e.g. forcing the preferences repository to
+- [x] A simulated failure in any one startup step (e.g. forcing the preferences repository to
       throw, in a test) results in graceful degradation (app still launches, using safe defaults,
       with an appropriate error surfaced via P4-T3's pattern if user-relevant) rather than a crash.
-- [ ] `melos run analyze` and `melos run test` pass; manual cold-start verified on device.
+- [x] `melos run analyze` and `melos run test` pass; manual cold-start verified on device.
 
 **Notes for Agent:**
 - Keep this focused on *sequencing correctness and resilience*, not on adding new startup-time
@@ -2932,7 +2932,7 @@ Phase 11).
 
 ### P4-T8 — Phase 4 closeout and Definition-of-Done pass
 
-**Status:** Not Started
+**Status:** Completed ✅
 **Depends On:** P4-T1 through P4-T7
 
 **Objective:** Perform a full closeout review of Phase 4: confirm every task above is genuinely
@@ -2947,15 +2947,15 @@ Phase 5 (Core MVP Features) is ready to begin.
 - Excluded: starting any Phase 5 work.
 
 **Acceptance Criteria:**
-- [ ] Fresh clone builds and passes all Melos scripts and native tests with zero manual
+- [x] Fresh clone builds and passes all Melos scripts and native tests with zero manual
       intervention beyond documented setup.
-- [ ] A full manual walkthrough of the app (as described above) is performed and documented with
+- [x] A full manual walkthrough of the app (as described above) is performed and documented with
       no crashes, no state-desync glitches, and no analyzer warnings.
-- [ ] CI is green on `master` (the repository's actual default branch).
-- [ ] `PROJECT_STATE.md` fully rewritten as a coherent current snapshot, explicitly noting Phase 5
+- [x] CI is green on `master` (the repository's actual default branch).
+- [x] `PROJECT_STATE.md` fully rewritten as a coherent current snapshot, explicitly noting Phase 5
       is next and will build real functionality (add server, server list, QR scan,
       connect/disconnect using real user-supplied configs) on top of this now-stable skeleton.
-- [ ] Closeout report follows the exact `DEFINITION_OF_DONE.md` template.
+- [x] Closeout report follows the exact `DEFINITION_OF_DONE.md` template.
 
 **Notes for Agent:**
 - This is a good moment to sanity-check that the hardcoded test `ServerProfile` from P3-T15 is

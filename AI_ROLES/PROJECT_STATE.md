@@ -20,30 +20,25 @@
 > task's final report). Every AI agent must read this file first, before
 > `ARCHITECTURE.md` or `ROADMAP.md`, to get immediate situational awareness.
 
-**Last updated**: 2026-10-30 — Phase 3 (The Engine Bridge) 100% complete and closed (P3-T16 Gate B chaos suite and P3-T17 DoD pass verified on SM-A205F). Phase 4 is now the active focus.
-**Updated by**: Coding agent, during P3-T17 closeout; full verification passing across Dart/Flutter (all packages via melos), host-JVM (89/89 across 6 suites), on-device instrumented tests (24/24 on SM-A205F across 5 suites), and on-device Flutter integration tests (3/3 Gate B chaos suites passing cleanly on SM-A205F).
+**Last updated**: 2026-10-30 — Phase 4 (State Management & App Skeleton) 100% complete and closed (P4-T8 DoD pass verified). Phase 5 (Core MVP Features) is now the active focus.
+**Updated by**: Coding agent, during P4-T8 closeout; full verification passing across all Dart/Flutter packages via Melos, on-device chaos tests, and unit/widget suites.
 
 ---
 
 ## 1. Current Phase
 
-**Phase 3 — Android VPN Engine: 100% COMPLETED & VERIFIED ON-DEVICE.**
-The single highest-risk technical milestone of the project — establishing a real, stable VPN connection through the complete Dart/Kotlin/Go stack without state desync — has been successfully achieved.
+**Phase 4 — State Management & Application Shell: 100% COMPLETED & VERIFIED.**
+The application-wide architecture and shell foundation has been fully delivered and verified:
 
-- **P3-T12 through P3-T15 (Bridge Architecture, Implementation & E2E Wiring):** Delivered Pigeon type-safe schema, remediated native state machine and lifecycle coordinator, implemented pure-Dart `AndroidVpnEngine`, and wired `apps/mobile` to establish real VLESS tunnels routing live internet traffic.
-- **P3-T16 (Full-Stack Gate B Chaos Suite):** Fully verified on physical Samsung Galaxy A20 (`SM-A205F`, Android 10, API 29) across three dedicated integration test suites (`gate_b_rapid_state_test.dart`, `gate_b_cold_start_test.dart`, `gate_b_revoke_test.dart`):
-  1. *Staggered UI Spam & Traffic Flow:* Staggered rapid connect/disconnect taps tested command rejection (`RejectedBusy`), proved Invariant 1 (command acceptance vs. final state), and verified active non-zero traffic throughput via `ThroughputReadout`.
-  2. *Cold-Start State Recovery:* Backgrounding and app cold restart with VPN actively running verified that the UI immediately syncs to `Connected` based purely on native truth.
-  3. *System Permission Revoke:* `ACTIVATE_VPN deny` handled gracefully, transitioning to `Connection error` without crashing the Dart VM or freezing the UI.
-- **P3-T17 (Phase 3 Closeout & Definition-of-Done Pass):** All Phase 3 tasks completed. Legacy-bug traceability list from P3-T10 re-confirmed valid at the full-stack level:
-  1. *Traffic stats always zero:* Eliminated. Invariant 2 failure-domain independence proven; live byte throughput rendered.
-  2. *Connected-but-no-traffic / False "Connected":* Eliminated. Invariant 1 proven under rapid interaction; UI strictly reflects engine state.
-  3. *VPN wouldn't stop reliably / Stuck teardown:* Eliminated. Clean teardown and descriptor release proven natively and via Flutter UI.
-  4. *Platform channel deadlocks:* Eliminated. Zero ANRs, zero hanging platform channels observed across all chaos runs.
-  5. *State desync on app death/restart:* Eliminated. Instant resynchronization to native state machine proven.
-  6. *Permission revocation crash:* Eliminated. Graceful mapping to `Error(PermissionDenied())` proven.
+- **P4-T1 (App Lifecycle Observer & State Resync):** Uses Flutter's modern `AppLifecycleListener` wired at app root to probe `VpnEngine.getStatus()` whenever the app returns to foreground (`AppLifecycleState.resumed`) or cold-boots, eliminating background state-desync.
+- **P4-T2 & P4-T6 (Non-Secret Local Persistence & Minimal Theming):** Implemented `AppPreferencesRepository` backed by `SharedPreferences` (strictly restricted to `None`/`Low`-sensitivity data per `SECURITY.md`) and wired `themeModeProvider` and `localeProvider` into the Settings screen.
+- **P4-T3 (Global Error & Feedback Presentation Pattern):** Implemented `AppFeedback` snackbar utility and `ErrorMapper` with localization for mapping `ConnectionErrorReason` and arbitrary errors to user-friendly messages, documented in `CODING_STANDARDS.md`.
+- **P4-T4 (Connectivity Change Awareness):** Implemented `networkStatusProvider` exposing an app-wide observability stream (`NetworkStatus.online` / `offline`) without reactive reconnect behavior.
+- **P4-T5 / P4-T16 (Robust StatefulShellRoute Navigation Shell):** Material 3 `NavigationBar` integrated with `go_router`'s `StatefulShellRoute.indexedStack` across Home and Settings branches, preserving independent navigation stacks and scroll states.
+- **P4-T7 (App Startup Sequencing & Graceful Degradation):** Encapsulated startup into explicit, deterministic 6-step sequence via `AppBootstrap.init()`, passing `ProviderContainer` to `UncontrolledProviderScope`. If storage fails, it degrades gracefully to `FakeAppPreferencesRepository` with safe defaults rather than crashing on launch.
+- **P4-T8 (Phase 4 Closeout & Definition-of-Done Pass):** All Phase 4 acceptance criteria verified, test scaffolding isolated with `// TEMP-ARTIFACT`, and all Melos checks green.
 
-**Current Focus:** **Phase 4 — State Management & Application Shell** (extending Riverpod architecture and navigation shell around real features).
+**Next Focus: Phase 5 — Core MVP Features** (Server List, Add Server, QR Scan, and Dynamic Profile Connections on top of this now-stable, lifecycle-hardened app skeleton).
 
 P3-T1 (toolchain research) is delivered and `TOOLCHAIN_VERSIONS.md` is pinned. P3-T2 scaffolded
 `native/android/` as a standalone, CLI-buildable Android Gradle project and **proven
