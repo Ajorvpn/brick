@@ -2932,7 +2932,7 @@ Phase 11).
 
 ### P4-T8 — Phase 4 closeout and Definition-of-Done pass
 
-**Status:** Ready for Human Review
+**Status:** Completed ✅
 **Depends On:** P4-T1 through P4-T7
 
 **Objective:** Perform a full closeout review of Phase 4: confirm every task above is genuinely
@@ -2976,7 +2976,7 @@ Phase 5 (Core MVP Features) is ready to begin.
 
 ### P5-T1 — Local Persistent Storage for Server Profiles
 
-**Status:** Not Started
+**Status:** Ready for Human Review
 **Depends On:** P1-T3, P4-T8
 
 **Objective:**
@@ -2997,11 +2997,11 @@ Implement a real, persistent storage backend for `ServerProfile` records (and an
   - UI for any of this — pure data-layer work.
 
 **Acceptance Criteria:**
-- [ ] Storage engine selection is documented with rationale (performance/reactivity/maintenance-burden trade-offs actually considered, not assumed).
-- [ ] Concrete repository implementation exists, fulfills the `core_domain` interface, and compiles with no type-checking errors.
-- [ ] CRUD operations are covered by automated tests using a real (not mocked) instance of the storage engine, run against temporary/in-memory storage locations so tests don't pollute developer machines.
-- [ ] Subscription metadata schema is defined and documented (even briefly) in code comments or a short markdown note.
-- [ ] Provider graph is updated so the rest of the app now reads/writes through the real repository, and the Phase 4 in-memory/hardcoded implementation is deleted (not left dangling as dead code).
+- [x] Storage engine selection is documented with rationale (performance/reactivity/maintenance-burden trade-offs actually considered, not assumed).
+- [x] Concrete repository implementation exists, fulfills the `core_domain` interface, and compiles with no type-checking errors.
+- [x] CRUD operations are covered by automated tests using a real (not mocked) instance of the storage engine, run against temporary/in-memory storage locations so tests don't pollute developer machines.
+- [x] Subscription metadata schema is defined and documented (even briefly) in code comments or a short markdown note.
+- [x] Provider graph is updated so the rest of the app now reads/writes through the real repository, and the Phase 4 in-memory/hardcoded implementation is deleted (not left dangling as dead code).
 - [ ] Report follows the `DEFINITION_OF_DONE.md` template.
 
 **Notes for Agent:**

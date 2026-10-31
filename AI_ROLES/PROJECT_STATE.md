@@ -20,33 +20,26 @@
 > task's final report). Every AI agent must read this file first, before
 > `ARCHITECTURE.md` or `ROADMAP.md`, to get immediate situational awareness.
 
-**Last updated**: 2026-10-31 — Phase 4 (State Management & App Skeleton) remediated and Ready for Human Review (P4-T1 through P4-T8). Phase 5 (Core MVP Features) roadmap extracted.
-**Updated by**: Coding agent, during P4-T5/T8 remediation pass; full 4-tab shell implemented and verified across Dart workspace via Melos, static analysis clean, and mobile unit/resilience tests passing.
+**Last updated**: 2026-10-31 — Phase 5 P5-T1 Remediation Pass completed (D1–D6 resolved: safe ArgumentError without URI leakage, deleted dead Phase 4 storage files, async loading and write locks, broken servers persistence, provider temp-file cleanup on dispose, and full 8-protocol test coverage). Status capped at Ready for Human Review.
+**Updated by**: Coding agent, during P5-T1 remediation pass; all 8 OutboundConfig protocols verified, concurrency locks added, dead code deleted, 676 tests passing monorepo-wide.
 
 ---
 
 ## 1. Current Phase
 
-**Phase 4 — State Management & App Skeleton: READY FOR HUMAN REVIEW.**
-The application foundation and state management architecture for the MVP are completely established and verified. Phase 4 provides the robust skeleton upon which all user-facing MVP features in Phase 5 will be built:
-
-- **P4-T1 (App Lifecycle Observer & Native State Resync):** Implemented modern `AppLifecycleListener` wired at app root with `connectionStateProvider`. Guarantees immediate reconciliation with authoritative native `VpnEngine.getStatus()` truth on cold start and on resume from background, eliminating state-desync bugs.
-- **P4-T2 (Non-Secret Local Persistence Skeleton):** Implemented `AppPreferencesRepository` backed by `shared_preferences` for `None`/`Low`-sensitivity preferences (`ThemeMode`, `Locale`). Enforces the strict `SECURITY.md` data classification boundary with loud architectural doc-comments preventing secret leaks. Includes in-memory `FakeAppPreferencesRepository` for fast hermetic testing.
-- **P4-T3 (Global Error & Feedback Presentation Pattern):** Delivered centralized `AppFeedback` utility (`showError`, `showSuccess`) utilizing `ScaffoldMessenger` and `SnackBar`, paired with exhaustive `ErrorMapper` to map domain errors and connection failure states to localized strings without leaking technical internals. Documented in `CODING_STANDARDS.md`.
-- **P4-T4 (Connectivity Change Awareness - Observability Only):** Implemented domain-isolated `NetworkStatus` enum (`online`, `offline`) and `networkStatusProvider` wrapping `connectivity_plus` (v6+ `List<ConnectivityResult>`). Strictly observation-only without premature reconnect hooks.
-- **P4-T5 / P4-T16 (Robust App Shell & Stateful Navigation):** Implemented genuine 4-branch `StatefulShellRoute.indexedStack` with Material 3 `NavigationBar` across all four MVP destinations: Home (`/`), Servers (`/servers` backed by `features/servers/presentation/screens/servers_screen.dart`), Logs (`/logs` backed by `features/logs/presentation/screens/logs_screen.dart` / bounded `LiveLogsScreen`), and Settings (`/settings` backed by `features/settings/presentation/screens/settings_screen.dart`). Each tab maintains its independent navigation stack and scroll state.
-- **P4-T6 / P4-T17 (Minimal Theming & Settings Foundation):** Wired persisted `themeModeProvider` (System, Light, Dark) into Material 3 `MaterialApp.router`. Settings screen provides theme/language toggles and bounded live diagnostic logs streaming.
-- **P4-T7 (App Startup Sequencing & Graceful Degradation):** Refactored `apps/mobile/lib/main.dart` into an explicit 6-step linear startup sequence via `AppBootstrap.init()`. Storage failures degrade gracefully to `FakeAppPreferencesRepository` with error logging rather than crashing on launch. Initialized `ProviderContainer` is passed to `UncontrolledProviderScope`.
-- **P4-T8 (Phase 4 Closeout & Definition-of-Done Pass):** Remediated 4-tab shell alignment per ROADMAP lines 2830–2865; purged rogue reports in `~/brick-reports/` keeping strictly `env.sh`; capped status at Ready for Human Review per SC2; full Melos format, analyze, and test pipeline green across workspace.
+**Phase 5 — Core MVP Features: IN PROGRESS (P5-T1 Remediation Complete — Ready for Human Review).**
+Phase 4 closeout (P4-T8) was approved and marked `Completed ✅`. The active task is **P5-T1 (Local Persistent Storage for Server Profiles & Subscription Metadata)**:
+- **P5-T1 (Local Persistent Storage for Server Profiles & Subscriptions):** Delivered `FileServerProfileRepository` implementing the expanded `ServerProfileRepository` contract via a versioned, atomic JSON-file store (`schema_version: 1`). Remediated defects D1–D6: safe `ArgumentError` without URI leakage (D1), deleted Phase 4 storage stubs `local_server_profile_repository.dart` and `server_profile_local_data_source.dart` (D2), re-entrant `_loadFuture` and sequential `_writeLock` (D3), persistence and restoration of `broken_servers` map (D4), `ref.onDispose` cleanup of temporary directories (D5), and comprehensive round-trip tests covering all 8 protocols (`vless`, `trojan`, `shadowsocks`, `wireguard`, `vmess`, `hysteria2`, `tuic`, `amneziawg`) (D6).
 
 **Current Architectural Baseline:**
 - Deterministic, resilient app bootstrap with safe in-memory fallback.
 - Stateful shell navigation across four primary MVP tabs (Home, Servers, Logs, Settings).
+- Persistent atomic JSON storage for ServerProfile and SubscriptionMetadata behind domain repository abstraction.
 - Full-stack native-truth state reconciliation on lifecycle resume.
 - Decoupled network connectivity observation.
-- Strict `SECURITY.md` classification boundaries preventing credentials in plaintext storage.
+- Strict `SECURITY.md` classification boundaries preventing credentials in plaintext preferences.
 
-**Next Focus:** **Phase 5 — Core MVP Features** (Building real functionality on top of this stable skeleton: Add Server via manual URI entry, clipboard paste, QR code scanning; dynamic Server List management; and active connect/disconnect using real user-supplied configurations).
+**Next Focus:** **P5-T2 (Add Server: Manual URI/Link Paste)**.
 
 ---
 
@@ -73,7 +66,8 @@ Status tokens below are quoted verbatim from the corresponding `**Status:**` lin
 - **P4-T5** (`ROADMAP.md:2832`): `Completed ✅` — Real navigation shell (`StatefulShellRoute.indexedStack` with Material 3 `NavigationBar` across Home, Servers, Logs, Settings).
 - **P4-T6** (`ROADMAP.md:2868`): `Completed ✅` — Minimal theming skeleton (Material 3 light/dark/system theme modes persisted via `appPreferencesRepositoryProvider`).
 - **P4-T7** (`ROADMAP.md:2901`): `Completed ✅` — App startup sequencing (`AppBootstrap.init()` with deterministic 6-step linear sequence and graceful degradation to `FakeAppPreferencesRepository` on storage failure, passing container to `UncontrolledProviderScope`).
-- **P4-T8** (`ROADMAP.md:2935`): `Ready for Human Review` — Phase 4 closeout and Definition-of-Done pass. Full verification passing monorepo-wide; Phase 5 ready to begin.
+- **P4-T8** (`ROADMAP.md:2935`): `Completed ✅` — Phase 4 closeout and Definition-of-Done pass. Full verification passing monorepo-wide; Phase 5 ready to begin.
+- **P5-T1** (`ROADMAP.md:2979`): `Ready for Human Review` — Local persistent storage for server profiles and subscription metadata via atomic JSON-file store.
 
 ---
 

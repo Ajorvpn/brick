@@ -8,50 +8,30 @@ part of 'server_profile_repository_provider.dart';
 
 // GENERATED CODE - DO NOT MODIFY BY HAND
 // ignore_for_file: type=lint, type=warning
-/// Binds the connection feature's [ServerProfileRepository] contract to its
-/// concrete implementation.
+/// Binds the application's [ServerProfileRepository] contract to its
+/// concrete persistent [FileServerProfileRepository] implementation.
 ///
-/// This binding lives in `core/`, not in `features/connection/`, on purpose.
-/// `features/README.md` Section 3 forbids `presentation/` from importing
-/// `data/`, and putting this provider inside the feature would force exactly
-/// that. `core/` is the app-wide composition root — the same role
-/// `vpnEngineProvider` already plays by binding `MockVpnEngine` — so it may
-/// name a concrete data class on the feature's behalf. The feature itself
-/// only ever sees the [ServerProfileRepository] interface.
+/// In Phase 5 (P5-T1), this replaces the Phase 4 in-memory/SharedPreferences
+/// scaffold with a versioned, atomic JSON-file persistent store.
 ///
-/// `Async` because `SharedPreferences.getInstance()` is asynchronous, and
-/// returning a `Future` here lets `AsyncNotifier.build()` await the value and
-/// inherit proper loading/error handling for free
-/// (`CODING_STANDARDS.md` Section 4).
-//
-// TODO(Ajorvpn): swap the `SharedPreferences` data source for a
-// `flutter_secure_storage`-backed one before Phase 11. Server config is
-// High-sensitivity data (SECURITY.md Section 3) and plain
-// `SharedPreferences` is not acceptable at release.
+/// In case of storage initialization failure (e.g., missing directory or
+/// permission issue), it logs the error and gracefully degrades to an
+/// in-memory fallback store in the system temp directory rather than
+/// crashing the application.
 
 @ProviderFor(serverProfileRepository)
 final serverProfileRepositoryProvider = ServerProfileRepositoryProvider._();
 
-/// Binds the connection feature's [ServerProfileRepository] contract to its
-/// concrete implementation.
+/// Binds the application's [ServerProfileRepository] contract to its
+/// concrete persistent [FileServerProfileRepository] implementation.
 ///
-/// This binding lives in `core/`, not in `features/connection/`, on purpose.
-/// `features/README.md` Section 3 forbids `presentation/` from importing
-/// `data/`, and putting this provider inside the feature would force exactly
-/// that. `core/` is the app-wide composition root — the same role
-/// `vpnEngineProvider` already plays by binding `MockVpnEngine` — so it may
-/// name a concrete data class on the feature's behalf. The feature itself
-/// only ever sees the [ServerProfileRepository] interface.
+/// In Phase 5 (P5-T1), this replaces the Phase 4 in-memory/SharedPreferences
+/// scaffold with a versioned, atomic JSON-file persistent store.
 ///
-/// `Async` because `SharedPreferences.getInstance()` is asynchronous, and
-/// returning a `Future` here lets `AsyncNotifier.build()` await the value and
-/// inherit proper loading/error handling for free
-/// (`CODING_STANDARDS.md` Section 4).
-//
-// TODO(Ajorvpn): swap the `SharedPreferences` data source for a
-// `flutter_secure_storage`-backed one before Phase 11. Server config is
-// High-sensitivity data (SECURITY.md Section 3) and plain
-// `SharedPreferences` is not acceptable at release.
+/// In case of storage initialization failure (e.g., missing directory or
+/// permission issue), it logs the error and gracefully degrades to an
+/// in-memory fallback store in the system temp directory rather than
+/// crashing the application.
 
 final class ServerProfileRepositoryProvider
     extends
@@ -63,26 +43,16 @@ final class ServerProfileRepositoryProvider
     with
         $FutureModifier<ServerProfileRepository>,
         $FutureProvider<ServerProfileRepository> {
-  /// Binds the connection feature's [ServerProfileRepository] contract to its
-  /// concrete implementation.
+  /// Binds the application's [ServerProfileRepository] contract to its
+  /// concrete persistent [FileServerProfileRepository] implementation.
   ///
-  /// This binding lives in `core/`, not in `features/connection/`, on purpose.
-  /// `features/README.md` Section 3 forbids `presentation/` from importing
-  /// `data/`, and putting this provider inside the feature would force exactly
-  /// that. `core/` is the app-wide composition root — the same role
-  /// `vpnEngineProvider` already plays by binding `MockVpnEngine` — so it may
-  /// name a concrete data class on the feature's behalf. The feature itself
-  /// only ever sees the [ServerProfileRepository] interface.
+  /// In Phase 5 (P5-T1), this replaces the Phase 4 in-memory/SharedPreferences
+  /// scaffold with a versioned, atomic JSON-file persistent store.
   ///
-  /// `Async` because `SharedPreferences.getInstance()` is asynchronous, and
-  /// returning a `Future` here lets `AsyncNotifier.build()` await the value and
-  /// inherit proper loading/error handling for free
-  /// (`CODING_STANDARDS.md` Section 4).
-  //
-  // TODO(Ajorvpn): swap the `SharedPreferences` data source for a
-  // `flutter_secure_storage`-backed one before Phase 11. Server config is
-  // High-sensitivity data (SECURITY.md Section 3) and plain
-  // `SharedPreferences` is not acceptable at release.
+  /// In case of storage initialization failure (e.g., missing directory or
+  /// permission issue), it logs the error and gracefully degrades to an
+  /// in-memory fallback store in the system temp directory rather than
+  /// crashing the application.
   ServerProfileRepositoryProvider._()
     : super(
         from: null,
@@ -110,4 +80,4 @@ final class ServerProfileRepositoryProvider
 }
 
 String _$serverProfileRepositoryHash() =>
-    r'afa7cb6bf158d742c99ba2a4a587993ba5b85a51';
+    r'713b1771b246f05ad7fd49bb4ab8c190f398f7be';

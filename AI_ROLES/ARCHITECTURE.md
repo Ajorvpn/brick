@@ -511,5 +511,66 @@ Phase 0	Riverpod over Bloc	Bloc, Provider, GetX	Lower boilerplate, strong compil
 Phase 0	GPL v3 license	MIT, Apache 2.0, AGPL v3	Prevents closed-source commercial forks while remaining less restrictive than AGPL for the eventual separate premium backend.
 Phase 0	No default telemetry/analytics	Firebase Analytics, Google Analytics	Product is a censorship-circumvention/privacy tool; any default data collection is a trust and security liability.
 Pre-Phase 3 (peer-review synthesis)	Desktop VPN core runs as a separate privileged daemon process + local IPC, not in-process Dart FFI	In-process dart:ffi directly wrapping sing-box as a c-shared library, called from the GUI process	Matches production precedent (WireGuard, Tailscale, Mullvad, and Hiddify's own hiddify-core all use a privileged daemon/service + unprivileged GUI + local IPC pattern); provides privilege separation (GUI never needs elevation), crash isolation (GUI and VPN-core failures are independent), and lifecycle independence (VPN can outlive GUI process, consistent with the Android foreground-service model already adopted). Status: Confirmed, pending Phase 12 detailed design and ecosystem re-verification — see Section 3.6.
+Phase 5 (P5-T1)	Local Persistent Storage for Server Profiles & Subscriptions via Versioned Atomic JSON-File Store	Isar, Hive (v2/v3), Drift/sqlite3, raw SharedPreferences	Zero third-party database or native binary dependencies; ServerProfile and sealed OutboundConfig hierarchy already serialize to canonical sing-box-compatible JSON with `schema_version: 1` (`toJson()`) and deserialize via `readSingBoxOutboundJson()`; in-memory cache gives sub-millisecond reads while atomic write-then-rename (`.tmp` -> final file) guarantees resilience against crashes/corruption; preserves a clean seam for Phase 8 encryption (encrypting sensitive fields or the serialized payload via Android Keystore / iOS Keychain).
 (This table is appended to, never rewritten, as new major decisions are
 made throughout the project.)
+
+### 7.1 P5-T1 Storage Architecture & Schema Specification
+
+#### Storage Engine Evaluation Summary
+- **Isar:** Abandoned/stalled maintenance on modern Dart 3, requires complex native binaries and heavy codegen.
+- **Hive:** Hive v2 is unmaintained; Hive v3/CE still stabilizing; lacks clean migration primitives.
+- **Drift / SQLite3:** Heavy relational engine with SQLite C-bindings and boilerplate; unjustified for VPN client datasets (<500 profiles, <500 KB payload) that are naturally document/tree-structured.
+- **Versioned Atomic JSON-File Store (Chosen):** Pure Dart logic using `dart:io` and `path_provider` application documents/support directory. Atomic write (`File.writeAsString` to temp file + `rename`) guarantees ACID-like durability against sudden process termination. In-memory cache ensures zero disk reads on normal UI queries.
+
+#### P1-T3 Serialization Resolution
+The P1-T3 design question is resolved in favor of the **fully-typed sealed class hierarchy** already in `core_domain`:
+- Storage serializes `ServerProfile` instances via `toJson()` which includes the polymorphic `OutboundConfig.toJson()` (carrying the `'type'` discriminator matching the protocol scheme).
+- Deserialization executes `readSingBoxOutboundJson` from `config_parser` to reconstitute the concrete `OutboundConfig` (`VlessOutbound`, `TrojanOutbound`, `ShadowsocksOutbound`, etc.).
+- A storage envelope wraps all records with a top-level `"schema_version": 1`.
+
+#### Top-Level Storage Envelope Schema
+```json
+{
+  "schema_version": 1,
+  "updated_at": "2026-10-31T02:00:00.000Z",
+  "server_profiles": [
+    {
+      "id": "uuid-or-id",
+      "name": "My Server",
+      "config": {
+        "type": "vless",
+        "server": "example.com",
+        "server_port": 443,
+        ...
+      },
+      "added_at": "2026-10-31T02:00:00.000Z",
+      "last_used_at": null,
+      "subscription_id": null,
+      "schema_version": 1
+    }
+  ],
+  "subscriptions": [
+    {
+      "id": "sub-id",
+      "url": "https://example.com/sub",
+      "name": "Primary Subscription",
+      "last_refreshed_at": "2026-10-31T02:00:00.000Z",
+      "associated_server_ids": ["uuid-or-id"],
+      "schema_version": 1
+    }
+  ],
+  "broken_servers": {
+    "broken-id": "Error reason message"
+  }
+}
+```
+
+#### SubscriptionMetadata Schema Specification
+- `id`: Non-empty `String` identifier (UUID or unique local id).
+- `url`: `String` (HTTP/HTTPS subscription endpoint). Sensitive; no `toString()` leak per `SECURITY.md`.
+- `name`: `String` user-facing display label.
+- `lastRefreshedAt`: Nullable `DateTime` timestamp of last successful update.
+- `associatedServerIds`: Immutable `List<String>` tracking which server profiles belong to this subscription for sync/cleanup.
+- `userInfo`: Optional `SubscriptionUserInfo` (upload, download, total, expire).
+- `schemaVersion`: Integer schema version (currently `1`).

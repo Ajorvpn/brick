@@ -9,7 +9,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobile/core/data/repositories/app_preferences_repository.dart';
 import 'package:mobile/core/logging/app_logger.dart';
 import 'package:mobile/core/providers/app_preferences_provider.dart';
+import 'package:mobile/core/providers/server_profile_repository_provider.dart';
 import 'package:mobile/core/providers/vpn_engine_provider.dart';
+import 'package:mobile/features/connection/domain/repositories/server_profile_repository.dart';
 import 'package:mobile/features/connection/presentation/providers/connection_state_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vpn_engine_android/vpn_engine_android.dart';
@@ -59,6 +61,7 @@ class AppBootstrap {
   ///    mounting into [UncontrolledProviderScope].
   static Future<ProviderContainer> init({
     Future<SharedPreferences> Function()? preferencesLoader,
+    ServerProfileRepository? serverProfileRepositoryOverride,
     VpnEngine? vpnEngineOverride,
     AppLogger? logger,
     bool ensureBinding = true,
@@ -116,6 +119,10 @@ class AppBootstrap {
     return ProviderContainer(
         overrides: [
           appPreferencesRepositoryProvider.overrideWithValue(preferencesRepo),
+          if (serverProfileRepositoryOverride != null)
+            serverProfileRepositoryProvider.overrideWith(
+              (ref) => serverProfileRepositoryOverride,
+            ),
           if (vpnEngineOverride != null)
             vpnEngineProvider.overrideWithValue(vpnEngineOverride)
           else if (Platform.isAndroid)

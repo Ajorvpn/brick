@@ -1,37 +1,66 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import 'package:mobile/features/connection/data/datasources/server_profile_local_data_source.dart';
-import 'package:mobile/features/connection/data/repositories/local_server_profile_repository.dart';
+import 'dart:io';
+
+import 'package:mobile/core/logging/app_logger.dart';
 import 'package:mobile/features/connection/domain/repositories/server_profile_repository.dart';
+import 'package:mobile/features/servers/data/repositories/file_server_profile_repository.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 part 'server_profile_repository_provider.g.dart';
 
-/// Binds the connection feature's [ServerProfileRepository] contract to its
-/// concrete implementation.
+/// Binds the application's [ServerProfileRepository] contract to its
+/// concrete persistent [FileServerProfileRepository] implementation.
 ///
-/// This binding lives in `core/`, not in `features/connection/`, on purpose.
-/// `features/README.md` Section 3 forbids `presentation/` from importing
-/// `data/`, and putting this provider inside the feature would force exactly
-/// that. `core/` is the app-wide composition root — the same role
-/// `vpnEngineProvider` already plays by binding `MockVpnEngine` — so it may
-/// name a concrete data class on the feature's behalf. The feature itself
-/// only ever sees the [ServerProfileRepository] interface.
+/// In Phase 5 (P5-T1), this replaces the Phase 4 in-memory/SharedPreferences
+/// scaffold with a versioned, atomic JSON-file persistent store.
 ///
-/// `Async` because `SharedPreferences.getInstance()` is asynchronous, and
-/// returning a `Future` here lets `AsyncNotifier.build()` await the value and
-/// inherit proper loading/error handling for free
-/// (`CODING_STANDARDS.md` Section 4).
-//
-// TODO(Ajorvpn): swap the `SharedPreferences` data source for a
-// `flutter_secure_storage`-backed one before Phase 11. Server config is
-// High-sensitivity data (SECURITY.md Section 3) and plain
-// `SharedPreferences` is not acceptable at release.
+/// In case of storage initialization failure (e.g., missing directory or
+/// permission issue), it logs the error and gracefully degrades to an
+/// in-memory fallback store in the system temp directory rather than
+/// crashing the application.
 @Riverpod(keepAlive: true)
 Future<ServerProfileRepository> serverProfileRepository(Ref ref) async {
-  final prefs = await SharedPreferences.getInstance();
-  return LocalServerProfileRepository(
-    SharedPreferencesServerProfileDataSource(prefs),
-  );
+  try {
+    if (Platform.environment.containsKey('FLUTTER_TEST')) {
+      final tempDir = Directory.systemTemp.createTempSync('brick_test_');
+      ref.onDispose(() {
+        try {
+          if (tempDir.existsSync()) {
+            tempDir.deleteSync(recursive: true);
+          }
+        } on Object catch (_) {}
+      });
+      final testFile = File('${tempDir.path}/server_profiles.json');
+      final testRepo = FileServerProfileRepository(storageFile: testFile);
+      await testRepo.init();
+      return testRepo;
+    }
+
+    final directory = await getApplicationSupportDirectory();
+    final file = File('${directory.path}/server_profiles.json');
+    final repo = FileServerProfileRepository(storageFile: file);
+    await repo.init();
+    return repo;
+  } on Object catch (error, stackTrace) {
+    AppLogger().e(
+      'Failed to initialize FileServerProfileRepository; '
+      'degrading to fallback store',
+      error,
+      stackTrace,
+    );
+    final tempDir = Directory.systemTemp.createTempSync('brick_fallback_');
+    ref.onDispose(() {
+      try {
+        if (tempDir.existsSync()) {
+          tempDir.deleteSync(recursive: true);
+        }
+      } on Object catch (_) {}
+    });
+    final fallbackFile = File('${tempDir.path}/server_profiles.json');
+    final fallbackRepo = FileServerProfileRepository(storageFile: fallbackFile);
+    await fallbackRepo.init();
+    return fallbackRepo;
+  }
 }

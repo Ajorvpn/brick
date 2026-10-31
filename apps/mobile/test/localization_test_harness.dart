@@ -15,9 +15,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/core/providers/server_profile_repository_provider.dart';
 import 'package:mobile/core/providers/vpn_engine_provider.dart';
-import 'package:mobile/features/connection/data/datasources/server_profile_local_data_source.dart';
-import 'package:mobile/features/connection/data/repositories/local_server_profile_repository.dart';
+import 'package:mobile/features/connection/domain/entities/saved_server.dart';
+import 'package:mobile/features/connection/domain/repositories/server_profile_repository.dart';
+import 'package:mobile/features/connection/domain/usecases/build_server_profile.dart';
+import 'package:mobile/features/servers/domain/entities/subscription_metadata.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:shared_utils/shared_utils.dart' show Err, Ok;
 
 /// Initializes easy_localization's device-locale storage for a test file.
 ///
@@ -234,40 +237,121 @@ const String validShadowsocksUri =
 const String validTrojanUri =
     'trojan://mypassword@example.com:443#Trojan%20Node';
 
-/// An in-memory [ServerProfileLocalDataSource] for tests.
+/// In-memory saved server record used by test doubles.
+class SavedServerRecord {
+  const SavedServerRecord({
+    required this.id,
+    required this.sourceUri,
+    required this.addedAt,
+  });
+
+  final String id;
+  final String sourceUri;
+  final DateTime addedAt;
+}
+
+/// An in-memory data source for tests.
 ///
-/// Used instead of `SharedPreferences` so persistence behaviour is asserted
-/// without a platform channel, and so a "restart" can be simulated by
-/// building a second repository over the same backing list.
-class FakeServerProfileDataSource implements ServerProfileLocalDataSource {
+/// Used so persistence behaviour is asserted without a platform channel, and so
+/// a "restart" can be simulated by building a second repository over the same
+/// backing list.
+class FakeServerProfileDataSource {
   /// Creates a data source seeded with [initial].
   FakeServerProfileDataSource([List<SavedServerRecord>? initial])
     : records = <SavedServerRecord>[...?initial];
 
   /// The records currently held. Survives a "restart" by being shared.
   final List<SavedServerRecord> records;
-
-  @override
-  List<SavedServerRecord> readAll() => List<SavedServerRecord>.of(records);
-
-  @override
-  Future<void> writeAll(List<SavedServerRecord> next) async {
-    records
-      ..clear()
-      ..addAll(next);
-  }
 }
 
-/// Builds a [LocalServerProfileRepository] over [dataSource].
-LocalServerProfileRepository buildRepository(
-  ServerProfileLocalDataSource dataSource,
-) => LocalServerProfileRepository(dataSource);
+/// A test-only in-memory [ServerProfileRepository] implementation for widget
+/// tests, allowing simulated app restarts via shared
+/// [FakeServerProfileDataSource].
+class FakeServerProfileRepository implements ServerProfileRepository {
+  FakeServerProfileRepository(this._dataSource);
+
+  final FakeServerProfileDataSource _dataSource;
+  static const BuildServerProfile _buildProfile = BuildServerProfile();
+
+  @override
+  Future<List<SavedServer>> loadServers() async {
+    final result = <SavedServer>[];
+    for (final record in _dataSource.records) {
+      final parsed = _buildProfile(
+        uri: record.sourceUri,
+        id: record.id,
+        addedAt: record.addedAt,
+      );
+      switch (parsed) {
+        case Ok(:final value):
+          result.add(SavedServerProfile(value));
+        case Err(:final error):
+          result.add(SavedServerBroken(id: record.id, reason: error.message));
+      }
+    }
+    return result;
+  }
+
+  @override
+  Future<void> addServer(String sourceUri) async {
+    final id = DateTime.now().microsecondsSinceEpoch.toRadixString(36);
+    _dataSource.records.add(
+      SavedServerRecord(id: id, sourceUri: sourceUri, addedAt: DateTime.now()),
+    );
+  }
+
+  @override
+  Future<void> removeServer(String id) async {
+    _dataSource.records.removeWhere((r) => r.id == id);
+  }
+
+  @override
+  Future<List<ServerProfile>> getAll() async {
+    final servers = await loadServers();
+    return servers
+        .whereType<SavedServerProfile>()
+        .map((s) => s.profile)
+        .toList(growable: false);
+  }
+
+  @override
+  Future<ServerProfile?> getById(String id) async {
+    final all = await getAll();
+    for (final p in all) {
+      if (p.id == id) return p;
+    }
+    return null;
+  }
+
+  @override
+  Future<void> save(ServerProfile profile) async {}
+
+  @override
+  Future<void> delete(String id) => removeServer(id);
+
+  @override
+  Future<List<SubscriptionMetadata>> getAllSubscriptions() async => const [];
+
+  @override
+  Future<SubscriptionMetadata?> getSubscriptionById(String id) async => null;
+
+  @override
+  Future<void> saveSubscription(SubscriptionMetadata subscription) async {}
+
+  @override
+  Future<void> deleteSubscription(String id) async {}
+}
+
+/// Builds a [ServerProfileRepository] over [dataSource].
+ServerProfileRepository buildRepository(
+  FakeServerProfileDataSource dataSource,
+) => FakeServerProfileRepository(dataSource);
 
 /// Riverpod overrides that resolve the saved-server list from [dataSource].
 ///
 /// Returns `List<Object>` (not `List<Override>`) because the harness cannot
 /// name `Override` — see [localizedApp].
-List<Object> repositoryOverride([ServerProfileLocalDataSource? dataSource]) => [
+List<Object> repositoryOverride([FakeServerProfileDataSource? dataSource]) => [
   serverProfileRepositoryProvider.overrideWith(
     (ref) async => buildRepository(dataSource ?? FakeServerProfileDataSource()),
   ),
@@ -279,7 +363,7 @@ Future<void> pumpConnectionApp(
   WidgetTester tester,
   Widget app, {
   required FakeVpnEngine engine,
-  ServerProfileLocalDataSource? dataSource,
+  FakeServerProfileDataSource? dataSource,
 }) async {
   await tester.pumpWidget(
     localizedApp(
@@ -302,7 +386,7 @@ Future<void> pumpConnectionMaterialApp(
   WidgetTester tester,
   Widget app, {
   required FakeVpnEngine engine,
-  ServerProfileLocalDataSource? dataSource,
+  FakeServerProfileDataSource? dataSource,
 }) async {
   await pumpConnectionApp(
     tester,
