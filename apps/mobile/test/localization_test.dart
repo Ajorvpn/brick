@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/features/connection/presentation/screens/add_server_screen.dart';
 import 'package:mobile/features/connection/presentation/screens/home_screen.dart';
+import 'package:mobile/features/connection/presentation/screens/qr_scan_screen.dart';
 import 'package:mobile/features/logs/presentation/screens/logs_screen.dart';
 import 'package:mobile/features/servers/presentation/screens/servers_screen.dart';
 import 'package:mobile/features/settings/presentation/screens/settings_screen.dart';
@@ -111,10 +112,97 @@ void main() {
       expect(find.widgetWithText(AppBar, 'Add Server'), findsOneWidget);
       expect(find.text('Server URI'), findsOneWidget);
       expect(find.text('Save'), findsOneWidget);
+      expect(find.text('Scan QR Code'), findsOneWidget);
       expect(find.text('add_server.title'), findsNothing);
       expect(find.text('add_server.uri_label'), findsNothing);
       expect(find.text('add_server.save'), findsNothing);
+      expect(find.text('add_server.scan_qr'), findsNothing);
     });
+
+    testWidgets('QrScanScreen renders translated strings in granted state', (
+      tester,
+    ) async {
+      await pumpLocalizedApp(
+        tester,
+        localizedMaterialApp(
+          home: QrScanScreen(
+            scannerBuilder: (context, onDetect) => const SizedBox(),
+          ),
+        ),
+        overrides: repositoryOverride(),
+      );
+
+      expect(find.widgetWithText(AppBar, 'Scan QR Code'), findsOneWidget);
+      expect(
+        find.text('Point your camera at a server QR code'),
+        findsOneWidget,
+      );
+      expect(find.text('Cancel'), findsOneWidget);
+      expect(find.text('qr_scan.title'), findsNothing);
+      expect(find.text('qr_scan.instruction'), findsNothing);
+      expect(find.text('qr_scan.cancel'), findsNothing);
+    });
+
+    testWidgets('QrScanScreen renders translated strings in denied state', (
+      tester,
+    ) async {
+      await pumpLocalizedApp(
+        tester,
+        localizedMaterialApp(
+          home: QrScanScreen(
+            scannerBuilder: (context, onDetect) => const SizedBox(),
+          ),
+        ),
+        overrides: repositoryOverride(
+          null,
+          const FakeCameraPermissionService(
+            status: CameraPermissionStatus.denied,
+          ),
+        ),
+      );
+
+      expect(
+        find.text('Camera permission is required to scan QR codes.'),
+        findsOneWidget,
+      );
+      expect(find.text('Grant Permission'), findsOneWidget);
+      expect(find.text('qr_scan.permission_denied'), findsNothing);
+      expect(find.text('qr_scan.request_permission'), findsNothing);
+    });
+
+    testWidgets(
+      'QrScanScreen renders translated strings in permanentlyDenied state',
+      (tester) async {
+        await pumpLocalizedApp(
+          tester,
+          localizedMaterialApp(
+            home: QrScanScreen(
+              scannerBuilder: (context, onDetect) => const SizedBox(),
+            ),
+          ),
+          overrides: repositoryOverride(
+            null,
+            const FakeCameraPermissionService(
+              status: CameraPermissionStatus.permanentlyDenied,
+            ),
+          ),
+        );
+
+        expect(
+          find.text(
+            'Camera permission is permanently denied. Please enable it in '
+            'system settings.',
+          ),
+          findsOneWidget,
+        );
+        expect(find.text('Open Settings'), findsOneWidget);
+        expect(
+          find.text('qr_scan.permission_permanently_denied'),
+          findsNothing,
+        );
+        expect(find.text('qr_scan.open_settings'), findsNothing);
+      },
+    );
 
     testWidgets("a different locale resolves to that locale's value", (
       tester,
@@ -144,10 +232,24 @@ void main() {
               'paste_hint': 'Server-Link einfügen',
               'paste_from_clipboard': 'Aus Zwischenablage einfügen',
               'save': 'Speichern',
+              'scan_qr': 'QR-Code scannen',
               'error_is_subscription':
                   'Dies ist eine Abonnement-URL. Bitte verwenden Sie den '
                   'Ablauf Abonnement hinzufügen.',
               'uri_required': 'Geben Sie zuerst eine Server-URI ein',
+            },
+            'qr_scan': {
+              'title': 'QR-Code scannen',
+              'instruction': 'Richten Sie die Kamera auf einen Server-QR-Code',
+              'cancel': 'Abbrechen',
+              'permission_denied':
+                  'Kameraberechtigung ist zum Scannen von QR-Codes '
+                  'erforderlich.',
+              'permission_permanently_denied':
+                  'Kameraberechtigung ist dauerhaft verweigert. Bitte in den '
+                  'Systemeinstellungen aktivieren.',
+              'request_permission': 'Berechtigung erteilen',
+              'open_settings': 'Einstellungen öffnen',
             },
           },
         },
@@ -185,8 +287,31 @@ void main() {
       expect(find.widgetWithText(AppBar, 'Server hinzufügen'), findsOneWidget);
       expect(find.text('Server-URI'), findsOneWidget);
       expect(find.text('Speichern'), findsOneWidget);
+      expect(find.text('QR-Code scannen'), findsOneWidget);
       expect(find.text('Add Server'), findsNothing);
       expect(find.text('add_server.title'), findsNothing);
+
+      // Verify QrScanScreen also renders German translations via .tr().
+      await pumpLocalizedApp(
+        tester,
+        localizedMaterialApp(
+          home: QrScanScreen(
+            scannerBuilder: (context, onDetect) => const SizedBox(),
+          ),
+        ),
+        assetLoader: loader,
+        overrides: repositoryOverride(),
+        startLocale: const Locale('de'),
+      );
+
+      expect(find.widgetWithText(AppBar, 'QR-Code scannen'), findsOneWidget);
+      expect(
+        find.text('Richten Sie die Kamera auf einen Server-QR-Code'),
+        findsOneWidget,
+      );
+      expect(find.text('Abbrechen'), findsOneWidget);
+      expect(find.text('Scan QR Code'), findsNothing);
+      expect(find.text('qr_scan.title'), findsNothing);
     });
   });
 }

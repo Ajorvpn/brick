@@ -65,8 +65,18 @@
     "paste_hint": "Paste server configuration link (vless://, vmess://, etc.)",
     "paste_from_clipboard": "Paste from clipboard",
     "save": "Save",
+    "scan_qr": "Scan QR Code",
     "error_is_subscription": "This is a subscription URL. Please use the Add Subscription flow.",
     "uri_required": "Enter a server URI first"
+  },
+  "qr_scan": {
+    "title": "Scan QR Code",
+    "instruction": "Point your camera at a server QR code",
+    "cancel": "Cancel",
+    "permission_denied": "Camera permission is required to scan QR codes.",
+    "permission_permanently_denied": "Camera permission is permanently denied. Please enable it in system settings.",
+    "request_permission": "Grant Permission",
+    "open_settings": "Open Settings"
   }
 }
 

@@ -18,6 +18,7 @@ import 'package:mobile/core/providers/vpn_engine_provider.dart';
 import 'package:mobile/features/connection/domain/entities/saved_server.dart';
 import 'package:mobile/features/connection/domain/repositories/server_profile_repository.dart';
 import 'package:mobile/features/connection/domain/usecases/build_server_profile.dart';
+import 'package:mobile/features/connection/presentation/providers/camera_permission_provider.dart';
 import 'package:mobile/features/servers/domain/entities/subscription_metadata.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shared_utils/shared_utils.dart' show Err, Ok;
@@ -276,28 +277,61 @@ class FakeServerProfileRepository implements ServerProfileRepository {
   Future<void> deleteSubscription(String id) async {}
 }
 
+/// A controllable [CameraPermissionService] fake for widget tests.
+class FakeCameraPermissionService implements CameraPermissionService {
+  /// Creates a fake camera permission service.
+  const FakeCameraPermissionService({
+    this.status = CameraPermissionStatus.granted,
+    this.openSettingsResult = true,
+  });
+
+  /// The status returned by [checkStatus] and [requestPermission].
+  final CameraPermissionStatus status;
+
+  /// The value returned by [openSettings].
+  final bool openSettingsResult;
+
+  @override
+  Future<CameraPermissionStatus> checkStatus() async => status;
+
+  @override
+  Future<CameraPermissionStatus> requestPermission() async => status;
+
+  @override
+  Future<bool> openSettings() async => openSettingsResult;
+}
+
 /// Builds a [ServerProfileRepository] over [dataSource].
 ServerProfileRepository buildRepository(
   FakeServerProfileDataSource dataSource,
 ) => FakeServerProfileRepository(dataSource);
 
-/// Riverpod overrides that resolve the saved-server list from [dataSource].
+/// Riverpod overrides that resolve the saved-server list from [dataSource]
+/// and camera permission from [cameraPermissionService].
 ///
 /// Returns `List<Object>` (not `List<Override>`) because the harness cannot
 /// name `Override` — see [localizedApp].
-List<Object> repositoryOverride([FakeServerProfileDataSource? dataSource]) => [
+List<Object> repositoryOverride([
+  FakeServerProfileDataSource? dataSource,
+  CameraPermissionService? cameraPermissionService,
+]) => [
   serverProfileRepositoryProvider.overrideWith(
     (ref) async => buildRepository(dataSource ?? FakeServerProfileDataSource()),
   ),
+  cameraPermissionServiceProvider.overrideWithValue(
+    cameraPermissionService ?? const FakeCameraPermissionService(),
+  ),
 ];
 
-/// Pumps [app] with a `ProviderScope` that overrides the engine and the
-/// profile repository, plus the real localization stack.
+/// Pumps [app] with a `ProviderScope` that overrides the engine, the
+/// profile repository, and camera permissions, plus the real localization.
 Future<void> pumpConnectionApp(
   WidgetTester tester,
   Widget app, {
   required FakeVpnEngine engine,
   FakeServerProfileDataSource? dataSource,
+  CameraPermissionService? cameraPermissionService,
+  QrScannerBuilder? scannerBuilder,
 }) async {
   await tester.pumpWidget(
     localizedApp(
@@ -307,6 +341,10 @@ Future<void> pumpConnectionApp(
           (ref) async =>
               buildRepository(dataSource ?? FakeServerProfileDataSource()),
         ),
+        cameraPermissionServiceProvider.overrideWithValue(
+          cameraPermissionService ?? const FakeCameraPermissionService(),
+        ),
+        qrScannerBuilderProvider.overrideWithValue(scannerBuilder),
       ],
       child: app,
     ),
@@ -321,12 +359,16 @@ Future<void> pumpConnectionMaterialApp(
   Widget app, {
   required FakeVpnEngine engine,
   FakeServerProfileDataSource? dataSource,
+  CameraPermissionService? cameraPermissionService,
+  QrScannerBuilder? scannerBuilder,
 }) async {
   await pumpConnectionApp(
     tester,
     localizedMaterialApp(home: app),
     engine: engine,
     dataSource: dataSource,
+    cameraPermissionService: cameraPermissionService,
+    scannerBuilder: scannerBuilder,
   );
 }
 
@@ -398,9 +440,21 @@ Map<String, dynamic> testEnglishTranslations() => const {
     'paste_hint': 'Paste server configuration link (vless://, vmess://, etc.)',
     'paste_from_clipboard': 'Paste from clipboard',
     'save': 'Save',
+    'scan_qr': 'Scan QR Code',
     'error_is_subscription':
         'This is a subscription URL. Please use the Add Subscription flow.',
     'uri_required': 'Enter a server URI first',
+  },
+  'qr_scan': {
+    'title': 'Scan QR Code',
+    'instruction': 'Point your camera at a server QR code',
+    'cancel': 'Cancel',
+    'permission_denied': 'Camera permission is required to scan QR codes.',
+    'permission_permanently_denied':
+        'Camera permission is permanently denied. Please enable it in '
+        'system settings.',
+    'request_permission': 'Grant Permission',
+    'open_settings': 'Open Settings',
   },
 };
 

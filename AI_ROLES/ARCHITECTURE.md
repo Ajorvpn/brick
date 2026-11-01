@@ -512,8 +512,22 @@ Phase 0	GPL v3 license	MIT, Apache 2.0, AGPL v3	Prevents closed-source commercia
 Phase 0	No default telemetry/analytics	Firebase Analytics, Google Analytics	Product is a censorship-circumvention/privacy tool; any default data collection is a trust and security liability.
 Pre-Phase 3 (peer-review synthesis)	Desktop VPN core runs as a separate privileged daemon process + local IPC, not in-process Dart FFI	In-process dart:ffi directly wrapping sing-box as a c-shared library, called from the GUI process	Matches production precedent (WireGuard, Tailscale, Mullvad, and Hiddify's own hiddify-core all use a privileged daemon/service + unprivileged GUI + local IPC pattern); provides privilege separation (GUI never needs elevation), crash isolation (GUI and VPN-core failures are independent), and lifecycle independence (VPN can outlive GUI process, consistent with the Android foreground-service model already adopted). Status: Confirmed, pending Phase 12 detailed design and ecosystem re-verification — see Section 3.6.
 Phase 5 (P5-T1)	Local Persistent Storage for Server Profiles & Subscriptions via Versioned Atomic JSON-File Store	Isar, Hive (v2/v3), Drift/sqlite3, raw SharedPreferences	Zero third-party database or native binary dependencies; ServerProfile and sealed OutboundConfig hierarchy already serialize to canonical sing-box-compatible JSON with `schema_version: 1` (`toJson()`) and deserialize via `readSingBoxOutboundJson()`; in-memory cache gives sub-millisecond reads while atomic write-then-rename (`.tmp` -> final file) guarantees resilience against crashes/corruption; preserves a clean seam for Phase 8 encryption (encrypting sensitive fields or the serialized payload via Android Keystore / iOS Keychain).
+Phase 5 (P5-T3)	QR Code Scanner & Permission Handling via mobile_scanner & permission_handler	qr_code_scanner, zxing2, camera + google_mlkit_barcode_scanning	mobile_scanner uses modern CameraX on Android and AVFoundation on iOS, actively maintained with Flutter 3 / Dart 3 workspace support; permission_handler provides precise 3-state runtime permission checks (granted, denied, permanentlyDenied) and direct system settings redirection; both wrapped behind testable abstractions for 100% hermetic widget tests.
 (This table is appended to, never rewritten, as new major decisions are
 made throughout the project.)
+
+### 7.2 P5-T3 QR Scanner & Camera Permission Architecture
+
+#### Package Evaluation Summary
+- **`qr_code_scanner`**: Deprecated, relies on obsolete Android Camera 1 / Camera 2 APIs without CameraX support, unmaintained since 2022.
+- **`zxing2` / manual camera pipelines**: Requires heavy manual frame piping and native image conversions; unnecessary maintenance surface.
+- **`mobile_scanner` (Chosen)**: Official standard for modern Flutter barcode/QR scanning. Utilizes Android CameraX and ML Kit, with active maintenance, zero legacy native bridge dependencies, and clean lifecycle support.
+- **`permission_handler` (Chosen)**: Standard cross-platform permission abstraction providing explicit distinction between `granted`, `denied` (retryable), and `permanentlyDenied` (requiring `openAppSettings()`).
+
+#### Architectural Principles & Concurrency Control
+1. **Single-Scan Debounce Lock**: Scanners produce continuous camera frames. On first valid non-empty scan event, a synchronous boolean flag (`_isProcessing = true`) engages before any async parsing or persistence to prevent duplicate server profile creation.
+2. **Hermetic Testability**: Hardware camera dependencies and permission checks are fully isolated behind `CameraPermissionService` (injected via Riverpod) and an optional `scannerBuilder` on `QrScanScreen`. Automated widget tests exercise all 3 permission states and simulated QR inputs in milliseconds without physical device camera access.
+3. **Zero Leaks**: Scanned raw payloads are treated as untrusted secrets per `SECURITY.md` and are never logged or reflected in UI error messages.
 
 ### 7.1 P5-T1 Storage Architecture & Schema Specification
 

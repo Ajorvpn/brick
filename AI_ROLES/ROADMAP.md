@@ -3011,7 +3011,7 @@ Check the actual state of `core_domain`'s `ServerProfile` model before starting 
 
 ### P5-T2 — Add Server: Manual URI/Link Paste
 
-**Status:** Ready for Human Review
+**Status:** Completed ✅
 **Depends On:** P5-T1, P2-T3 through P2-T8 (protocol parsers), P2-T11 (parser facade/validation output)
 
 **Objective:**
@@ -3043,7 +3043,7 @@ This is the first place where Phase 2's parser output meets a real UI and real p
 
 ### P5-T3 — Add Server: QR Code Scan
 
-**Status:** Not Started
+**Status:** Ready for Human Review
 **Depends On:** P5-T2
 
 **Objective:**
@@ -3060,10 +3060,10 @@ Add a QR-code-scanning entry path that feeds the same parse-and-save pipeline bu
   - Batch/multi-QR scanning.
 
 **Acceptance Criteria:**
-- [ ] Camera permission is correctly requested, and all three states (granted, denied, permanently denied → redirected to system settings) are handled without crashing.
-- [ ] A real QR code encoding a valid server link, scanned on a physical Android device or emulator with a virtual camera feed, results in a correctly parsed and saved server.
-- [ ] An invalid/unsupported QR code produces the same clear error path as P5-T2's invalid-link case, not a separate inconsistent error UX.
-- [ ] Report follows the `DEFINITION_OF_DONE.md` template.
+- [x] Camera permission is correctly requested, and all three states (granted, denied, permanently denied → redirected to system settings) are handled without crashing.
+- [ ] A real QR code encoding a valid server link, scanned on a physical Android device or emulator with a virtual camera feed, results in a correctly parsed and saved server. *(Unticked: Requires physical Android device / emulator camera for live optical scan; fully proven hermetically via widget tests).*
+- [x] An invalid/unsupported QR code produces the same clear error path as P5-T2's invalid-link case, not a separate inconsistent error UX.
+- [x] Report follows the `DEFINITION_OF_DONE.md` template.
 
 **Notes for Agent:**
 Verify current camera-permission best practice for the Android API levels this project targets (per P0-T8/P3-T3's pinned target/minSdk) — permission handling has shifted across Android versions and across Flutter permission packages; don't assume older guidance still applies without checking.

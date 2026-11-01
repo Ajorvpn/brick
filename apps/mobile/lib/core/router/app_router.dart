@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:mobile/core/presentation/widgets/app_shell.dart';
 import 'package:mobile/features/connection/presentation/screens/add_server_screen.dart';
 import 'package:mobile/features/connection/presentation/screens/home_screen.dart';
+import 'package:mobile/features/connection/presentation/screens/qr_scan_screen.dart';
 import 'package:mobile/features/logs/presentation/screens/logs_screen.dart';
 import 'package:mobile/features/servers/presentation/screens/servers_screen.dart';
 import 'package:mobile/features/settings/presentation/screens/live_logs_screen.dart';
@@ -87,6 +88,13 @@ GoRouter appRouter(Ref ref) {
         path: '/add-server',
         name: 'add-server',
         builder: (context, state) => const AddServerScreen(),
+        routes: [
+          GoRoute(
+            path: 'scan',
+            name: 'add-server-scan',
+            builder: (context, state) => const QrScanScreen(),
+          ),
+        ],
       ),
     ],
   );

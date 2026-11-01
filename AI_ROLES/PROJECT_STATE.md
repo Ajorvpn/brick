@@ -20,28 +20,30 @@
 > task's final report). Every AI agent must read this file first, before
 > `ARCHITECTURE.md` or `ROADMAP.md`, to get immediate situational awareness.
 
-**Last updated**: 2026-10-31 — Phase 5 P5-T2 Remediation Pass completed (D1–D5 resolved: 100% .tr() localization on AddServerScreen, typed Result<void, AddServerError> via ErrorMapper, complete subscription detection for URLs, multi-line, and base64 payloads, AddServerScreen localization tests in English and German, P5-T1 marked Completed, and P5-T2 status capped at Ready for Human Review).
-**Updated by**: Coding agent, during P5-T2 remediation; typed AddServerError implementing HasUserMessage, complete subscription rejection, and full test suite passing monorepo-wide.
+**Last updated**: 2026-11-02 — Phase 5 P5-T3 QR Code Scan & Camera Permission Flow (P5-T2 marked Completed ✅ per human approval 10/10; P5-T3 Remediation Pass D1–D4 complete — lazy scanner controller initialization, AppLifecycleListener onResume auto-recovery from system settings, removed unsafe state.extra casts, synchronized app_router.g.dart, visual processing state with scanner pause/resume, and expanded automated widget tests).
+**Updated by**: Coding agent, during P5-T3 remediation execution.
 
 ---
 
 ## 1. Current Phase
 
-**Phase 5 — Core MVP Features: IN PROGRESS (P5-T2 Remediation Complete — Ready for Human Review).**
-Phase 4 closeout (P4-T8) was approved and marked `Completed ✅`. P5-T1 was approved by human owner and marked `Completed ✅`. The active task is **P5-T2 (Add Server: Manual URI/Link Paste)**:
-- **P5-T1 (Local Persistent Storage for Server Profiles & Subscriptions):** `Completed ✅` — Delivered `FileServerProfileRepository` implementing the expanded `ServerProfileRepository` contract via a versioned, atomic JSON-file store (`schema_version: 1`). Remediated defects D1–D6: safe `ArgumentError` without URI leakage (D1), deleted Phase 4 storage stubs `local_server_profile_repository.dart` and `server_profile_local_data_source.dart` (D2), re-entrant `_loadFuture` and sequential `_writeLock` (D3), persistence and restoration of `broken_servers` map (D4), `ref.onDispose` cleanup of temporary directories (D5), and comprehensive round-trip tests covering all 8 protocols (`vless`, `trojan`, `shadowsocks`, `wireguard`, `vmess`, `hysteria2`, `tuic`, `amneziawg`) (D6).
-- **P5-T2 (Add Server: Manual URI/Link Paste):** `Ready for Human Review` — Implemented direct-save Add Server flow per human UX directive (preview dialog skipped). Valid URIs parsed via `config_parser.parseUri` and persisted directly via `ServerProfileRepository.addServer`, popping route on success. Returns typed `Result<void, AddServerError>` implementing `HasUserMessage` via `ErrorMapper.mapToUserMessage` per `CODING_STANDARDS.md` §5.1. Complete subscription detection rejects HTTP/HTTPS/SUB URLs, multi-line URI lists, and base64 subscription payloads with `'add_server.error_is_subscription'.tr()`. 100% `.tr()` localization across English and German (`'de'`). Safe error feedback via `AppFeedback.showError` and inline input decoration with zero credential leakage. Full test coverage in `add_server_screen_test.dart`, `connection_flow_test.dart`, and `localization_test.dart`.
+**Phase 5 — Core MVP Features: IN PROGRESS (P5-T3 Complete — Ready for Human Review).**
+Phase 4 closeout (P4-T8) was approved and marked `Completed ✅`. P5-T1 was approved by human owner and marked `Completed ✅`. P5-T2 was approved by human owner (10/10) and marked `Completed ✅`. The active task is **P5-T3 (Add Server: QR Code Scan)**:
+- **P5-T1 (Local Persistent Storage for Server Profiles & Subscriptions):** `Completed ✅` — Delivered `FileServerProfileRepository` implementing the expanded `ServerProfileRepository` contract via a versioned, atomic JSON-file store (`schema_version: 1`).
+- **P5-T2 (Add Server: Manual URI/Link Paste):** `Completed ✅` — Approved 10/10 by human owner. Direct-save manual link paste with config_parser integration, typed AddServerError domain hierarchy, comprehensive subscription payload detection, 100% .tr() localization, and hermetic test suites.
+- **P5-T3 (Add Server: QR Code Scan):** `Ready for Human Review` — Delivered QR code scanning via `mobile_scanner` and `permission_handler`. Added "Scan QR Code" entry button (`add_server_scan_qr_button`) to `AddServerScreen` navigating to `QrScanScreen` (`/add-server/scan`). Implemented complete Android camera permission request flow handling `granted`, `denied` (with localized retry action), and `permanentlyDenied` (with localized system settings redirect action). Resolved D1–D4 audit defects: lazy scanner controller initialization preventing race conditions with permission handler; AppLifecycleListener onResume auto-recovery when returning from system settings; removed unsafe router state.extra casts; synchronized app_router.g.dart; visual processing overlay with scanner pause/resume. Full test coverage in `qr_scan_screen_test.dart` (9 tests) and `localization_test.dart` (11 tests in English and German).
 
 **Current Architectural Baseline:**
 - Deterministic, resilient app bootstrap with safe in-memory fallback.
 - Stateful shell navigation across four primary MVP tabs (Home, Servers, Logs, Settings).
 - Persistent atomic JSON storage for ServerProfile and SubscriptionMetadata behind domain repository abstraction.
 - Direct-save manual server addition with config_parser integration and safe error feedback.
+- Camera permission handling and QR scanner preview with single-scan concurrency debounce lock.
 - Full-stack native-truth state reconciliation on lifecycle resume.
 - Decoupled network connectivity observation.
 - Strict `SECURITY.md` classification boundaries preventing credentials in plaintext preferences.
 
-**Next Focus:** **P5-T3 (Add Server: QR Code Scan)**.
+**Next Focus:** **P5-T4 (Add Server: Subscription URL Import)**.
 
 ---
 
@@ -70,7 +72,8 @@ Status tokens below are quoted verbatim from the corresponding `**Status:**` lin
 - **P4-T7** (`ROADMAP.md:2901`): `Completed ✅` — App startup sequencing (`AppBootstrap.init()` with deterministic 6-step linear sequence and graceful degradation to `FakeAppPreferencesRepository` on storage failure, passing container to `UncontrolledProviderScope`).
 - **P4-T8** (`ROADMAP.md:2935`): `Completed ✅` — Phase 4 closeout and Definition-of-Done pass. Full verification passing monorepo-wide; Phase 5 ready to begin.
 - **P5-T1** (`ROADMAP.md:2979`): `Completed ✅` — Local persistent storage for server profiles and subscription metadata via atomic JSON-file store.
-- **P5-T2** (`ROADMAP.md:3012`): `Ready for Human Review` — Add Server: Manual URI/Link Paste with direct save UX (no preview dialog), config_parser integration, subscription detection, and clipboard paste.
+- **P5-T2** (`ROADMAP.md:3012`): `Completed ✅` — Add Server: Manual URI/Link Paste with direct save UX (no preview dialog), config_parser integration, subscription detection, and clipboard paste. Approved 10/10 by human owner.
+- **P5-T3** (`ROADMAP.md:3044`): `Ready for Human Review` — Add Server: QR Code Scan with camera permission flow (granted, denied, permanentlyDenied), single-scan debounce lock, direct-save routing through AddServerController, full localization, and hermetic widget tests.
 
 ---
 

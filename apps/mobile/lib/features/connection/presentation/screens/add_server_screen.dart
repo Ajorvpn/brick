@@ -66,6 +66,14 @@ class _AddServerScreenState extends ConsumerState<AddServerScreen> {
     }
   }
 
+  /// Navigates to the QR code scan screen and pops if a server was added.
+  Future<void> _scanQr() async {
+    final added = await context.push<bool>('/add-server/scan');
+    if (added == true && mounted) {
+      context.pop();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final controllerState = ref.watch(addServerControllerProvider);
@@ -115,6 +123,13 @@ class _AddServerScreenState extends ConsumerState<AddServerScreen> {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : Text('add_server.save'.tr()),
+              ),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                key: const ValueKey<String>('add_server_scan_qr_button'),
+                icon: const Icon(Icons.qr_code_scanner),
+                label: Text('add_server.scan_qr'.tr()),
+                onPressed: isLoading ? null : _scanQr,
               ),
             ],
           ),
