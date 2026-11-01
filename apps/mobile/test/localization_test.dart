@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mobile/features/connection/presentation/screens/add_server_screen.dart';
 import 'package:mobile/features/connection/presentation/screens/home_screen.dart';
 import 'package:mobile/features/logs/presentation/screens/logs_screen.dart';
 import 'package:mobile/features/servers/presentation/screens/servers_screen.dart';
@@ -98,6 +99,23 @@ void main() {
       expect(find.text('settings.back_to_home'), findsNothing);
     });
 
+    testWidgets('AddServerScreen renders translated strings, not keys', (
+      tester,
+    ) async {
+      await pumpLocalizedApp(
+        tester,
+        localizedMaterialApp(home: const AddServerScreen()),
+        overrides: repositoryOverride(),
+      );
+
+      expect(find.widgetWithText(AppBar, 'Add Server'), findsOneWidget);
+      expect(find.text('Server URI'), findsOneWidget);
+      expect(find.text('Save'), findsOneWidget);
+      expect(find.text('add_server.title'), findsNothing);
+      expect(find.text('add_server.uri_label'), findsNothing);
+      expect(find.text('add_server.save'), findsNothing);
+    });
+
     testWidgets("a different locale resolves to that locale's value", (
       tester,
     ) async {
@@ -119,6 +137,17 @@ void main() {
               'no_servers': 'Noch keine Server gespeichert',
               'state_disconnected': 'Getrennt',
               'traffic_none': 'Keine Verkehrsdaten',
+            },
+            'add_server': {
+              'title': 'Server hinzufügen',
+              'uri_label': 'Server-URI',
+              'paste_hint': 'Server-Link einfügen',
+              'paste_from_clipboard': 'Aus Zwischenablage einfügen',
+              'save': 'Speichern',
+              'error_is_subscription':
+                  'Dies ist eine Abonnement-URL. Bitte verwenden Sie den '
+                  'Ablauf Abonnement hinzufügen.',
+              'uri_required': 'Geben Sie zuerst eine Server-URI ein',
             },
           },
         },
@@ -143,6 +172,21 @@ void main() {
       expect(find.text('Startseite'), findsNothing);
       // The raw lookup key must never surface in another locale either.
       expect(find.text('home.title'), findsNothing);
+
+      // Verify AddServerScreen also renders German translations via .tr().
+      await pumpLocalizedApp(
+        tester,
+        localizedMaterialApp(home: const AddServerScreen()),
+        assetLoader: loader,
+        overrides: repositoryOverride(),
+        startLocale: const Locale('de'),
+      );
+
+      expect(find.widgetWithText(AppBar, 'Server hinzufügen'), findsOneWidget);
+      expect(find.text('Server-URI'), findsOneWidget);
+      expect(find.text('Speichern'), findsOneWidget);
+      expect(find.text('Add Server'), findsNothing);
+      expect(find.text('add_server.title'), findsNothing);
     });
   });
 }

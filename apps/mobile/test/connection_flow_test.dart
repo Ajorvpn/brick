@@ -39,19 +39,55 @@ class _PermissionDeniedVpnEngine extends FakeVpnEngine {
 void main() {
   setUpAll(initTestLocalization);
 
-  group('Add Server — happy path', () {
-    testWidgets('parse shows protocol and host, save persists the entry', (
+  group('Add Server — direct save flow', () {
+    testWidgets(
+      'entering valid VLESS URI and saving persists and pops to Home',
+      (tester) async {
+        final engine = FakeVpnEngine();
+        final dataSource = FakeServerProfileDataSource();
+        addTearDown(engine.dispose);
+
+        // Pumped through the REAL app shell (`MyApp` + the production
+        // `GoRouter`), not a bare `MaterialApp`. Saving ends in
+        // `context.pop()`, which needs a genuine navigation stack.
+        await pumpConnectionApp(
+          tester,
+          const MyApp(),
+          engine: engine,
+          dataSource: dataSource,
+        );
+
+        // Nothing is persisted before Save.
+        expect(dataSource.records, isEmpty);
+
+        await tester.tap(find.text('Add Server'));
+        await tester.pumpAndSettle();
+        expect(find.byType(AddServerScreen), findsOneWidget);
+
+        await tester.enterText(
+          find.byKey(const ValueKey<String>('add_server_uri_field')),
+          validVlessUri,
+        );
+        await tester.tap(
+          find.byKey(const ValueKey<String>('add_server_save_button')),
+        );
+        await tester.pumpAndSettle();
+
+        expect(dataSource.records, hasLength(1));
+        expect(dataSource.records.single.sourceUri, validVlessUri);
+        // `context.pop()` unwound the real stack back to Home.
+        expect(find.byType(HomeScreen), findsOneWidget);
+        expect(find.byType(AddServerScreen), findsNothing);
+      },
+    );
+
+    testWidgets('entering valid Shadowsocks URI directly saves and persists', (
       tester,
     ) async {
       final engine = FakeVpnEngine();
       final dataSource = FakeServerProfileDataSource();
       addTearDown(engine.dispose);
 
-      // Pumped through the REAL app shell (`MyApp` + the production
-      // `GoRouter`), not a bare `MaterialApp`. Saving ends in `context.pop()`,
-      // which needs a genuine navigation stack; a screen pumped in isolation
-      // would throw instead of exercising the path production actually takes.
-      // The test therefore navigates Home -> Add Server the way a user would.
       await pumpConnectionApp(
         tester,
         const MyApp(),
@@ -59,55 +95,24 @@ void main() {
         dataSource: dataSource,
       );
 
-      // Nothing is persisted before Parse/Save.
-      expect(dataSource.records, isEmpty);
-
       await tester.tap(find.text('Add Server'));
       await tester.pumpAndSettle();
-      expect(find.byType(AddServerScreen), findsOneWidget);
 
-      await tester.enterText(find.byType(TextField), validVlessUri);
-      await tester.tap(find.text('Parse'));
-      await tester.pumpAndSettle();
-
-      // Protocol and endpoint only — the UUID must never be shown.
-      final preview = tester.widget<Text>(
-        find.byKey(const ValueKey<String>('add_server_parsed')),
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('add_server_uri_field')),
+        validShadowsocksUri,
       );
-      expect(preview.data, contains('vless'));
-      expect(preview.data, contains('example.com:443'));
-      expect(preview.data, isNot(contains('11111111-2222')));
-
-      // Parse alone must not write to storage.
-      expect(dataSource.records, isEmpty);
-
-      await tester.tap(find.text('Save'));
+      await tester.tap(
+        find.byKey(const ValueKey<String>('add_server_save_button')),
+      );
       await tester.pumpAndSettle();
 
       expect(dataSource.records, hasLength(1));
-      expect(dataSource.records.single.sourceUri, validVlessUri);
-      // `context.pop()` unwound the real stack back to Home.
+      expect(dataSource.records.single.sourceUri, validShadowsocksUri);
       expect(find.byType(HomeScreen), findsOneWidget);
-      expect(find.byType(AddServerScreen), findsNothing);
     });
 
-    testWidgets('Save is disabled until a parse has succeeded', (tester) async {
-      final engine = FakeVpnEngine();
-      addTearDown(engine.dispose);
-
-      await pumpConnectionMaterialApp(
-        tester,
-        const AddServerScreen(),
-        engine: engine,
-      );
-
-      final saveButton = tester.widget<OutlinedButton>(
-        find.widgetWithText(OutlinedButton, 'Save'),
-      );
-      expect(saveButton.onPressed, isNull);
-    });
-
-    testWidgets('an empty field reports a required-URI message', (
+    testWidgets('an empty field shows error snackbar and stays on screen', (
       tester,
     ) async {
       final engine = FakeVpnEngine();
@@ -119,64 +124,20 @@ void main() {
         engine: engine,
       );
 
-      await tester.tap(find.text('Parse'));
-      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey<String>('add_server_save_button')),
+      );
+      await tester.pump();
 
-      expect(find.text('Enter a server URI first'), findsOneWidget);
+      expect(find.byType(SnackBar), findsOneWidget);
+      expect(
+        find.widgetWithText(SnackBar, 'Enter a server URI first'),
+        findsOneWidget,
+      );
     });
 
-    testWidgets('a Shadowsocks URI parses and shows its protocol', (
-      tester,
-    ) async {
-      final engine = FakeVpnEngine();
-      final dataSource = FakeServerProfileDataSource();
-      addTearDown(engine.dispose);
-
-      await pumpConnectionMaterialApp(
-        tester,
-        const AddServerScreen(),
-        engine: engine,
-        dataSource: dataSource,
-      );
-
-      await tester.enterText(find.byType(TextField), validShadowsocksUri);
-      await tester.tap(find.text('Parse'));
-      await tester.pumpAndSettle();
-
-      final preview = tester.widget<Text>(
-        find.byKey(const ValueKey<String>('add_server_parsed')),
-      );
-      expect(preview.data, contains('ss'));
-      expect(preview.data, contains('example.com:8388'));
-    });
-
-    testWidgets('a Trojan URI parses and shows its protocol', (tester) async {
-      final engine = FakeVpnEngine();
-      addTearDown(engine.dispose);
-
-      await pumpConnectionMaterialApp(
-        tester,
-        const AddServerScreen(),
-        engine: engine,
-      );
-
-      await tester.enterText(find.byType(TextField), validTrojanUri);
-      await tester.tap(find.text('Parse'));
-      await tester.pumpAndSettle();
-
-      final preview = tester.widget<Text>(
-        find.byKey(const ValueKey<String>('add_server_parsed')),
-      );
-      expect(preview.data, contains('trojan'));
-      expect(preview.data, contains('example.com:443'));
-      // The Trojan password must not be echoed into the preview.
-      expect(preview.data, isNot(contains('mypassword')));
-    });
-  });
-
-  group('Add Server — parse error path', () {
     testWidgets(
-      'an invalid URI shows the error and never echoes a credential',
+      'an invalid URI shows error snackbar and never echoes credentials',
       (tester) async {
         final engine = FakeVpnEngine();
         final dataSource = FakeServerProfileDataSource();
@@ -193,52 +154,25 @@ void main() {
           dataSource: dataSource,
         );
 
-        await tester.enterText(find.byType(TextField), badUri);
-        await tester.tap(find.text('Parse'));
-        await tester.pumpAndSettle();
-
-        // A message is shown...
-        expect(
-          find.byKey(const ValueKey<String>('add_server_error')),
-          findsOneWidget,
+        await tester.enterText(
+          find.byKey(const ValueKey<String>('add_server_uri_field')),
+          badUri,
         );
-        // ...but it must not contain the credential.
+        await tester.tap(
+          find.byKey(const ValueKey<String>('add_server_save_button')),
+        );
+        await tester.pump();
+
+        expect(find.byType(SnackBar), findsOneWidget);
         expect(dataSource.records, isEmpty);
 
-        // The pasted secret legitimately stays in the TextField the user typed
-        // it into — that is the input, not a leak. What must NOT happen is the
-        // secret being echoed into any *rendered* `Text`.
-        //
-        // Do NOT re-add `find.textContaining(secret, skipOffstage: false)`
-        // as a leak check here: it also matches the `EditableText` backing the
-        // user's own input field, so it fails regardless of what the error
-        // message contains. The two `Text`-scoped assertions below are the
-        // real check — they cover every rendered string, including the keyed
-        // error text, without matching the field's own contents.
         for (final text in tester.widgetList<Text>(find.byType(Text))) {
           expect(text.data ?? '', isNot(contains(secret)));
         }
-        final errorText = tester.widget<Text>(
-          find.byKey(const ValueKey<String>('add_server_error')),
-        );
-        expect(errorText.data ?? '', isNot(contains(secret)));
-        // No parse preview was produced at all.
-        expect(
-          find.byKey(const ValueKey<String>('add_server_parsed')),
-          findsNothing,
-        );
-
-        // Save stays disabled, so an invalid URI can never be persisted.
-        final saveButton = tester.widget<OutlinedButton>(
-          find.widgetWithText(OutlinedButton, 'Save'),
-        );
-        expect(saveButton.onPressed, isNull);
       },
     );
 
-    testWidgets('an unsupported scheme errors instead of crashing', (
-      tester,
-    ) async {
+    testWidgets('an unsupported scheme shows error snackbar', (tester) async {
       final engine = FakeVpnEngine();
       addTearDown(engine.dispose);
 
@@ -248,16 +182,17 @@ void main() {
         engine: engine,
       );
 
-      await tester.enterText(find.byType(TextField), 'gopher://example.com:70');
-      await tester.tap(find.text('Parse'));
-      await tester.pumpAndSettle();
-
-      expect(
-        find.byKey(const ValueKey<String>('add_server_error')),
-        findsOneWidget,
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('add_server_uri_field')),
+        'gopher://example.com:70',
       );
-      // The tree is still alive and interactive.
-      expect(find.text('Save'), findsOneWidget);
+      await tester.tap(
+        find.byKey(const ValueKey<String>('add_server_save_button')),
+      );
+      await tester.pump();
+
+      expect(find.byType(SnackBar), findsOneWidget);
+      expect(find.byType(AddServerScreen), findsOneWidget);
     });
   });
 

@@ -58,5 +58,15 @@
     "platform_error": "VPN engine encountered an internal error",
     "unknown": "An unknown connection error occurred",
     "server_busy": "A VPN operation is already in progress"
+  },
+  "add_server": {
+    "title": "Add Server",
+    "uri_label": "Server URI",
+    "paste_hint": "Paste server configuration link (vless://, vmess://, etc.)",
+    "paste_from_clipboard": "Paste from clipboard",
+    "save": "Save",
+    "error_is_subscription": "This is a subscription URL. Please use the Add Subscription flow.",
+    "uri_required": "Enter a server URI first"
   }
 }
+

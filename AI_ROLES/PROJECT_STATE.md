@@ -20,26 +20,28 @@
 > task's final report). Every AI agent must read this file first, before
 > `ARCHITECTURE.md` or `ROADMAP.md`, to get immediate situational awareness.
 
-**Last updated**: 2026-10-31 — Phase 5 P5-T1 Remediation Pass completed (D1–D6 resolved: safe ArgumentError without URI leakage, deleted dead Phase 4 storage files, async loading and write locks, broken servers persistence, provider temp-file cleanup on dispose, and full 8-protocol test coverage). Status capped at Ready for Human Review.
-**Updated by**: Coding agent, during P5-T1 remediation pass; all 8 OutboundConfig protocols verified, concurrency locks added, dead code deleted, 676 tests passing monorepo-wide.
+**Last updated**: 2026-10-31 — Phase 5 P5-T2 Remediation Pass completed (D1–D5 resolved: 100% .tr() localization on AddServerScreen, typed Result<void, AddServerError> via ErrorMapper, complete subscription detection for URLs, multi-line, and base64 payloads, AddServerScreen localization tests in English and German, P5-T1 marked Completed, and P5-T2 status capped at Ready for Human Review).
+**Updated by**: Coding agent, during P5-T2 remediation; typed AddServerError implementing HasUserMessage, complete subscription rejection, and full test suite passing monorepo-wide.
 
 ---
 
 ## 1. Current Phase
 
-**Phase 5 — Core MVP Features: IN PROGRESS (P5-T1 Remediation Complete — Ready for Human Review).**
-Phase 4 closeout (P4-T8) was approved and marked `Completed ✅`. The active task is **P5-T1 (Local Persistent Storage for Server Profiles & Subscription Metadata)**:
-- **P5-T1 (Local Persistent Storage for Server Profiles & Subscriptions):** Delivered `FileServerProfileRepository` implementing the expanded `ServerProfileRepository` contract via a versioned, atomic JSON-file store (`schema_version: 1`). Remediated defects D1–D6: safe `ArgumentError` without URI leakage (D1), deleted Phase 4 storage stubs `local_server_profile_repository.dart` and `server_profile_local_data_source.dart` (D2), re-entrant `_loadFuture` and sequential `_writeLock` (D3), persistence and restoration of `broken_servers` map (D4), `ref.onDispose` cleanup of temporary directories (D5), and comprehensive round-trip tests covering all 8 protocols (`vless`, `trojan`, `shadowsocks`, `wireguard`, `vmess`, `hysteria2`, `tuic`, `amneziawg`) (D6).
+**Phase 5 — Core MVP Features: IN PROGRESS (P5-T2 Remediation Complete — Ready for Human Review).**
+Phase 4 closeout (P4-T8) was approved and marked `Completed ✅`. P5-T1 was approved by human owner and marked `Completed ✅`. The active task is **P5-T2 (Add Server: Manual URI/Link Paste)**:
+- **P5-T1 (Local Persistent Storage for Server Profiles & Subscriptions):** `Completed ✅` — Delivered `FileServerProfileRepository` implementing the expanded `ServerProfileRepository` contract via a versioned, atomic JSON-file store (`schema_version: 1`). Remediated defects D1–D6: safe `ArgumentError` without URI leakage (D1), deleted Phase 4 storage stubs `local_server_profile_repository.dart` and `server_profile_local_data_source.dart` (D2), re-entrant `_loadFuture` and sequential `_writeLock` (D3), persistence and restoration of `broken_servers` map (D4), `ref.onDispose` cleanup of temporary directories (D5), and comprehensive round-trip tests covering all 8 protocols (`vless`, `trojan`, `shadowsocks`, `wireguard`, `vmess`, `hysteria2`, `tuic`, `amneziawg`) (D6).
+- **P5-T2 (Add Server: Manual URI/Link Paste):** `Ready for Human Review` — Implemented direct-save Add Server flow per human UX directive (preview dialog skipped). Valid URIs parsed via `config_parser.parseUri` and persisted directly via `ServerProfileRepository.addServer`, popping route on success. Returns typed `Result<void, AddServerError>` implementing `HasUserMessage` via `ErrorMapper.mapToUserMessage` per `CODING_STANDARDS.md` §5.1. Complete subscription detection rejects HTTP/HTTPS/SUB URLs, multi-line URI lists, and base64 subscription payloads with `'add_server.error_is_subscription'.tr()`. 100% `.tr()` localization across English and German (`'de'`). Safe error feedback via `AppFeedback.showError` and inline input decoration with zero credential leakage. Full test coverage in `add_server_screen_test.dart`, `connection_flow_test.dart`, and `localization_test.dart`.
 
 **Current Architectural Baseline:**
 - Deterministic, resilient app bootstrap with safe in-memory fallback.
 - Stateful shell navigation across four primary MVP tabs (Home, Servers, Logs, Settings).
 - Persistent atomic JSON storage for ServerProfile and SubscriptionMetadata behind domain repository abstraction.
+- Direct-save manual server addition with config_parser integration and safe error feedback.
 - Full-stack native-truth state reconciliation on lifecycle resume.
 - Decoupled network connectivity observation.
 - Strict `SECURITY.md` classification boundaries preventing credentials in plaintext preferences.
 
-**Next Focus:** **P5-T2 (Add Server: Manual URI/Link Paste)**.
+**Next Focus:** **P5-T3 (Add Server: QR Code Scan)**.
 
 ---
 
@@ -67,7 +69,8 @@ Status tokens below are quoted verbatim from the corresponding `**Status:**` lin
 - **P4-T6** (`ROADMAP.md:2868`): `Completed ✅` — Minimal theming skeleton (Material 3 light/dark/system theme modes persisted via `appPreferencesRepositoryProvider`).
 - **P4-T7** (`ROADMAP.md:2901`): `Completed ✅` — App startup sequencing (`AppBootstrap.init()` with deterministic 6-step linear sequence and graceful degradation to `FakeAppPreferencesRepository` on storage failure, passing container to `UncontrolledProviderScope`).
 - **P4-T8** (`ROADMAP.md:2935`): `Completed ✅` — Phase 4 closeout and Definition-of-Done pass. Full verification passing monorepo-wide; Phase 5 ready to begin.
-- **P5-T1** (`ROADMAP.md:2979`): `Ready for Human Review` — Local persistent storage for server profiles and subscription metadata via atomic JSON-file store.
+- **P5-T1** (`ROADMAP.md:2979`): `Completed ✅` — Local persistent storage for server profiles and subscription metadata via atomic JSON-file store.
+- **P5-T2** (`ROADMAP.md:3012`): `Ready for Human Review` — Add Server: Manual URI/Link Paste with direct save UX (no preview dialog), config_parser integration, subscription detection, and clipboard paste.
 
 ---
 

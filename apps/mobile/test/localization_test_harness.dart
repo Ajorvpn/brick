@@ -52,73 +52,7 @@ Future<void> initTestLocalization() async {
 /// so this cannot silently drift from the real asset.
 class TestAssetLoader extends AssetLoader {
   TestAssetLoader({Map<String, Map<String, dynamic>>? translations})
-    : _translations =
-          translations ??
-          const {
-            'en': {
-              'app_title': 'Brick VPN',
-              'navigation': {
-                'home': 'Home',
-                'servers': 'Servers',
-                'logs': 'Logs',
-                'settings': 'Settings',
-              },
-              'servers': {
-                'title': 'Servers',
-                'placeholder': 'Server list will appear here',
-              },
-              'home': {
-                'title': 'Brick VPN',
-                'label': 'Home',
-                'go_to_settings': 'Go to Settings',
-              },
-              'settings': {
-                'title': 'Settings',
-                'label': 'Settings',
-                'back_to_home': 'Back to Home',
-                'language': 'Language',
-                'theme': 'Theme',
-                'theme_system': 'System',
-                'theme_light': 'Light',
-                'theme_dark': 'Dark',
-                'lang_en': 'English',
-                'lang_de': 'Deutsch',
-                'live_logs': 'Live Logs',
-                'live_logs_subtitle': 'Real-time diagnostic logs',
-                'no_logs': 'No log entries yet',
-              },
-              'connection': {
-                'add_server': 'Add Server',
-                'parse': 'Parse',
-                'save': 'Save',
-                'uri_label': 'Server URI',
-                'uri_required': 'Enter a server URI first',
-                'no_servers': 'No saved servers yet',
-                'load_failed': 'Could not load saved servers',
-                'connect': 'Connect',
-                'disconnect': 'Disconnect',
-                'remove': 'Remove',
-                'broken_title': 'Unreadable server',
-                'state_disconnected': 'Disconnected',
-                'state_connecting': 'Connecting',
-                'state_connected': 'Connected',
-                'state_disconnecting': 'Disconnecting',
-                'state_error': 'Connection error',
-                'traffic': '{tx} up / {rx} down',
-                'traffic_none': 'No traffic data',
-                'traffic_unavailable': 'Traffic data unavailable',
-              },
-              'error': {
-                'generic': 'An unexpected error occurred',
-                'vpn_permission_denied':
-                    'VPN permission was denied by the system',
-                'invalid_config': 'The server configuration is invalid',
-                'platform_error': 'VPN engine encountered an internal error',
-                'unknown': 'An unknown connection error occurred',
-                'server_busy': 'A VPN operation is already in progress',
-              },
-            },
-          };
+    : _translations = translations ?? {'en': testEnglishTranslations()};
 
   final Map<String, Map<String, dynamic>> _translations;
 
@@ -457,6 +391,16 @@ Map<String, dynamic> testEnglishTranslations() => const {
     'platform_error': 'VPN engine encountered an internal error',
     'unknown': 'An unknown connection error occurred',
     'server_busy': 'A VPN operation is already in progress',
+  },
+  'add_server': {
+    'title': 'Add Server',
+    'uri_label': 'Server URI',
+    'paste_hint': 'Paste server configuration link (vless://, vmess://, etc.)',
+    'paste_from_clipboard': 'Paste from clipboard',
+    'save': 'Save',
+    'error_is_subscription':
+        'This is a subscription URL. Please use the Add Subscription flow.',
+    'uri_required': 'Enter a server URI first',
   },
 };
 

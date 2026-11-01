@@ -2976,7 +2976,7 @@ Phase 5 (Core MVP Features) is ready to begin.
 
 ### P5-T1 — Local Persistent Storage for Server Profiles
 
-**Status:** Ready for Human Review
+**Status:** Completed ✅
 **Depends On:** P1-T3, P4-T8
 
 **Objective:**
@@ -3011,7 +3011,7 @@ Check the actual state of `core_domain`'s `ServerProfile` model before starting 
 
 ### P5-T2 — Add Server: Manual URI/Link Paste
 
-**Status:** Not Started
+**Status:** Ready for Human Review
 **Depends On:** P5-T1, P2-T3 through P2-T8 (protocol parsers), P2-T11 (parser facade/validation output)
 
 **Objective:**
@@ -3030,11 +3030,11 @@ Implement the first real "Add Server" entry path: a screen/flow where the user p
   - Editing an existing server (P5-T6).
 
 **Acceptance Criteria:**
-- [ ] User can paste a valid link for at least one protocol supported by Phase 2 and see it appear, persisted, in the repository.
-- [ ] Invalid/malformed input produces a clear, specific, non-crashing error message surfaced from the parser's actual failure reason.
-- [ ] A subscription-URL-shaped input is detected and rejected with guidance rather than mis-handled.
-- [ ] Manual test performed and described for at least two different protocol types actually implemented in Phase 2.
-- [ ] Report follows the `DEFINITION_OF_DONE.md` template.
+- [x] User can paste a valid link for at least one protocol supported by Phase 2 and see it appear, persisted, in the repository.
+- [x] Invalid/malformed input produces a clear, specific, non-crashing error message surfaced from the parser's actual failure reason.
+- [x] A subscription-URL-shaped input is detected and rejected with guidance rather than mis-handled.
+- [x] Manual test performed and described for at least two different protocol types actually implemented in Phase 2.
+- [x] Report follows the `DEFINITION_OF_DONE.md` template.
 
 **Notes for Agent:**
 This is the first place where Phase 2's parser output meets a real UI and real persistence — treat any mismatch you discover between what the parser produces and what `core_domain`/the repository expects as a signal to stop and reconcile, not to paper over with ad-hoc conversion glue scattered through UI code. All input here is untrusted (pasted by the user, possibly copied from an untrusted source) — treat it per `SECURITY.md` handling expectations already established in Phase 2, even though this task itself is UI-layer.
