@@ -45,6 +45,23 @@ void main() {
       await repo.setLocale(null);
       expect(repo.getLocale(), isNull);
     });
+
+    test('round-trips active server ID updates', () async {
+      final repo = FakeAppPreferencesRepository();
+      expect(repo.getActiveServerId(), isNull);
+
+      await repo.setActiveServerId('srv-123');
+      expect(repo.getActiveServerId(), equals('srv-123'));
+
+      await repo.setActiveServerId('srv-456');
+      expect(repo.getActiveServerId(), equals('srv-456'));
+
+      await repo.setActiveServerId(null);
+      expect(repo.getActiveServerId(), isNull);
+
+      await repo.setActiveServerId('');
+      expect(repo.getActiveServerId(), isNull);
+    });
   });
 
   group('SharedPreferencesAppPreferencesRepository', () {
@@ -90,6 +107,36 @@ void main() {
       expect(repo2.getLocale(), isNull);
       expect(
         prefs.containsKey(SharedPreferencesAppPreferencesRepository.keyLocale),
+        isFalse,
+      );
+    });
+
+    test('persists active server ID and survives repository restart', () async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      final prefs = await SharedPreferences.getInstance();
+      final repo1 = SharedPreferencesAppPreferencesRepository(prefs);
+
+      expect(repo1.getActiveServerId(), isNull);
+
+      await repo1.setActiveServerId('srv-999');
+      expect(repo1.getActiveServerId(), equals('srv-999'));
+      expect(
+        prefs.getString(
+          SharedPreferencesAppPreferencesRepository.keyActiveServerId,
+        ),
+        equals('srv-999'),
+      );
+
+      // Simulate app restart
+      final repo2 = SharedPreferencesAppPreferencesRepository(prefs);
+      expect(repo2.getActiveServerId(), equals('srv-999'));
+
+      await repo2.setActiveServerId(null);
+      expect(repo2.getActiveServerId(), isNull);
+      expect(
+        prefs.containsKey(
+          SharedPreferencesAppPreferencesRepository.keyActiveServerId,
+        ),
         isFalse,
       );
     });

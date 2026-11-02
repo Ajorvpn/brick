@@ -3133,7 +3133,7 @@ This is the task that finally retires the Phase 3 test scaffolding from the runt
 
 ### P5-T6 — Server Management: Edit, Delete, Duplicate, Refresh Subscription
 
-**Status:** Ready for Human Review
+**Status:** Completed ✅
 **Depends On:** P5-T5, P5-T4
 
 **Objective:**
@@ -3163,7 +3163,7 @@ The diffing policy for subscription refresh is an explicit open design point —
 
 ### P5-T7 — Active Server Selection
 
-**Status:** Not Started
+**Status:** Ready for Human Review
 **Depends On:** P5-T5
 
 **Objective:**
@@ -3179,10 +3179,10 @@ Introduce the concept of a single "active" (currently selected, about-to-connect
   - Any notion of multiple simultaneously "favorited" servers, tags, or grouping beyond the single active-selection concept — explicitly out of scope for MVP.
 
 **Acceptance Criteria:**
-- [ ] User can select an active server from the list, with clear visual indication.
-- [ ] Active selection persists across a full app restart.
-- [ ] Deleting the active server results in a clean "no active server" state, verified by an explicit test/manual check, with no crash or stale reference.
-- [ ] Report follows the `DEFINITION_OF_DONE.md` template.
+- [x] User can select an active server from the list, with clear visual indication.
+- [x] Active selection persists across a full app restart.
+- [x] Deleting the active server results in a clean "no active server" state, verified by an explicit test/manual check, with no crash or stale reference.
+- [x] Report follows the `DEFINITION_OF_DONE.md` template.
 
 **Notes for Agent:**
 Keep this deliberately simple — a single nullable "active server ID" concept is sufficient for MVP. Resist the temptation to build a more general selection/favorites system now; that can be revisited post-MVP if actually needed.

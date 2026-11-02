@@ -7,6 +7,7 @@ import 'package:config_parser/config_parser.dart';
 import 'package:core_domain/core_domain.dart' show ServerProfile;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mobile/core/data/repositories/app_preferences_repository.dart';
 import 'package:mobile/features/connection/presentation/screens/add_server_screen.dart';
 import 'package:mobile/features/connection/presentation/screens/add_subscription_screen.dart';
 import 'package:mobile/features/servers/presentation/screens/servers_screen.dart';
@@ -1022,6 +1023,270 @@ void main() {
         expect(find.textContaining('FileSystemException'), findsNothing);
         expect(find.textContaining('secret-storage-path'), findsNothing);
         expect(find.textContaining('Disk write error'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'default auto-fallback selection: marks first valid server as selected',
+      (tester) async {
+        final engine = FakeVpnEngine();
+        final dataSource = FakeServerProfileDataSource();
+        addTearDown(engine.dispose);
+
+        await pumpConnectionApp(
+          tester,
+          const MyApp(),
+          engine: engine,
+          dataSource: dataSource,
+        );
+
+        // Add server 1
+        await tester.tap(
+          find.byKey(const ValueKey<String>('home_add_server_button')),
+        );
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byKey(const ValueKey<String>('add_server_uri_field')),
+          _standaloneVless,
+        );
+        await tester.tap(
+          find.byKey(const ValueKey<String>('add_server_save_button')),
+        );
+        await tester.pumpAndSettle();
+
+        // Switch to Servers screen
+        await tester.tap(find.byIcon(Icons.dns));
+        await tester.pumpAndSettle();
+
+        final srv1Id = dataSource.records.first.id;
+
+        // Duplicate srv1 to create srv2
+        await tester.tap(
+          find.byKey(ValueKey<String>('server_duplicate_$srv1Id')),
+        );
+        await tester.pumpAndSettle();
+
+        final srv2Id = dataSource.savedProfiles.first.id;
+
+        // Without explicit selection, first server is auto-selected
+        expect(
+          find.byKey(ValueKey<String>('server_selected_$srv1Id')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(ValueKey<String>('server_selected_$srv2Id')),
+          findsNothing,
+        );
+      },
+    );
+
+    testWidgets(
+      'tapping a server tile changes active selection and persists to prefs',
+      (tester) async {
+        final engine = FakeVpnEngine();
+        final dataSource = FakeServerProfileDataSource();
+        final fakePrefs = FakeAppPreferencesRepository();
+        addTearDown(engine.dispose);
+
+        await pumpConnectionApp(
+          tester,
+          const MyApp(),
+          engine: engine,
+          dataSource: dataSource,
+          preferencesRepository: fakePrefs,
+        );
+
+        // Add server 1
+        await tester.tap(
+          find.byKey(const ValueKey<String>('home_add_server_button')),
+        );
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byKey(const ValueKey<String>('add_server_uri_field')),
+          _standaloneVless,
+        );
+        await tester.tap(
+          find.byKey(const ValueKey<String>('add_server_save_button')),
+        );
+        await tester.pumpAndSettle();
+
+        // Switch to Servers screen
+        await tester.tap(find.byIcon(Icons.dns));
+        await tester.pumpAndSettle();
+
+        final srv1Id = dataSource.records.first.id;
+
+        // Duplicate to create server 2
+        await tester.tap(
+          find.byKey(ValueKey<String>('server_duplicate_$srv1Id')),
+        );
+        await tester.pumpAndSettle();
+
+        final srv2Id = dataSource.savedProfiles.first.id;
+
+        // Tap server 2 tile to select it
+        await tester.tap(find.byKey(ValueKey<String>('server_tile_$srv2Id')));
+        await tester.pumpAndSettle();
+
+        // Selection moves to server 2
+        expect(
+          find.byKey(ValueKey<String>('server_selected_$srv2Id')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(ValueKey<String>('server_selected_$srv1Id')),
+          findsNothing,
+        );
+        // Persisted in preferences
+        expect(fakePrefs.getActiveServerId(), equals(srv2Id));
+      },
+    );
+
+    testWidgets(
+      'deleting active server falls back to remaining valid server cleanly',
+      (tester) async {
+        final engine = FakeVpnEngine();
+        final dataSource = FakeServerProfileDataSource();
+        final fakePrefs = FakeAppPreferencesRepository();
+        addTearDown(engine.dispose);
+
+        await pumpConnectionApp(
+          tester,
+          const MyApp(),
+          engine: engine,
+          dataSource: dataSource,
+          preferencesRepository: fakePrefs,
+        );
+
+        // Add server 1
+        await tester.tap(
+          find.byKey(const ValueKey<String>('home_add_server_button')),
+        );
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byKey(const ValueKey<String>('add_server_uri_field')),
+          _standaloneVless,
+        );
+        await tester.tap(
+          find.byKey(const ValueKey<String>('add_server_save_button')),
+        );
+        await tester.pumpAndSettle();
+
+        // Switch to Servers screen
+        await tester.tap(find.byIcon(Icons.dns));
+        await tester.pumpAndSettle();
+
+        final srv1Id = dataSource.records.first.id;
+
+        // Duplicate to create server 2
+        await tester.tap(
+          find.byKey(ValueKey<String>('server_duplicate_$srv1Id')),
+        );
+        await tester.pumpAndSettle();
+
+        final srv2Id = dataSource.savedProfiles.first.id;
+
+        // Select server 2
+        await tester.tap(find.byKey(ValueKey<String>('server_tile_$srv2Id')));
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(ValueKey<String>('server_selected_$srv2Id')),
+          findsOneWidget,
+        );
+
+        // Delete active server 2
+        await tester.tap(find.byKey(ValueKey<String>('server_delete_$srv2Id')));
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.byKey(const ValueKey<String>('confirm_delete_confirm')),
+        );
+        await tester.pumpAndSettle();
+
+        // Server 2 removed; auto-falls back to server 1
+        expect(
+          find.byKey(ValueKey<String>('server_tile_$srv2Id')),
+          findsNothing,
+        );
+        expect(
+          find.byKey(ValueKey<String>('server_selected_$srv1Id')),
+          findsOneWidget,
+        );
+
+        // Delete server 1 as well
+        await tester.tap(find.byKey(ValueKey<String>('server_delete_$srv1Id')));
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.byKey(const ValueKey<String>('confirm_delete_confirm')),
+        );
+        await tester.pumpAndSettle();
+
+        // Clean empty state with zero active selection and no crash
+        expect(find.text('No servers added yet'), findsOneWidget);
+        expect(find.byIcon(Icons.check_circle), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'end-to-end: selecting server in ServersScreen and connecting on Home '
+      'starts engine with that exact profile',
+      (tester) async {
+        final engine = FakeVpnEngine();
+        final dataSource = FakeServerProfileDataSource();
+        addTearDown(engine.dispose);
+
+        await pumpConnectionApp(
+          tester,
+          const MyApp(),
+          engine: engine,
+          dataSource: dataSource,
+        );
+
+        // Add server 1
+        await tester.tap(
+          find.byKey(const ValueKey<String>('home_add_server_button')),
+        );
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byKey(const ValueKey<String>('add_server_uri_field')),
+          _standaloneVless,
+        );
+        await tester.tap(
+          find.byKey(const ValueKey<String>('add_server_save_button')),
+        );
+        await tester.pumpAndSettle();
+
+        // Switch to Servers screen
+        await tester.tap(find.byIcon(Icons.dns));
+        await tester.pumpAndSettle();
+
+        final srv1Id = dataSource.records.first.id;
+
+        // Duplicate to create server 2
+        await tester.tap(
+          find.byKey(ValueKey<String>('server_duplicate_$srv1Id')),
+        );
+        await tester.pumpAndSettle();
+
+        final srv2Id = dataSource.savedProfiles.first.id;
+
+        // Select server 2 ('Standalone1 (Copy)')
+        await tester.tap(find.byKey(ValueKey<String>('server_tile_$srv2Id')));
+        await tester.pumpAndSettle();
+
+        // Switch to Home screen
+        await tester.tap(find.byIcon(Icons.home));
+        await tester.pumpAndSettle();
+
+        // Active server card shows server 2
+        expect(find.text('Active: Standalone1 (Copy)'), findsOneWidget);
+
+        // Tap Connect
+        await tester.tap(find.text('Connect').first);
+        await tester.pumpAndSettle();
+
+        // Engine starts with server 2's profile
+        expect(engine.startCalls, hasLength(1));
+        expect(engine.startCalls.single.name, equals('Standalone1 (Copy)'));
       },
     );
   });

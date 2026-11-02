@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mobile/core/presentation/utils/app_feedback.dart';
 import 'package:mobile/core/presentation/utils/error_mapper.dart';
+import 'package:mobile/features/connection/presentation/providers/active_server_provider.dart';
 import 'package:mobile/features/servers/domain/entities/subscription_metadata.dart';
 import 'package:mobile/features/servers/presentation/providers/server_list_provider.dart';
 import 'package:mobile/features/servers/presentation/providers/server_management_controller.dart';
@@ -120,6 +121,8 @@ class ServersScreen extends ConsumerWidget {
     WidgetRef ref,
     GroupedServerList data,
   ) {
+    final activeServer = ref.watch(activeServerProvider);
+
     return ListView(
       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
       children: [
@@ -133,6 +136,10 @@ class ServersScreen extends ConsumerWidget {
             ServerProfileTile(
               server: server,
               sourceLabel: 'servers.standalone_badge'.tr(),
+              isSelected: server.id == activeServer?.id,
+              onSelect: () => ref
+                  .read(activeServerIdProvider.notifier)
+                  .selectServer(server.id),
               onEdit: () => _showEditDialog(context, ref, server.profile),
               onDuplicate: () => _handleDuplicate(context, ref, server.profile),
               onDelete: () => _showConfirmDeleteDialog(
@@ -155,6 +162,10 @@ class ServersScreen extends ConsumerWidget {
             ServerProfileTile(
               server: server,
               sourceLabel: entry.key.name,
+              isSelected: server.id == activeServer?.id,
+              onSelect: () => ref
+                  .read(activeServerIdProvider.notifier)
+                  .selectServer(server.id),
               onDuplicate: () => _handleDuplicate(context, ref, server.profile),
               onDelete: () => _showConfirmDeleteDialog(
                 context,

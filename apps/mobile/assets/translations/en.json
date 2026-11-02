@@ -38,7 +38,9 @@
   "home": {
     "title": "Brick VPN",
     "label": "Home",
-    "go_to_settings": "Go to Settings"
+    "go_to_settings": "Go to Settings",
+    "active_server": "Active Server",
+    "active_server_prefix": "Active: {name}"
   },
   "settings": {
     "title": "Settings",

@@ -13,6 +13,10 @@ class ServerProfileTile extends StatelessWidget {
     required this.server,
     required this.sourceLabel,
     required this.onDelete,
+    this.onEdit,
+    this.onDuplicate,
+    this.isSelected = false,
+    this.onSelect,
     super.key,
   });
 
@@ -25,6 +29,19 @@ class ServerProfileTile extends StatelessWidget {
   /// Invoked when the user taps the remove button.
   final VoidCallback onDelete;
 
+  /// Invoked when the user taps the edit button (null for subscription-sourced
+  /// servers).
+  final VoidCallback? onEdit;
+
+  /// Invoked when the user taps the duplicate button.
+  final VoidCallback? onDuplicate;
+
+  /// Whether this server is the currently active/selected server.
+  final bool isSelected;
+
+  /// Invoked when the user taps the tile to select it as the active server.
+  final VoidCallback? onSelect;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -34,11 +51,17 @@ class ServerProfileTile extends StatelessWidget {
       key: ValueKey<String>('server_tile_${profile.id}'),
       margin: const EdgeInsets.symmetric(vertical: 4),
       elevation: 0,
+      color: isSelected
+          ? theme.colorScheme.primaryContainer.withValues(alpha: 0.15)
+          : null,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: theme.colorScheme.outlineVariant),
+        side: isSelected
+            ? BorderSide(color: theme.colorScheme.primary, width: 2)
+            : BorderSide(color: theme.colorScheme.outlineVariant),
       ),
       child: ListTile(
+        onTap: onSelect,
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         leading: CircleAvatar(
           backgroundColor: theme.colorScheme.primaryContainer,
@@ -50,11 +73,24 @@ class ServerProfileTile extends StatelessWidget {
             ),
           ),
         ),
-        title: Text(
-          server.name,
-          style: theme.textTheme.titleMedium,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
+        title: Row(
+          children: [
+            Expanded(
+              child: Text(
+                server.name,
+                style: theme.textTheme.titleMedium,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            if (isSelected)
+              Icon(
+                Icons.check_circle,
+                key: ValueKey<String>('server_selected_${profile.id}'),
+                color: theme.colorScheme.primary,
+                size: 20,
+              ),
+          ],
         ),
         subtitle: Padding(
           padding: const EdgeInsets.only(top: 4),
@@ -104,11 +140,30 @@ class ServerProfileTile extends StatelessWidget {
             ],
           ),
         ),
-        trailing: IconButton(
-          key: ValueKey<String>('server_delete_${profile.id}'),
-          icon: const Icon(Icons.delete_outline),
-          tooltip: 'connection.remove'.tr(),
-          onPressed: onDelete,
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (onEdit != null)
+              IconButton(
+                key: ValueKey<String>('server_edit_${profile.id}'),
+                icon: const Icon(Icons.edit_outlined),
+                tooltip: 'servers.edit'.tr(),
+                onPressed: onEdit,
+              ),
+            if (onDuplicate != null)
+              IconButton(
+                key: ValueKey<String>('server_duplicate_${profile.id}'),
+                icon: const Icon(Icons.copy_outlined),
+                tooltip: 'servers.duplicate'.tr(),
+                onPressed: onDuplicate,
+              ),
+            IconButton(
+              key: ValueKey<String>('server_delete_${profile.id}'),
+              icon: const Icon(Icons.delete_outline),
+              tooltip: 'connection.remove'.tr(),
+              onPressed: onDelete,
+            ),
+          ],
         ),
       ),
     );

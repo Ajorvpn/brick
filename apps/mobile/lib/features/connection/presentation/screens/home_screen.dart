@@ -10,6 +10,7 @@ import 'package:go_router/go_router.dart';
 import 'package:mobile/core/presentation/utils/app_feedback.dart';
 import 'package:mobile/core/presentation/utils/error_mapper.dart';
 import 'package:mobile/features/connection/domain/entities/saved_server.dart';
+import 'package:mobile/features/connection/presentation/providers/active_server_provider.dart';
 import 'package:mobile/features/connection/presentation/providers/connection_controller_provider.dart';
 import 'package:mobile/features/connection/presentation/providers/connection_state_provider.dart';
 import 'package:mobile/features/connection/presentation/providers/saved_servers_provider.dart';
@@ -64,6 +65,7 @@ class HomeScreen extends ConsumerWidget {
     });
 
     final servers = ref.watch(savedServersProvider);
+    final activeServer = ref.watch(activeServerProvider);
 
     return Scaffold(
       appBar: AppBar(title: Text('home.title'.tr())),
@@ -78,6 +80,37 @@ class HomeScreen extends ConsumerWidget {
                 const SizedBox(height: 8),
                 const ThroughputReadout(),
                 const SizedBox(height: 16),
+                if (activeServer != null) ...[
+                  Card(
+                    key: const ValueKey<String>('home_active_server_card'),
+                    child: ListTile(
+                      leading: Icon(
+                        Icons.check_circle,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                      title: Text(
+                        'home.active_server_prefix'.tr(
+                          namedArgs: {'name': activeServer.name},
+                        ),
+                        key: const ValueKey<String>('home_active_server_name'),
+                        style: Theme.of(context).textTheme.titleSmall
+                            ?.copyWith(fontWeight: FontWeight.bold),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      subtitle: Text(
+                        '${activeServer.protocolLabel} · '
+                        '${activeServer.endpoint}',
+                        key: const ValueKey<String>(
+                          'home_active_server_endpoint',
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 FilledButton(
                   key: const ValueKey<String>('home_add_server_button'),
                   onPressed: () => context.push('/add-server'),
@@ -122,10 +155,11 @@ class HomeScreen extends ConsumerWidget {
                 // "accepted", not "connected" (VpnEngine Invariant 1). The
                 // badge updates only when the state stream emits.
                 onConnect: (profile) {
+                  final active = ref.read(activeServerProvider);
                   unawaited(
                     ref
                         .read(connectionControllerProvider.notifier)
-                        .connect(profile),
+                        .connect(active?.profile ?? profile),
                   );
                 },
                 onDisconnect: () {

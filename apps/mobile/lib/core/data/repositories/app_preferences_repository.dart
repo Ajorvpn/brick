@@ -37,6 +37,12 @@ abstract class AppPreferencesRepository {
 
   /// Persists [locale], or clears it when `null` to follow system default.
   Future<void> setLocale(Locale? locale);
+
+  /// Reads the persisted active server ID, or `null` if none was selected.
+  String? getActiveServerId();
+
+  /// Persists [serverId], or clears it when `null` or empty.
+  Future<void> setActiveServerId(String? serverId);
 }
 
 /// Concrete implementation of [AppPreferencesRepository] backed by
@@ -55,6 +61,9 @@ class SharedPreferencesAppPreferencesRepository
 
   /// Preference key for the selected language code.
   static const String keyLocale = 'app_locale';
+
+  /// Preference key for the selected active server ID.
+  static const String keyActiveServerId = 'brick.preferences.active_server_id';
 
   @override
   ThemeMode getThemeMode() {
@@ -93,21 +102,42 @@ class SharedPreferencesAppPreferencesRepository
       await _prefs.setString(keyLocale, locale.languageCode);
     }
   }
+
+  @override
+  String? getActiveServerId() {
+    final value = _prefs.getString(keyActiveServerId);
+    if (value == null || value.isEmpty) {
+      return null;
+    }
+    return value;
+  }
+
+  @override
+  Future<void> setActiveServerId(String? serverId) async {
+    if (serverId == null || serverId.isEmpty) {
+      await _prefs.remove(keyActiveServerId);
+    } else {
+      await _prefs.setString(keyActiveServerId, serverId);
+    }
+  }
 }
 
 /// In-memory fake implementation of [AppPreferencesRepository] for unit/widget
 /// tests.
 class FakeAppPreferencesRepository implements AppPreferencesRepository {
-  /// Creates a fake repository with optional initial [initialThemeMode] and
-  /// [initialLocale].
+  /// Creates a fake repository with optional initial [initialThemeMode],
+  /// [initialLocale], and [initialActiveServerId].
   FakeAppPreferencesRepository({
     ThemeMode initialThemeMode = ThemeMode.system,
     Locale? initialLocale,
+    String? initialActiveServerId,
   }) : _themeMode = initialThemeMode,
-       _locale = initialLocale;
+       _locale = initialLocale,
+       _activeServerId = initialActiveServerId;
 
   ThemeMode _themeMode;
   Locale? _locale;
+  String? _activeServerId;
 
   @override
   ThemeMode getThemeMode() => _themeMode;
@@ -123,5 +153,15 @@ class FakeAppPreferencesRepository implements AppPreferencesRepository {
   @override
   Future<void> setLocale(Locale? locale) async {
     _locale = locale;
+  }
+
+  @override
+  String? getActiveServerId() => _activeServerId;
+
+  @override
+  Future<void> setActiveServerId(String? serverId) async {
+    _activeServerId = (serverId != null && serverId.isNotEmpty)
+        ? serverId
+        : null;
   }
 }

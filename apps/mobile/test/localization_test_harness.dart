@@ -14,6 +14,8 @@ import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart' hide ConnectionState;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mobile/core/data/repositories/app_preferences_repository.dart';
+import 'package:mobile/core/providers/app_preferences_provider.dart';
 import 'package:mobile/core/providers/server_profile_repository_provider.dart';
 import 'package:mobile/core/providers/subscription_fetcher_provider.dart';
 import 'package:mobile/core/providers/vpn_engine_provider.dart';
@@ -410,6 +412,7 @@ Future<void> pumpConnectionApp(
   QrScannerBuilder? scannerBuilder,
   SubscriptionFetcher? subscriptionFetcher,
   ServerProfileRepository? repository,
+  AppPreferencesRepository? preferencesRepository,
 }) async {
   await tester.pumpWidget(
     localizedApp(
@@ -426,6 +429,10 @@ Future<void> pumpConnectionApp(
         qrScannerBuilderProvider.overrideWithValue(scannerBuilder),
         if (subscriptionFetcher != null)
           subscriptionFetcherProvider.overrideWithValue(subscriptionFetcher),
+        if (preferencesRepository != null)
+          appPreferencesRepositoryProvider.overrideWithValue(
+            preferencesRepository,
+          ),
       ],
       child: app,
     ),
@@ -502,6 +509,8 @@ Map<String, dynamic> testEnglishTranslations() => const {
     'title': 'Brick VPN',
     'label': 'Home',
     'go_to_settings': 'Go to Settings',
+    'active_server': 'Active Server',
+    'active_server_prefix': 'Active: {name}',
   },
   'settings': {
     'title': 'Settings',

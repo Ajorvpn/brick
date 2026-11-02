@@ -246,7 +246,12 @@ void main() {
           'en': testEnglishTranslations(),
           'de': {
             'app_title': 'Ziegel VPN',
-            'home': {'title': 'Ziegel VPN', 'label': 'Startseite'},
+            'home': {
+              'title': 'Ziegel VPN',
+              'label': 'Startseite',
+              'active_server': 'Aktiver Server',
+              'active_server_prefix': 'Aktiv: {name}',
+            },
             'servers': {
               'title': 'Server',
               'placeholder': 'Serverliste wird hier angezeigt',
