@@ -32,6 +32,7 @@
   },
   "connection": {
     "add_server": "Add Server",
+    "add_subscription": "Add Subscription",
     "parse": "Parse",
     "save": "Save",
     "uri_label": "Server URI",
@@ -77,6 +78,21 @@
     "permission_permanently_denied": "Camera permission is permanently denied. Please enable it in system settings.",
     "request_permission": "Grant Permission",
     "open_settings": "Open Settings"
+  },
+  "add_subscription": {
+    "title": "Add Subscription",
+    "url_label": "Subscription URL",
+    "url_hint": "https://example.com/subscription",
+    "name_label": "Subscription Name (optional)",
+    "name_hint": "My Subscription",
+    "import_button": "Import Subscription",
+    "url_required": "Enter a subscription URL first",
+    "success_message": "Successfully imported {count} servers",
+    "partial_success_message": "Imported {count} servers ({skipped} invalid entries skipped)",
+    "no_valid_servers": "No valid server configurations found in subscription",
+    "invalid_url": "Please enter a valid HTTPS subscription URL",
+    "paste_from_clipboard": "Paste from clipboard",
+    "storage_error": "Failed to save subscription to local storage"
   }
 }
 

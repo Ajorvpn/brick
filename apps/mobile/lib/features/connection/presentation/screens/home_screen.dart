@@ -79,8 +79,15 @@ class HomeScreen extends ConsumerWidget {
                 const ThroughputReadout(),
                 const SizedBox(height: 16),
                 FilledButton(
+                  key: const ValueKey<String>('home_add_server_button'),
                   onPressed: () => context.push('/add-server'),
                   child: Text('connection.add_server'.tr()),
+                ),
+                const SizedBox(height: 8),
+                OutlinedButton(
+                  key: const ValueKey<String>('home_add_subscription_button'),
+                  onPressed: () => context.push('/add-subscription'),
+                  child: Text('connection.add_subscription'.tr()),
                 ),
               ],
             ),

@@ -3,6 +3,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:config_parser/config_parser.dart';
 import 'package:core_domain/core_domain.dart'
     show ConnectionState, Disconnected, ServerProfile, TrafficStats;
 import 'package:core_vpn_engine/core_vpn_engine.dart';
@@ -14,6 +15,7 @@ import 'package:flutter/material.dart' hide ConnectionState;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/core/providers/server_profile_repository_provider.dart';
+import 'package:mobile/core/providers/subscription_fetcher_provider.dart';
 import 'package:mobile/core/providers/vpn_engine_provider.dart';
 import 'package:mobile/features/connection/domain/entities/saved_server.dart';
 import 'package:mobile/features/connection/domain/repositories/server_profile_repository.dart';
@@ -193,17 +195,26 @@ class SavedServerRecord {
 class FakeServerProfileDataSource {
   /// Creates a data source seeded with [initial].
   FakeServerProfileDataSource([List<SavedServerRecord>? initial])
-    : records = <SavedServerRecord>[...?initial];
+    : records = <SavedServerRecord>[...?initial],
+      savedProfiles = <ServerProfile>[],
+      subscriptions = <SubscriptionMetadata>[];
 
   /// The records currently held. Survives a "restart" by being shared.
   final List<SavedServerRecord> records;
+
+  /// In-memory server profiles saved via repository.
+  final List<ServerProfile> savedProfiles;
+
+  /// In-memory subscriptions saved via repository.
+  final List<SubscriptionMetadata> subscriptions;
 }
 
 /// A test-only in-memory [ServerProfileRepository] implementation for widget
 /// tests, allowing simulated app restarts via shared
 /// [FakeServerProfileDataSource].
 class FakeServerProfileRepository implements ServerProfileRepository {
-  FakeServerProfileRepository(this._dataSource);
+  FakeServerProfileRepository(FakeServerProfileDataSource dataSource)
+    : _dataSource = dataSource;
 
   final FakeServerProfileDataSource _dataSource;
   static const BuildServerProfile _buildProfile = BuildServerProfile();
@@ -224,6 +235,9 @@ class FakeServerProfileRepository implements ServerProfileRepository {
           result.add(SavedServerBroken(id: record.id, reason: error.message));
       }
     }
+    for (final profile in _dataSource.savedProfiles) {
+      result.add(SavedServerProfile(profile));
+    }
     return result;
   }
 
@@ -238,6 +252,7 @@ class FakeServerProfileRepository implements ServerProfileRepository {
   @override
   Future<void> removeServer(String id) async {
     _dataSource.records.removeWhere((r) => r.id == id);
+    _dataSource.savedProfiles.removeWhere((p) => p.id == id);
   }
 
   @override
@@ -259,22 +274,49 @@ class FakeServerProfileRepository implements ServerProfileRepository {
   }
 
   @override
-  Future<void> save(ServerProfile profile) async {}
+  Future<void> save(ServerProfile profile) async {
+    _dataSource.savedProfiles.removeWhere((p) => p.id == profile.id);
+    _dataSource.savedProfiles.add(profile);
+  }
 
   @override
   Future<void> delete(String id) => removeServer(id);
 
   @override
-  Future<List<SubscriptionMetadata>> getAllSubscriptions() async => const [];
+  Future<List<SubscriptionMetadata>> getAllSubscriptions() async =>
+      List.unmodifiable(_dataSource.subscriptions);
 
   @override
-  Future<SubscriptionMetadata?> getSubscriptionById(String id) async => null;
+  Future<SubscriptionMetadata?> getSubscriptionById(String id) async {
+    for (final s in _dataSource.subscriptions) {
+      if (s.id == id) return s;
+    }
+    return null;
+  }
 
   @override
-  Future<void> saveSubscription(SubscriptionMetadata subscription) async {}
+  Future<void> saveSubscription(SubscriptionMetadata subscription) async {
+    _dataSource.subscriptions.removeWhere((s) => s.id == subscription.id);
+    _dataSource.subscriptions.add(subscription);
+  }
 
   @override
-  Future<void> deleteSubscription(String id) async {}
+  Future<void> saveSubscriptionWithProfiles(
+    SubscriptionMetadata subscription,
+    List<ServerProfile> profiles,
+  ) async {
+    _dataSource.subscriptions.removeWhere((s) => s.id == subscription.id);
+    _dataSource.subscriptions.add(subscription);
+    for (final profile in profiles) {
+      _dataSource.savedProfiles.removeWhere((p) => p.id == profile.id);
+      _dataSource.savedProfiles.add(profile);
+    }
+  }
+
+  @override
+  Future<void> deleteSubscription(String id) async {
+    _dataSource.subscriptions.removeWhere((s) => s.id == id);
+  }
 }
 
 /// A controllable [CameraPermissionService] fake for widget tests.
@@ -332,6 +374,8 @@ Future<void> pumpConnectionApp(
   FakeServerProfileDataSource? dataSource,
   CameraPermissionService? cameraPermissionService,
   QrScannerBuilder? scannerBuilder,
+  SubscriptionFetcher? subscriptionFetcher,
+  ServerProfileRepository? repository,
 }) async {
   await tester.pumpWidget(
     localizedApp(
@@ -339,12 +383,15 @@ Future<void> pumpConnectionApp(
         vpnEngineProvider.overrideWithValue(engine),
         serverProfileRepositoryProvider.overrideWith(
           (ref) async =>
+              repository ??
               buildRepository(dataSource ?? FakeServerProfileDataSource()),
         ),
         cameraPermissionServiceProvider.overrideWithValue(
           cameraPermissionService ?? const FakeCameraPermissionService(),
         ),
         qrScannerBuilderProvider.overrideWithValue(scannerBuilder),
+        if (subscriptionFetcher != null)
+          subscriptionFetcherProvider.overrideWithValue(subscriptionFetcher),
       ],
       child: app,
     ),
@@ -361,6 +408,7 @@ Future<void> pumpConnectionMaterialApp(
   FakeServerProfileDataSource? dataSource,
   CameraPermissionService? cameraPermissionService,
   QrScannerBuilder? scannerBuilder,
+  SubscriptionFetcher? subscriptionFetcher,
 }) async {
   await pumpConnectionApp(
     tester,
@@ -369,6 +417,7 @@ Future<void> pumpConnectionMaterialApp(
     dataSource: dataSource,
     cameraPermissionService: cameraPermissionService,
     scannerBuilder: scannerBuilder,
+    subscriptionFetcher: subscriptionFetcher,
   );
 }
 
@@ -407,6 +456,7 @@ Map<String, dynamic> testEnglishTranslations() => const {
   },
   'connection': {
     'add_server': 'Add Server',
+    'add_subscription': 'Add Subscription',
     'parse': 'Parse',
     'save': 'Save',
     'uri_label': 'Server URI',
@@ -455,6 +505,22 @@ Map<String, dynamic> testEnglishTranslations() => const {
         'system settings.',
     'request_permission': 'Grant Permission',
     'open_settings': 'Open Settings',
+  },
+  'add_subscription': {
+    'title': 'Add Subscription',
+    'url_label': 'Subscription URL',
+    'url_hint': 'https://example.com/subscription',
+    'name_label': 'Subscription Name (optional)',
+    'name_hint': 'My Subscription',
+    'import_button': 'Import Subscription',
+    'url_required': 'Enter a subscription URL first',
+    'success_message': 'Successfully imported {count} servers',
+    'partial_success_message':
+        'Imported {count} servers ({skipped} invalid entries skipped)',
+    'no_valid_servers': 'No valid server configurations found in subscription',
+    'invalid_url': 'Please enter a valid HTTPS subscription URL',
+    'paste_from_clipboard': 'Paste from clipboard',
+    'storage_error': 'Failed to save subscription to local storage',
   },
 };
 

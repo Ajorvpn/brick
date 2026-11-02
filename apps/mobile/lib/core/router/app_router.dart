@@ -3,6 +3,7 @@
 import 'package:go_router/go_router.dart';
 import 'package:mobile/core/presentation/widgets/app_shell.dart';
 import 'package:mobile/features/connection/presentation/screens/add_server_screen.dart';
+import 'package:mobile/features/connection/presentation/screens/add_subscription_screen.dart';
 import 'package:mobile/features/connection/presentation/screens/home_screen.dart';
 import 'package:mobile/features/connection/presentation/screens/qr_scan_screen.dart';
 import 'package:mobile/features/logs/presentation/screens/logs_screen.dart';
@@ -95,6 +96,11 @@ GoRouter appRouter(Ref ref) {
             builder: (context, state) => const QrScanScreen(),
           ),
         ],
+      ),
+      GoRoute(
+        path: '/add-subscription',
+        name: 'add-subscription',
+        builder: (context, state) => const AddSubscriptionScreen(),
       ),
     ],
   );

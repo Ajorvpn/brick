@@ -244,6 +244,20 @@ final class FileServerProfileRepository implements ServerProfileRepository {
   }
 
   @override
+  Future<void> saveSubscriptionWithProfiles(
+    SubscriptionMetadata subscription,
+    List<ServerProfile> profiles,
+  ) async {
+    await _ensureLoaded();
+    _subscriptions[subscription.id] = subscription;
+    for (final profile in profiles) {
+      _profiles[profile.id] = profile;
+      _brokenServers.remove(profile.id);
+    }
+    await _persist();
+  }
+
+  @override
   Future<void> deleteSubscription(String id) async {
     await _ensureLoaded();
     if (_subscriptions.remove(id) != null) {

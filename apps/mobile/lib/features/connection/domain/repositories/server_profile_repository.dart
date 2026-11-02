@@ -32,6 +32,13 @@ abstract interface class ServerProfileRepository {
   /// Saves or updates [subscription].
   Future<void> saveSubscription(SubscriptionMetadata subscription);
 
+  /// Atomically saves [subscription] and all associated [profiles] in a
+  /// single persistence operation.
+  Future<void> saveSubscriptionWithProfiles(
+    SubscriptionMetadata subscription,
+    List<ServerProfile> profiles,
+  );
+
   /// Deletes the [SubscriptionMetadata] with [id]. Unknown IDs are ignored.
   Future<void> deleteSubscription(String id);
 

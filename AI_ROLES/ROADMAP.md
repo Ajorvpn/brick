@@ -3043,7 +3043,7 @@ This is the first place where Phase 2's parser output meets a real UI and real p
 
 ### P5-T3 — Add Server: QR Code Scan
 
-**Status:** Ready for Human Review
+**Status:** Completed ✅
 **Depends On:** P5-T2
 
 **Objective:**
@@ -3072,7 +3072,7 @@ Verify current camera-permission best practice for the Android API levels this p
 
 ### P5-T4 — Add Server: Subscription URL Import
 
-**Status:** Not Started
+**Status:** Ready for Human Review
 **Depends On:** P5-T1, P2-T9, P2-T10 (subscription fetch/parse from Phase 2)
 
 **Objective:**
@@ -3090,10 +3090,10 @@ Implement a flow for importing multiple servers at once from a subscription URL,
   - Subscription format auto-detection beyond whatever Phase 2 already implemented (e.g., if Phase 2 only handles Base64 and/or a specific YAML dialect, do not expand format support here without flagging it as a scope question first).
 
 **Acceptance Criteria:**
-- [ ] A valid subscription URL (real or realistic test fixture) results in correctly imported, persisted servers correctly tagged with their source subscription.
-- [ ] Partial-failure behavior is implemented and documented per whichever policy (partial-success vs. all-or-nothing) was decided.
-- [ ] Network failure, timeout, and empty-subscription cases are all handled without crashing, with distinct, clear messaging.
-- [ ] Report follows the `DEFINITION_OF_DONE.md` template.
+- [x] A valid subscription URL (real or realistic test fixture) results in correctly imported, persisted servers correctly tagged with their source subscription.
+- [x] Partial-failure behavior is implemented and documented per whichever policy (partial-success vs. all-or-nothing) was decided.
+- [x] Network failure, timeout, and empty-subscription cases are all handled without crashing, with distinct, clear messaging.
+- [x] Report follows the `DEFINITION_OF_DONE.md` template.
 
 **Notes for Agent:**
 This task is a thin orchestration/UI layer over already-built Phase 2 logic — if you find yourself needing to add real parsing logic here rather than in `packages/config_parser`, stop and reconsider whether this belongs in Phase 2 instead, to avoid splitting parsing logic across layers.

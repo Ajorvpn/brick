@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/features/connection/presentation/screens/add_server_screen.dart';
+import 'package:mobile/features/connection/presentation/screens/add_subscription_screen.dart';
 import 'package:mobile/features/connection/presentation/screens/home_screen.dart';
 import 'package:mobile/features/connection/presentation/screens/qr_scan_screen.dart';
 import 'package:mobile/features/logs/presentation/screens/logs_screen.dart';
@@ -54,8 +55,10 @@ void main() {
       // string would only ever pass by coincidence.
       expect(find.text('No saved servers yet'), findsOneWidget);
       expect(find.text('Add Server'), findsOneWidget);
+      expect(find.text('Add Subscription'), findsOneWidget);
       // The raw lookup key must never be displayed to a user.
       expect(find.text('connection.add_server'), findsNothing);
+      expect(find.text('connection.add_subscription'), findsNothing);
       expect(find.text('home.title'), findsNothing);
     });
 
@@ -204,6 +207,23 @@ void main() {
       },
     );
 
+    testWidgets('AddSubscriptionScreen renders translated strings, not keys', (
+      tester,
+    ) async {
+      await pumpLocalizedApp(
+        tester,
+        localizedMaterialApp(home: const AddSubscriptionScreen()),
+        overrides: repositoryOverride(),
+      );
+
+      expect(find.widgetWithText(AppBar, 'Add Subscription'), findsOneWidget);
+      expect(find.text('Subscription URL'), findsOneWidget);
+      expect(find.text('Subscription Name (optional)'), findsOneWidget);
+      expect(find.text('Import Subscription'), findsOneWidget);
+      expect(find.text('add_subscription.title'), findsNothing);
+      expect(find.text('add_subscription.import_button'), findsNothing);
+    });
+
     testWidgets("a different locale resolves to that locale's value", (
       tester,
     ) async {
@@ -222,6 +242,7 @@ void main() {
             },
             'connection': {
               'add_server': 'Server hinzufügen',
+              'add_subscription': 'Abonnement hinzufügen',
               'no_servers': 'Noch keine Server gespeichert',
               'state_disconnected': 'Getrennt',
               'traffic_none': 'Keine Verkehrsdaten',
@@ -251,6 +272,27 @@ void main() {
               'request_permission': 'Berechtigung erteilen',
               'open_settings': 'Einstellungen öffnen',
             },
+            'add_subscription': {
+              'title': 'Abonnement hinzufügen',
+              'url_label': 'Abonnement-URL',
+              'url_hint': 'https://example.com/subscription',
+              'name_label': 'Abonnementname (optional)',
+              'name_hint': 'Mein Abonnement',
+              'import_button': 'Abonnement importieren',
+              'url_required': 'Geben Sie zuerst eine Abonnement-URL ein',
+              'success_message': '{count} Server erfolgreich importiert',
+              'partial_success_message':
+                  '{count} Server importiert '
+                  '({skipped} ungültige Einträge übersprungen)',
+              'no_valid_servers':
+                  'Keine gültigen Serverkonfigurationen im Abonnement '
+                  'gefunden',
+              'invalid_url':
+                  'Bitte geben Sie eine gültige HTTPS-Abonnement-URL ein',
+              'paste_from_clipboard': 'Aus Zwischenablage einfügen',
+              'storage_error':
+                  'Abonnement konnte nicht lokal gespeichert werden',
+            },
           },
         },
       );
@@ -268,6 +310,7 @@ void main() {
 
       expect(find.text('Ziegel VPN'), findsOneWidget);
       expect(find.text('Server hinzufügen'), findsOneWidget);
+      expect(find.text('Abonnement hinzufügen'), findsOneWidget);
       // `home.label` is translated but HomeScreen never renders it, so the
       // German value must be absent — this pins the assertion to the keys the
       // screen actually uses.
@@ -312,6 +355,26 @@ void main() {
       expect(find.text('Abbrechen'), findsOneWidget);
       expect(find.text('Scan QR Code'), findsNothing);
       expect(find.text('qr_scan.title'), findsNothing);
+
+      // Verify AddSubscriptionScreen also renders German translations
+      // via .tr().
+      await pumpLocalizedApp(
+        tester,
+        localizedMaterialApp(home: const AddSubscriptionScreen()),
+        assetLoader: loader,
+        overrides: repositoryOverride(),
+        startLocale: const Locale('de'),
+      );
+
+      expect(
+        find.widgetWithText(AppBar, 'Abonnement hinzufügen'),
+        findsOneWidget,
+      );
+      expect(find.text('Abonnement-URL'), findsOneWidget);
+      expect(find.text('Abonnementname (optional)'), findsOneWidget);
+      expect(find.text('Abonnement importieren'), findsOneWidget);
+      expect(find.text('Add Subscription'), findsNothing);
+      expect(find.text('add_subscription.title'), findsNothing);
     });
   });
 }

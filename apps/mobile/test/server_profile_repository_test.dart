@@ -320,6 +320,30 @@ void main() {
       expect(await repository.getSubscriptionById('sub-1'), isNull);
       expect(await repository.getAllSubscriptions(), isEmpty);
     });
+
+    test(
+      'saveSubscriptionWithProfiles saves subscription and profiles atomically '
+      'and survives re-instantiation',
+      () async {
+        final profiles = [vlessProfile, trojanProfile];
+        await repository.saveSubscriptionWithProfiles(testSub, profiles);
+
+        final loadedSub = await repository.getSubscriptionById('sub-1');
+        expect(loadedSub, equals(testSub));
+
+        final loadedProfiles = await repository.getAll();
+        expect(loadedProfiles, hasLength(2));
+        expect(loadedProfiles, containsAll([vlessProfile, trojanProfile]));
+
+        // Re-instantiate repo from disk
+        final repo2 = FileServerProfileRepository(storageFile: storageFile);
+        await repo2.init();
+        expect(await repo2.getSubscriptionById('sub-1'), equals(testSub));
+        final reloadedProfiles = await repo2.getAll();
+        expect(reloadedProfiles, hasLength(2));
+        expect(reloadedProfiles, containsAll([vlessProfile, trojanProfile]));
+      },
+    );
   });
 
   group('Graceful error recovery', () {
