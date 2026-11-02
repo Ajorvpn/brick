@@ -8,7 +8,13 @@
   },
   "servers": {
     "title": "Servers",
-    "placeholder": "Server list will appear here"
+    "placeholder": "Server list will appear here",
+    "empty_title": "No servers added yet",
+    "empty_subtitle": "Add a server link, scan a QR code, or import a subscription to get started.",
+    "standalone_section": "Standalone Servers",
+    "subscription_section": "Subscription Servers",
+    "standalone_badge": "Standalone",
+    "subscription_badge": "Subscription"
   },
   "home": {
     "title": "Brick VPN",

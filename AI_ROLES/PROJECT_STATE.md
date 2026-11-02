@@ -20,19 +20,20 @@
 > task's final report). Every AI agent must read this file first, before
 > `ARCHITECTURE.md` or `ROADMAP.md`, to get immediate situational awareness.
 
-**Last updated**: 2026-11-02 — Phase 5 P5-T4 Subscription URL Import (P5-T3 marked Completed ✅ per human approval 10/10; P5-T4 Ready for Human Review — SubscriptionFetcher provider injection, partial-success policy, AddSubscriptionController, AddSubscriptionScreen at /add-subscription, GoRouter integration, 100% .tr() localization, and hermetic tests).
-**Updated by**: Coding agent, during P5-T4 execution.
+**Last updated**: 2026-11-02 — Phase 5 P5-T5 Server List Screen (Real Data) (P5-T4 marked Completed ✅ per human approval 10/10; P5-T5 Ready for Human Review — real reactive ServersScreen backed by ServerProfileRepository, groupedServerListProvider & serverSubscriptionsProvider, visual/structural distinction between standalone and subscription servers, zero URL/credential leakage, rich empty state with add CTAs, AppBar actions, 100% .tr() localization, and hermetic widget tests).
+**Updated by**: Coding agent, during P5-T5 execution.
 
 ---
 
 ## 1. Current Phase
 
-**Phase 5 — Core MVP Features: IN PROGRESS (P5-T4 Complete — Ready for Human Review).**
-Phase 4 closeout (P4-T8) was approved and marked `Completed ✅`. P5-T1 was approved by human owner and marked `Completed ✅`. P5-T2 was approved by human owner (10/10) and marked `Completed ✅`. P5-T3 was approved by human owner (10/10) and marked `Completed ✅`. The active task is **P5-T4 (Add Server: Subscription URL Import)**:
+**Phase 5 — Core MVP Features: IN PROGRESS (P5-T5 Complete — Ready for Human Review).**
+Phase 4 closeout (P4-T8) was approved and marked `Completed ✅`. P5-T1 was approved by human owner and marked `Completed ✅`. P5-T2 was approved by human owner (10/10) and marked `Completed ✅`. P5-T3 was approved by human owner (10/10) and marked `Completed ✅`. P5-T4 was approved by human owner (10/10) and marked `Completed ✅`. The active task is **P5-T5 (Server List Screen (Real Data))**:
 - **P5-T1 (Local Persistent Storage for Server Profiles & Subscriptions):** `Completed ✅` — Delivered `FileServerProfileRepository` implementing the expanded `ServerProfileRepository` contract via a versioned, atomic JSON-file store (`schema_version: 1`).
 - **P5-T2 (Add Server: Manual URI/Link Paste):** `Completed ✅` — Approved 10/10 by human owner. Direct-save manual link paste with config_parser integration, typed AddServerError domain hierarchy, comprehensive subscription payload detection, 100% .tr() localization, and hermetic test suites.
 - **P5-T3 (Add Server: QR Code Scan):** `Completed ✅` — Approved 10/10 by human owner. Delivered QR code scanning via `mobile_scanner` and `permission_handler` with 3-state camera permission handling, lifecycle resume re-check, and hermetic widget tests.
-- **P5-T4 (Add Server: Subscription URL Import):** `Ready for Human Review` — Delivered remote subscription import flow using `SubscriptionFetcher` and parsing from `package:config_parser`. Implemented `subscriptionFetcherProvider`, `AddSubscriptionController` with partial-success policy, structured `SubscriptionImportOutcome` reporting imported and skipped counts, distinguishable server endpoint naming (`$subName - ${config.server}:${config.serverPort}`), atomic batch persistence via `saveSubscriptionWithProfiles` on `ServerProfileRepository`, safe localized storage error messaging, `AddSubscriptionScreen` (`/add-subscription`) with URL & optional Name fields, clipboard paste, loading spinner, and localized SnackBar feedback via `AppFeedback`. Comprehensive unit and widget tests in `server_profile_repository_test.dart`, `add_subscription_screen_test.dart` (9 tests), and `localization_test.dart` (12 tests).
+- **P5-T4 (Add Server: Subscription URL Import):** `Completed ✅` — Approved 10/10 by human owner. Delivered remote subscription import flow using `SubscriptionFetcher` and parsing from `package:config_parser`. Implemented `subscriptionFetcherProvider`, `AddSubscriptionController` with partial-success policy, structured `SubscriptionImportOutcome` reporting imported and skipped counts, distinguishable server endpoint naming (`$subName - ${config.server}:${config.serverPort}`), atomic batch persistence via `saveSubscriptionWithProfiles` on `ServerProfileRepository`, safe localized storage error messaging, `AddSubscriptionScreen` (`/add-subscription`) with URL & optional Name fields, clipboard paste, loading spinner, and localized SnackBar feedback via `AppFeedback`. Comprehensive unit and widget tests in `server_profile_repository_test.dart`, `add_subscription_screen_test.dart` (9 tests), and `localization_test.dart` (12 tests).
+- **P5-T5 (Server List Screen (Real Data)):** `Ready for Human Review` — Delivered real reactive `ServersScreen` replacing placeholder. Implemented `groupedServerListProvider`, `serverSubscriptionsProvider`, modular `ServerProfileTile` and `BrokenServerTile` with semantic `ValueKey`s, standalone vs. subscription grouping with subscription name headers (zero secret URL leakage), rich empty state with dual add CTAs, and AppBar direct add actions. Verified zero Phase 3/4 hardcoded test fixtures across all production `lib/` files. Comprehensive widget test suite in `servers_screen_test.dart` (6 tests).
 
 **Current Architectural Baseline:**
 - Deterministic, resilient app bootstrap with safe in-memory fallback.
@@ -41,11 +42,12 @@ Phase 4 closeout (P4-T8) was approved and marked `Completed ✅`. P5-T1 was appr
 - Direct-save manual server addition with config_parser integration and safe error feedback.
 - Camera permission handling and QR scanner preview with single-scan concurrency debounce lock.
 - Remote subscription fetching with partial-success policy, multi-profile conversion, and metadata persistence.
+- Real reactive server list screen with standalone vs. subscription grouping, empty state CTAs, and zero secret URL leakage.
 - Full-stack native-truth state reconciliation on lifecycle resume.
 - Decoupled network connectivity observation.
 - Strict `SECURITY.md` classification boundaries preventing credentials in plaintext preferences.
 
-**Next Focus:** **P5-T5 (Server List Screen (Real Data))**.
+**Next Focus:** **P5-T6 (Server Management: Edit, Delete, Duplicate, Refresh Subscription)**.
 
 ---
 

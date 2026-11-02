@@ -3072,7 +3072,7 @@ Verify current camera-permission best practice for the Android API levels this p
 
 ### P5-T4 — Add Server: Subscription URL Import
 
-**Status:** Ready for Human Review
+**Status:** Completed ✅
 **Depends On:** P5-T1, P2-T9, P2-T10 (subscription fetch/parse from Phase 2)
 
 **Objective:**
@@ -3102,7 +3102,7 @@ This task is a thin orchestration/UI layer over already-built Phase 2 logic — 
 
 ### P5-T5 — Server List Screen (Real Data)
 
-**Status:** Not Started
+**Status:** Ready for Human Review
 **Depends On:** P5-T1, P4-T8
 
 **Objective:**
@@ -3120,11 +3120,11 @@ Replace the Phase 3/4 hardcoded test `ServerProfile` and its placeholder list UI
   - Drag-to-reorder or any advanced list interaction.
 
 **Acceptance Criteria:**
-- [ ] Server list reflects real repository state and updates reactively when data changes elsewhere in the app.
-- [ ] Empty state is implemented and reachable (verified by clearing all servers and observing it).
-- [ ] The Phase 3/4 hardcoded test `ServerProfile` no longer appears anywhere in a normal (non-test) run of the app; a grep/search confirms it is confined to test code only.
-- [ ] Subscription-sourced vs. standalone servers are visually distinguishable in some minimal way.
-- [ ] Report follows the `DEFINITION_OF_DONE.md` template.
+- [x] Server list reflects real repository state and updates reactively when data changes elsewhere in the app.
+- [x] Empty state is implemented and reachable (verified by clearing all servers and observing it).
+- [x] The Phase 3/4 hardcoded test `ServerProfile` no longer appears anywhere in a normal (non-test) run of the app; a grep/search confirms it is confined to test code only.
+- [x] Subscription-sourced vs. standalone servers are visually distinguishable in some minimal way.
+- [x] Report follows the `DEFINITION_OF_DONE.md` template.
 
 **Notes for Agent:**
 This is the task that finally retires the Phase 3 test scaffolding from the runtime app — treat its complete removal from production code paths as a hard requirement, not a nice-to-have, since leaving it in risks silent confusion in later phases (e.g., someone accidentally connecting to test data instead of a real server).

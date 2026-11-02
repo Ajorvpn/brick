@@ -17,9 +17,17 @@ import 'localization_test_harness.dart';
 void main() {
   setUpAll(initTestLocalization);
 
+  File findEnJson() {
+    final direct = File('assets/translations/en.json');
+    if (direct.existsSync()) return direct;
+    final fromRoot = File('apps/mobile/assets/translations/en.json');
+    if (fromRoot.existsSync()) return fromRoot;
+    return direct;
+  }
+
   group('en.json asset', () {
     test('is valid JSON with the expected top-level keys', () {
-      final file = File('assets/translations/en.json');
+      final file = findEnJson();
       expect(file.existsSync(), isTrue);
 
       final parsed = parseTranslationsJson(file.readAsStringSync());
@@ -33,7 +41,7 @@ void main() {
       // Guards against the test harness drifting from the real asset: the
       // harness duplicates this JSON so tests stay hermetic, and this test
       // is what proves the duplicate is still faithful.
-      final file = File('assets/translations/en.json');
+      final file = findEnJson();
       final fromAsset = parseTranslationsJson(file.readAsStringSync());
       expect(fromAsset, equals(testEnglishTranslations()));
     });
@@ -68,12 +76,16 @@ void main() {
       await pumpLocalizedApp(
         tester,
         localizedMaterialApp(home: const ServersScreen()),
+        overrides: repositoryOverride(),
       );
 
       expect(find.widgetWithText(AppBar, 'Servers'), findsOneWidget);
-      expect(find.text('Server list will appear here'), findsOneWidget);
+      expect(find.text('No servers added yet'), findsOneWidget);
+      expect(find.text('Add Server'), findsOneWidget);
+      expect(find.text('Add Subscription'), findsOneWidget);
       expect(find.text('servers.title'), findsNothing);
-      expect(find.text('servers.placeholder'), findsNothing);
+      expect(find.text('servers.empty_title'), findsNothing);
+      expect(find.text('servers.empty_subtitle'), findsNothing);
     });
 
     testWidgets('LogsScreen renders translated strings, not keys', (
@@ -235,6 +247,19 @@ void main() {
           'de': {
             'app_title': 'Ziegel VPN',
             'home': {'title': 'Ziegel VPN', 'label': 'Startseite'},
+            'servers': {
+              'title': 'Server',
+              'placeholder': 'Serverliste wird hier angezeigt',
+              'empty_title': 'Noch keine Server hinzugefügt',
+              'empty_subtitle':
+                  'Fügen Sie einen Server-Link hinzu, scannen Sie einen '
+                  'QR-Code oder importieren Sie ein Abonnement, um zu '
+                  'beginnen.',
+              'standalone_section': 'Eigenständige Server',
+              'subscription_section': 'Abonnement-Server',
+              'standalone_badge': 'Eigenständig',
+              'subscription_badge': 'Abonnement',
+            },
             'settings': {
               'title': 'Einstellungen',
               'label': 'Einstellungen',
@@ -375,6 +400,23 @@ void main() {
       expect(find.text('Abonnement importieren'), findsOneWidget);
       expect(find.text('Add Subscription'), findsNothing);
       expect(find.text('add_subscription.title'), findsNothing);
+
+      // Verify ServersScreen also renders German translations via .tr().
+      await pumpLocalizedApp(
+        tester,
+        localizedMaterialApp(home: const ServersScreen()),
+        assetLoader: loader,
+        overrides: repositoryOverride(),
+        startLocale: const Locale('de'),
+      );
+
+      expect(find.widgetWithText(AppBar, 'Server'), findsOneWidget);
+      expect(find.text('Noch keine Server hinzugefügt'), findsOneWidget);
+      expect(find.text('Server hinzufügen'), findsOneWidget);
+      expect(find.text('Abonnement hinzufügen'), findsOneWidget);
+      expect(find.text('Servers'), findsNothing);
+      expect(find.text('servers.title'), findsNothing);
+      expect(find.text('servers.empty_title'), findsNothing);
     });
   });
 }

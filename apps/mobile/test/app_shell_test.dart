@@ -75,7 +75,7 @@ void main() {
 
         expect(find.byType(ServersScreen), findsOneWidget);
         expect(find.widgetWithText(AppBar, 'Servers'), findsOneWidget);
-        expect(find.text('Server list will appear here'), findsOneWidget);
+        expect(find.text('No servers added yet'), findsOneWidget);
         expect(find.byType(HomeScreen), findsNothing);
 
         // 3. Tap Logs tab (Branch 2).
