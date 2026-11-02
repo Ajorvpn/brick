@@ -275,6 +275,7 @@ class FakeServerProfileRepository implements ServerProfileRepository {
 
   @override
   Future<void> save(ServerProfile profile) async {
+    _dataSource.records.removeWhere((r) => r.id == profile.id);
     _dataSource.savedProfiles.removeWhere((p) => p.id == profile.id);
     _dataSource.savedProfiles.add(profile);
   }
@@ -308,14 +309,47 @@ class FakeServerProfileRepository implements ServerProfileRepository {
     _dataSource.subscriptions.removeWhere((s) => s.id == subscription.id);
     _dataSource.subscriptions.add(subscription);
     for (final profile in profiles) {
+      _dataSource.records.removeWhere((r) => r.id == profile.id);
       _dataSource.savedProfiles.removeWhere((p) => p.id == profile.id);
       _dataSource.savedProfiles.add(profile);
     }
   }
 
   @override
+  Future<void> replaceSubscriptionProfiles(
+    SubscriptionMetadata subscription,
+    List<ServerProfile> newProfiles,
+  ) async {
+    final oldSub = await getSubscriptionById(subscription.id);
+    final oldAssociated = oldSub?.associatedServerIds ?? const <String>[];
+
+    _dataSource.subscriptions.removeWhere((s) => s.id == subscription.id);
+    _dataSource.subscriptions.add(subscription);
+
+    _dataSource.savedProfiles.removeWhere(
+      (p) =>
+          p.subscriptionId == subscription.id || oldAssociated.contains(p.id),
+    );
+    _dataSource.records.removeWhere((r) => oldAssociated.contains(r.id));
+
+    _dataSource.savedProfiles.addAll(newProfiles);
+  }
+
+  @override
   Future<void> deleteSubscription(String id) async {
     _dataSource.subscriptions.removeWhere((s) => s.id == id);
+  }
+
+  @override
+  Future<void> deleteSubscriptionCascade(String subscriptionId) async {
+    final oldSub = await getSubscriptionById(subscriptionId);
+    final oldAssociated = oldSub?.associatedServerIds ?? const <String>[];
+
+    _dataSource.subscriptions.removeWhere((s) => s.id == subscriptionId);
+    _dataSource.savedProfiles.removeWhere(
+      (p) => p.subscriptionId == subscriptionId || oldAssociated.contains(p.id),
+    );
+    _dataSource.records.removeWhere((r) => oldAssociated.contains(r.id));
   }
 }
 
@@ -441,6 +475,28 @@ Map<String, dynamic> testEnglishTranslations() => const {
     'subscription_section': 'Subscription Servers',
     'standalone_badge': 'Standalone',
     'subscription_badge': 'Subscription',
+    'edit': 'Edit',
+    'duplicate': 'Duplicate',
+    'refresh_subscription': 'Refresh Subscription',
+    'delete_subscription': 'Delete Subscription',
+    'delete_server_title': 'Delete Server',
+    'delete_server_message': 'Are you sure you want to delete this server?',
+    'delete_subscription_title': 'Delete Subscription',
+    'delete_subscription_message':
+        'Are you sure you want to delete this subscription and all its '
+        'servers?',
+    'confirm_delete': 'Delete',
+    'cancel': 'Cancel',
+    'save': 'Save',
+    'edit_server_title': 'Edit Server',
+    'server_name': 'Server Name',
+    'replacement_uri': 'Replacement URI (optional)',
+    'replacement_uri_hint': 'Paste replacement configuration link',
+    'copy_suffix': '{name} (Copy)',
+    'name_required': 'Server name cannot be empty',
+    'storage_error': 'Failed to save server changes to local storage',
+    'read_only_error':
+        'Subscription servers are read-only. Duplicate as standalone to edit.',
   },
   'home': {
     'title': 'Brick VPN',

@@ -259,6 +259,31 @@ void main() {
               'subscription_section': 'Abonnement-Server',
               'standalone_badge': 'Eigenständig',
               'subscription_badge': 'Abonnement',
+              'edit': 'Bearbeiten',
+              'duplicate': 'Duplizieren',
+              'refresh_subscription': 'Abonnement aktualisieren',
+              'delete_subscription': 'Abonnement löschen',
+              'delete_server_title': 'Server löschen',
+              'delete_server_message':
+                  'Möchten Sie diesen Server wirklich löschen?',
+              'delete_subscription_title': 'Abonnement löschen',
+              'delete_subscription_message':
+                  'Möchten Sie dieses Abonnement und alle zugehörigen Server '
+                  'wirklich löschen?',
+              'confirm_delete': 'Löschen',
+              'cancel': 'Abbrechen',
+              'save': 'Speichern',
+              'edit_server_title': 'Server bearbeiten',
+              'server_name': 'Servername',
+              'replacement_uri': 'Ersatz-URI (optional)',
+              'replacement_uri_hint': 'Ersatzkonfigurationslink einfügen',
+              'copy_suffix': '{name} (Kopie)',
+              'name_required': 'Servername darf nicht leer sein',
+              'storage_error':
+                  'Serveränderungen konnten nicht lokal gespeichert werden',
+              'read_only_error':
+                  'Abonnement-Server sind schreibgeschützt. '
+                  'Zum Bearbeiten duplizieren.',
             },
             'settings': {
               'title': 'Einstellungen',

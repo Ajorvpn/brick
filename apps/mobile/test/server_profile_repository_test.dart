@@ -344,6 +344,80 @@ void main() {
         expect(reloadedProfiles, containsAll([vlessProfile, trojanProfile]));
       },
     );
+
+    test('replaceSubscriptionProfiles atomically replaces profiles and updates '
+        'subscription surviving re-instantiation', () async {
+      // Initial setup: save subscription with 2 profiles
+      await repository.saveSubscriptionWithProfiles(testSub, [
+        vlessProfile,
+        trojanProfile,
+      ]);
+      expect(await repository.getAll(), hasLength(2));
+
+      // Create replacement: 1 profile (ssProfile tagged with sub-1)
+      final newProfile = ssProfile.copyWith(subscriptionId: 'sub-1');
+      final updatedSub = testSub.copyWith(
+        name: 'Refreshed Subscription',
+        associatedServerIds: [newProfile.id],
+        lastRefreshedAt: DateTime.utc(2026, 11, 2),
+      );
+
+      await repository.replaceSubscriptionProfiles(updatedSub, [newProfile]);
+
+      // Verify in-memory state
+      final fetchedSub = await repository.getSubscriptionById('sub-1');
+      expect(fetchedSub?.name, equals('Refreshed Subscription'));
+      expect(fetchedSub?.associatedServerIds, equals([newProfile.id]));
+
+      final fetchedProfiles = await repository.getAll();
+      expect(fetchedProfiles, hasLength(1));
+      expect(fetchedProfiles.single.id, equals(newProfile.id));
+
+      // Re-instantiate repository from disk and verify persistence
+      final repo2 = FileServerProfileRepository(storageFile: storageFile);
+      await repo2.init();
+
+      final reloadedSub = await repo2.getSubscriptionById('sub-1');
+      expect(reloadedSub?.name, equals('Refreshed Subscription'));
+      expect(reloadedSub?.associatedServerIds, equals([newProfile.id]));
+
+      final reloadedProfiles = await repo2.getAll();
+      expect(reloadedProfiles, hasLength(1));
+      expect(reloadedProfiles.single.id, equals(newProfile.id));
+    });
+
+    test(
+      'deleteSubscriptionCascade atomically removes subscription and all its '
+      'profiles surviving re-instantiation',
+      () async {
+        // Save subscription with 2 profiles
+        await repository.saveSubscriptionWithProfiles(testSub, [
+          vlessProfile,
+          trojanProfile,
+        ]);
+        // Also save an independent standalone profile
+        await repository.save(ssProfile);
+        expect(await repository.getAll(), hasLength(3));
+
+        // Cascade delete the subscription
+        await repository.deleteSubscriptionCascade('sub-1');
+
+        // Subscription and its profiles are removed, standalone remains
+        expect(await repository.getSubscriptionById('sub-1'), isNull);
+        final remaining = await repository.getAll();
+        expect(remaining, hasLength(1));
+        expect(remaining.single.id, equals(ssProfile.id));
+
+        // Re-instantiate repository from disk and verify persistence
+        final repo2 = FileServerProfileRepository(storageFile: storageFile);
+        await repo2.init();
+
+        expect(await repo2.getSubscriptionById('sub-1'), isNull);
+        final reloaded = await repo2.getAll();
+        expect(reloaded, hasLength(1));
+        expect(reloaded.single.id, equals(ssProfile.id));
+      },
+    );
   });
 
   group('Graceful error recovery', () {

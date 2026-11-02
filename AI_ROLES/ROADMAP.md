@@ -3102,7 +3102,7 @@ This task is a thin orchestration/UI layer over already-built Phase 2 logic — 
 
 ### P5-T5 — Server List Screen (Real Data)
 
-**Status:** Ready for Human Review
+**Status:** Completed ✅
 **Depends On:** P5-T1, P4-T8
 
 **Objective:**
@@ -3133,7 +3133,7 @@ This is the task that finally retires the Phase 3 test scaffolding from the runt
 
 ### P5-T6 — Server Management: Edit, Delete, Duplicate, Refresh Subscription
 
-**Status:** Not Started
+**Status:** Ready for Human Review
 **Depends On:** P5-T5, P5-T4
 
 **Objective:**
@@ -3150,11 +3150,11 @@ Implement the remaining CRUD-adjacent user actions on servers: editing a standal
   - Bulk operations (multi-select delete, etc.).
 
 **Acceptance Criteria:**
-- [ ] Editing a standalone server persists changes correctly and re-validates edited fields.
-- [ ] Deleting a server (both kinds) works correctly, including the subscription-parent-deletes-children case, with a confirmation step that cannot be bypassed accidentally.
-- [ ] Duplicating a server produces a correct, independent standalone copy.
-- [ ] Manual subscription refresh correctly updates the associated server set per the documented diffing policy, verified with a test subscription that changes between two fetches.
-- [ ] Report follows the `DEFINITION_OF_DONE.md` template.
+- [x] Editing a standalone server persists changes correctly and re-validates edited fields.
+- [x] Deleting a server (both kinds) works correctly, including the subscription-parent-deletes-children case, with a confirmation step that cannot be bypassed accidentally.
+- [x] Duplicating a server produces a correct, independent standalone copy.
+- [x] Manual subscription refresh correctly updates the associated server set per the documented diffing policy, verified with a test subscription that changes between two fetches.
+- [x] Report follows the `DEFINITION_OF_DONE.md` template.
 
 **Notes for Agent:**
 The diffing policy for subscription refresh is an explicit open design point — do not guess silently. Pick the simplest correct policy (full-replace is likely simplest and safest given no stable cross-fetch identifier may exist in most subscription formats), document why, and flag it in your completion report as a decision the human should be aware of, even though it doesn't rise to the level of needing a mid-task pause.

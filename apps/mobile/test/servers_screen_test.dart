@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:config_parser/config_parser.dart';
+import 'package:core_domain/core_domain.dart' show ServerProfile;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/features/connection/presentation/screens/add_server_screen.dart';
@@ -33,6 +34,18 @@ class _FakeSubscriptionTransport implements SubscriptionTransport {
 
   @override
   void close() {}
+}
+
+class _FailingServerProfileRepository extends FakeServerProfileRepository {
+  _FailingServerProfileRepository(super.dataSource);
+
+  @override
+  Future<void> save(ServerProfile profile) async {
+    throw const FileSystemException(
+      'Disk write error',
+      '/secret-storage-path/profiles.json',
+    );
+  }
 }
 
 const String _uuid = '11111111-2222-3333-4444-555555555555';
@@ -325,6 +338,15 @@ void main() {
       await tester.tap(find.byKey(deleteKey));
       await tester.pumpAndSettle();
 
+      expect(
+        find.byKey(const ValueKey<String>('confirm_delete_dialog')),
+        findsOneWidget,
+      );
+      await tester.tap(
+        find.byKey(const ValueKey<String>('confirm_delete_confirm')),
+      );
+      await tester.pumpAndSettle();
+
       // Reactively transitions to Empty State
       expect(find.text('No servers added yet'), findsOneWidget);
       expect(find.text('Standalone1'), findsNothing);
@@ -381,6 +403,15 @@ void main() {
         await tester.tap(deleteButton);
         await tester.pumpAndSettle();
 
+        expect(
+          find.byKey(const ValueKey<String>('confirm_delete_dialog')),
+          findsOneWidget,
+        );
+        await tester.tap(
+          find.byKey(const ValueKey<String>('confirm_delete_confirm')),
+        );
+        await tester.pumpAndSettle();
+
         // Removed cleanly -> Empty state
         expect(find.text('No servers added yet'), findsOneWidget);
         expect(
@@ -389,6 +420,608 @@ void main() {
           ),
           findsNothing,
         );
+      },
+    );
+
+    testWidgets(
+      'delete confirmation dialog: cancel keeps server, confirm deletes it',
+      (tester) async {
+        final engine = FakeVpnEngine();
+        final dataSource = FakeServerProfileDataSource();
+        addTearDown(engine.dispose);
+
+        await pumpConnectionApp(
+          tester,
+          const MyApp(),
+          engine: engine,
+          dataSource: dataSource,
+        );
+
+        // Add 1 standalone server
+        await tester.tap(
+          find.byKey(const ValueKey<String>('home_add_server_button')),
+        );
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byKey(const ValueKey<String>('add_server_uri_field')),
+          _standaloneVless,
+        );
+        await tester.tap(
+          find.byKey(const ValueKey<String>('add_server_save_button')),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byIcon(Icons.dns));
+        await tester.pumpAndSettle();
+        expect(find.text('Standalone1'), findsOneWidget);
+
+        final serverId = dataSource.records.first.id;
+        final deleteKey = ValueKey<String>('server_delete_$serverId');
+
+        // 1. Tap delete button -> dialog appears
+        await tester.tap(find.byKey(deleteKey));
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const ValueKey<String>('confirm_delete_dialog')),
+          findsOneWidget,
+        );
+        expect(find.text('Delete Server'), findsOneWidget);
+
+        // 2. Tap cancel -> dialog disappears, server still exists
+        await tester.tap(
+          find.byKey(const ValueKey<String>('confirm_delete_cancel')),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const ValueKey<String>('confirm_delete_dialog')),
+          findsNothing,
+        );
+        expect(find.text('Standalone1'), findsOneWidget);
+
+        // 3. Tap delete again -> dialog appears
+        await tester.tap(find.byKey(deleteKey));
+        await tester.pumpAndSettle();
+
+        // 4. Tap confirm -> server deleted -> empty state
+        await tester.tap(
+          find.byKey(const ValueKey<String>('confirm_delete_confirm')),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('No servers added yet'), findsOneWidget);
+        expect(find.text('Standalone1'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'edit standalone server: updates name & URI reactively; validates URI '
+      'error without closing; subscription servers lack edit button',
+      (tester) async {
+        final engine = FakeVpnEngine();
+        final dataSource = FakeServerProfileDataSource();
+        addTearDown(engine.dispose);
+
+        final fetcher = SubscriptionFetcher(
+          transport: _FakeSubscriptionTransport(
+            handler: (uri, headers) async {
+              return TransportResponse(
+                statusCode: HttpStatus.ok,
+                headers: const {},
+                body: Stream.value(utf8.encode(_subVless1)),
+              );
+            },
+          ),
+        );
+
+        await pumpConnectionApp(
+          tester,
+          const MyApp(),
+          engine: engine,
+          dataSource: dataSource,
+          subscriptionFetcher: fetcher,
+        );
+
+        // Add 1 standalone server
+        await tester.tap(
+          find.byKey(const ValueKey<String>('home_add_server_button')),
+        );
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byKey(const ValueKey<String>('add_server_uri_field')),
+          _standaloneVless,
+        );
+        await tester.tap(
+          find.byKey(const ValueKey<String>('add_server_save_button')),
+        );
+        await tester.pumpAndSettle();
+
+        // Add 1 subscription
+        await tester.tap(
+          find.byKey(const ValueKey<String>('home_add_subscription_button')),
+        );
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byKey(const ValueKey<String>('add_subscription_url_field')),
+          'https://sub.example.com/feed',
+        );
+        await tester.enterText(
+          find.byKey(const ValueKey<String>('add_subscription_name_field')),
+          'SubGroup',
+        );
+        await tester.tap(
+          find.byKey(const ValueKey<String>('add_subscription_import_button')),
+        );
+        await tester.pumpAndSettle();
+
+        // Go to Servers screen
+        await tester.tap(find.byIcon(Icons.dns));
+        await tester.pumpAndSettle();
+
+        final standaloneId = dataSource.records.first.id;
+        final subServerId = dataSource.savedProfiles.first.id;
+
+        // 1. Verify subscription server does NOT have an edit button
+        expect(
+          find.byKey(ValueKey<String>('server_edit_$subServerId')),
+          findsNothing,
+        );
+
+        // 2. Standalone server DOES have an edit button
+        final editButton = find.byKey(
+          ValueKey<String>('server_edit_$standaloneId'),
+        );
+        expect(editButton, findsOneWidget);
+
+        // 3. Tap Edit button -> Edit dialog opens
+        await tester.tap(editButton);
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(const ValueKey<String>('edit_server_dialog')),
+          findsOneWidget,
+        );
+        expect(find.text('Edit Server'), findsOneWidget);
+
+        // 4. Test validation: enter empty name -> error, dialog remains open
+        await tester.enterText(
+          find.byKey(const ValueKey<String>('edit_server_name_field')),
+          '   ',
+        );
+        await tester.tap(
+          find.byKey(const ValueKey<String>('edit_server_save')),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const ValueKey<String>('edit_server_dialog')),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(
+            of: find.byKey(const ValueKey<String>('edit_server_dialog')),
+            matching: find.text('Server name cannot be empty'),
+          ),
+          findsOneWidget,
+        );
+
+        // 5. Test validation: enter invalid replacement URI -> error shown
+        await tester.enterText(
+          find.byKey(const ValueKey<String>('edit_server_name_field')),
+          'Renamed Standalone',
+        );
+        await tester.enterText(
+          find.byKey(const ValueKey<String>('edit_server_uri_field')),
+          'badprotocol://invalid-uri',
+        );
+        await tester.tap(
+          find.byKey(const ValueKey<String>('edit_server_save')),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const ValueKey<String>('edit_server_dialog')),
+          findsOneWidget,
+        );
+        expect(find.byType(SnackBar), findsOneWidget);
+
+        // Dismiss SnackBar
+        tester.binding.scheduleFrame();
+        await tester.pump(const Duration(seconds: 5));
+
+        // 6. Test success: enter valid replacement URI (Trojan) & valid name
+        const replacementTrojan =
+            'trojan://newpassword@newtrojan.example.com:443#Renamed Standalone';
+        await tester.enterText(
+          find.byKey(const ValueKey<String>('edit_server_uri_field')),
+          replacementTrojan,
+        );
+        await tester.tap(
+          find.byKey(const ValueKey<String>('edit_server_save')),
+        );
+        await tester.pumpAndSettle();
+
+        // Dialog should be dismissed
+        expect(
+          find.byKey(const ValueKey<String>('edit_server_dialog')),
+          findsNothing,
+        );
+
+        // Tile reactively reflects updated name and new protocol
+        expect(find.text('Renamed Standalone'), findsOneWidget);
+        expect(find.text('TROJAN'), findsOneWidget);
+        expect(find.text('newtrojan.example.com:443'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'duplicate server: creates independent standalone copy for both '
+      'standalone and subscription servers',
+      (tester) async {
+        final engine = FakeVpnEngine();
+        final dataSource = FakeServerProfileDataSource();
+        addTearDown(engine.dispose);
+
+        final fetcher = SubscriptionFetcher(
+          transport: _FakeSubscriptionTransport(
+            handler: (uri, headers) async {
+              return TransportResponse(
+                statusCode: HttpStatus.ok,
+                headers: const {},
+                body: Stream.value(utf8.encode(_subVless1)),
+              );
+            },
+          ),
+        );
+
+        await pumpConnectionApp(
+          tester,
+          const MyApp(),
+          engine: engine,
+          dataSource: dataSource,
+          subscriptionFetcher: fetcher,
+        );
+
+        // Import 1 subscription
+        await tester.tap(
+          find.byKey(const ValueKey<String>('home_add_subscription_button')),
+        );
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byKey(const ValueKey<String>('add_subscription_url_field')),
+          'https://sub.example.com/feed',
+        );
+        await tester.enterText(
+          find.byKey(const ValueKey<String>('add_subscription_name_field')),
+          'SubGroup',
+        );
+        await tester.tap(
+          find.byKey(const ValueKey<String>('add_subscription_import_button')),
+        );
+        await tester.pumpAndSettle();
+
+        // Switch to Servers screen
+        await tester.tap(find.byIcon(Icons.dns));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Standalone Servers'), findsNothing);
+        expect(find.text('SubGroup'), findsAtLeast(1));
+
+        final subServerId = dataSource.savedProfiles.first.id;
+
+        // Duplicate subscription server
+        final duplicateButton = find.byKey(
+          ValueKey<String>('server_duplicate_$subServerId'),
+        );
+        expect(duplicateButton, findsOneWidget);
+        await tester.tap(duplicateButton);
+        await tester.pumpAndSettle();
+
+        // Standalone section now exists with the duplicate server!
+        expect(find.text('Standalone Servers'), findsOneWidget);
+        expect(
+          find.text('SubGroup - sub1.example.com:443 (Copy)'),
+          findsOneWidget,
+        );
+        // Original subscription server still exists in its group
+        expect(find.text('SubGroup - sub1.example.com:443'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'subscription refresh: updates servers on success; preserves existing '
+      'servers on fetch error',
+      (tester) async {
+        final engine = FakeVpnEngine();
+        final dataSource = FakeServerProfileDataSource();
+        addTearDown(engine.dispose);
+
+        var simulateNetworkError = false;
+        var fetchedPayload = _subVless1;
+
+        final fetcher = SubscriptionFetcher(
+          transport: _FakeSubscriptionTransport(
+            handler: (uri, headers) async {
+              if (simulateNetworkError) {
+                throw const SocketException('Connection refused');
+              }
+              return TransportResponse(
+                statusCode: HttpStatus.ok,
+                headers: const {},
+                body: Stream.value(utf8.encode(fetchedPayload)),
+              );
+            },
+          ),
+        );
+
+        await pumpConnectionApp(
+          tester,
+          const MyApp(),
+          engine: engine,
+          dataSource: dataSource,
+          subscriptionFetcher: fetcher,
+        );
+
+        // Import subscription initially with _subVless1
+        await tester.tap(
+          find.byKey(const ValueKey<String>('home_add_subscription_button')),
+        );
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byKey(const ValueKey<String>('add_subscription_url_field')),
+          'https://sub.example.com/feed',
+        );
+        await tester.enterText(
+          find.byKey(const ValueKey<String>('add_subscription_name_field')),
+          'Plan Alpha',
+        );
+        await tester.tap(
+          find.byKey(const ValueKey<String>('add_subscription_import_button')),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byIcon(Icons.dns));
+        await tester.pumpAndSettle();
+
+        final subId = dataSource.subscriptions.first.id;
+        final refreshKey = ValueKey<String>('subscription_refresh_$subId');
+        expect(find.byKey(refreshKey), findsOneWidget);
+        expect(find.text('Plan Alpha - sub1.example.com:443'), findsOneWidget);
+
+        // 1. Simulate network failure during refresh
+        simulateNetworkError = true;
+        await tester.tap(find.byKey(refreshKey));
+        await tester.pumpAndSettle();
+
+        // Error feedback displayed and existing server preserved untouched!
+        expect(find.byType(SnackBar), findsOneWidget);
+        expect(find.text('Plan Alpha - sub1.example.com:443'), findsOneWidget);
+
+        // Dismiss SnackBar
+        tester.binding.scheduleFrame();
+        await tester.pump(const Duration(seconds: 5));
+
+        // 2. Simulate successful refresh with new server list (_subVless2)
+        simulateNetworkError = false;
+        fetchedPayload = _subVless2;
+
+        await tester.tap(find.byKey(refreshKey));
+        await tester.pumpAndSettle();
+
+        // Success SnackBar displayed
+        expect(find.byType(SnackBar), findsOneWidget);
+        expect(find.text('Successfully imported 1 servers'), findsOneWidget);
+
+        // Old server sub1 replaced by new server sub2!
+        expect(find.text('Plan Alpha - sub1.example.com:443'), findsNothing);
+        expect(find.text('Plan Alpha - sub2.example.com:443'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'delete subscription cascade: removes subscription header and all child '
+      'servers',
+      (tester) async {
+        final engine = FakeVpnEngine();
+        final dataSource = FakeServerProfileDataSource();
+        addTearDown(engine.dispose);
+
+        final fetcher = SubscriptionFetcher(
+          transport: _FakeSubscriptionTransport(
+            handler: (uri, headers) async {
+              return TransportResponse(
+                statusCode: HttpStatus.ok,
+                headers: const {},
+                body: Stream.value(utf8.encode('$_subVless1\n$_subVless2')),
+              );
+            },
+          ),
+        );
+
+        await pumpConnectionApp(
+          tester,
+          const MyApp(),
+          engine: engine,
+          dataSource: dataSource,
+          subscriptionFetcher: fetcher,
+        );
+
+        // Import subscription with 2 servers
+        await tester.tap(
+          find.byKey(const ValueKey<String>('home_add_subscription_button')),
+        );
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byKey(const ValueKey<String>('add_subscription_url_field')),
+          'https://sub.example.com/feed',
+        );
+        await tester.enterText(
+          find.byKey(const ValueKey<String>('add_subscription_name_field')),
+          'Cascade Plan',
+        );
+        await tester.tap(
+          find.byKey(const ValueKey<String>('add_subscription_import_button')),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byIcon(Icons.dns));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Cascade Plan'), findsAtLeast(1));
+        expect(
+          find.text('Cascade Plan - sub1.example.com:443'),
+          findsOneWidget,
+        );
+        expect(
+          find.text('Cascade Plan - sub2.example.com:443'),
+          findsOneWidget,
+        );
+
+        final subId = dataSource.subscriptions.first.id;
+        final deleteSubKey = ValueKey<String>('subscription_delete_$subId');
+
+        // Tap Delete Subscription button -> confirmation dialog appears
+        await tester.tap(find.byKey(deleteSubKey));
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(const ValueKey<String>('confirm_delete_dialog')),
+          findsOneWidget,
+        );
+        expect(find.text('Delete Subscription'), findsOneWidget);
+
+        // Confirm deletion
+        await tester.tap(
+          find.byKey(const ValueKey<String>('confirm_delete_confirm')),
+        );
+        await tester.pumpAndSettle();
+
+        // Subscription and all associated servers removed -> empty state
+        expect(find.text('No servers added yet'), findsOneWidget);
+        expect(find.text('Cascade Plan'), findsNothing);
+        expect(find.text('Cascade Plan - sub1.example.com:443'), findsNothing);
+        expect(find.text('Cascade Plan - sub2.example.com:443'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'rapid duplicate calls generate unique standalone server IDs via '
+      'monotonic sequence without collision',
+      (tester) async {
+        final engine = FakeVpnEngine();
+        final dataSource = FakeServerProfileDataSource();
+        addTearDown(engine.dispose);
+
+        await pumpConnectionApp(
+          tester,
+          const MyApp(),
+          engine: engine,
+          dataSource: dataSource,
+        );
+
+        // Add 1 standalone server
+        await tester.tap(
+          find.byKey(const ValueKey<String>('home_add_server_button')),
+        );
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byKey(const ValueKey<String>('add_server_uri_field')),
+          _standaloneVless,
+        );
+        await tester.tap(
+          find.byKey(const ValueKey<String>('add_server_save_button')),
+        );
+        await tester.pumpAndSettle();
+
+        // Switch to Servers screen
+        await tester.tap(find.byIcon(Icons.dns));
+        await tester.pumpAndSettle();
+
+        final originalId = dataSource.records.first.id;
+        final duplicateButton = find.byKey(
+          ValueKey<String>('server_duplicate_$originalId'),
+        );
+        expect(duplicateButton, findsOneWidget);
+
+        // Duplicate twice rapidly
+        await tester.tap(duplicateButton);
+        await tester.pumpAndSettle();
+        await tester.tap(duplicateButton);
+        await tester.pumpAndSettle();
+
+        // Expect 2 saved duplicated profiles in dataSource.savedProfiles
+        expect(dataSource.savedProfiles.length, equals(2));
+        final ids = <String>{
+          originalId,
+          ...dataSource.savedProfiles.map((p) => p.id),
+        };
+        // All 3 IDs must be unique
+        expect(ids.length, equals(3));
+        expect(
+          dataSource.savedProfiles[0].id,
+          isNot(equals(dataSource.savedProfiles[1].id)),
+        );
+        expect(find.text('Standalone1 (Copy)'), findsNWidgets(2));
+      },
+    );
+
+    testWidgets(
+      'repository FileSystemException is redacted to generic storage error '
+      'and never leaks raw paths or exception details to UI',
+      (tester) async {
+        final engine = FakeVpnEngine();
+        final dataSource = FakeServerProfileDataSource();
+        final failingRepo = _FailingServerProfileRepository(dataSource);
+        addTearDown(engine.dispose);
+
+        await pumpConnectionApp(
+          tester,
+          const MyApp(),
+          engine: engine,
+          dataSource: dataSource,
+          repository: failingRepo,
+        );
+
+        // Add 1 standalone server
+        await tester.tap(
+          find.byKey(const ValueKey<String>('home_add_server_button')),
+        );
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byKey(const ValueKey<String>('add_server_uri_field')),
+          _standaloneVless,
+        );
+        await tester.tap(
+          find.byKey(const ValueKey<String>('add_server_save_button')),
+        );
+        await tester.pumpAndSettle();
+
+        // Switch to Servers screen
+        await tester.tap(find.byIcon(Icons.dns));
+        await tester.pumpAndSettle();
+
+        final serverId = dataSource.records.first.id;
+
+        // Open Edit Dialog
+        await tester.tap(find.byKey(ValueKey<String>('server_edit_$serverId')));
+        await tester.pumpAndSettle();
+
+        // Change name and attempt to save (triggers repo.save which throws)
+        await tester.enterText(
+          find.byKey(const ValueKey<String>('edit_server_name_field')),
+          'RenamedServer',
+        );
+        await tester.tap(
+          find.byKey(const ValueKey<String>('edit_server_save')),
+        );
+        await tester.pumpAndSettle();
+
+        // Redacted localized storage error message must be shown
+        expect(
+          find.text('Failed to save server changes to local storage'),
+          findsAtLeast(1),
+        );
+
+        // Security assertion: Never leak exception class, OS error, or paths
+        expect(find.textContaining('FileSystemException'), findsNothing);
+        expect(find.textContaining('secret-storage-path'), findsNothing);
+        expect(find.textContaining('Disk write error'), findsNothing);
       },
     );
   });
