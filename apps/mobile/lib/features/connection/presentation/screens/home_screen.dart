@@ -2,7 +2,9 @@
 
 import 'dart:async';
 
-import 'package:core_domain/core_domain.dart' show ConnectionState;
+import 'package:core_domain/core_domain.dart'
+    show Connected, Connecting, ConnectionState, Disconnecting;
+import 'package:core_vpn_engine/core_vpn_engine.dart' show VpnCommandAccepted;
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart' hide ConnectionState;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -66,6 +68,12 @@ class HomeScreen extends ConsumerWidget {
 
     final servers = ref.watch(savedServersProvider);
     final activeServer = ref.watch(activeServerProvider);
+    final connectionState = ref.watch(connectionStateProvider).value;
+
+    final isConnecting = connectionState is Connecting;
+    final isConnected = connectionState is Connected;
+    final isDisconnecting = connectionState is Disconnecting;
+    final isConnectedOrConnecting = isConnected || isConnecting;
 
     return Scaffold(
       appBar: AppBar(title: Text('home.title'.tr())),
@@ -106,6 +114,49 @@ class HomeScreen extends ConsumerWidget {
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
+                      ),
+                      trailing: FilledButton(
+                        key: const ValueKey<String>(
+                          'home_connect_toggle_button',
+                        ),
+                        onPressed: isDisconnecting
+                            ? null
+                            : () async {
+                                if (isConnectedOrConnecting) {
+                                  final result = await ref
+                                      .read(
+                                        connectionControllerProvider.notifier,
+                                      )
+                                      .disconnect();
+                                  if (context.mounted &&
+                                      result is! VpnCommandAccepted) {
+                                    AppFeedback.showError(
+                                      context,
+                                      ErrorMapper.mapToUserMessage(result),
+                                    );
+                                  }
+                                } else {
+                                  final result = await ref
+                                      .read(
+                                        connectionControllerProvider.notifier,
+                                      )
+                                      .connect(activeServer.profile);
+                                  if (context.mounted &&
+                                      result is! VpnCommandAccepted) {
+                                    AppFeedback.showError(
+                                      context,
+                                      ErrorMapper.mapToUserMessage(result),
+                                    );
+                                  }
+                                }
+                              },
+                        child: Text(
+                          isConnectedOrConnecting
+                              ? 'connection.disconnect'.tr()
+                              : isDisconnecting
+                              ? 'connection.state_disconnecting'.tr()
+                              : 'connection.connect'.tr(),
+                        ),
                       ),
                     ),
                   ),
@@ -150,24 +201,32 @@ class HomeScreen extends ConsumerWidget {
             for (final entry in entries)
               ServerTile(
                 server: entry,
-                // `connect`/`disconnect` return a Future that is
-                // deliberately NOT awaited here: a completed command means
-                // "accepted", not "connected" (VpnEngine Invariant 1). The
-                // badge updates only when the state stream emits.
-                onConnect: (profile) {
-                  final active = ref.read(activeServerProvider);
+                onConnect: (profile) async {
                   unawaited(
                     ref
-                        .read(connectionControllerProvider.notifier)
-                        .connect(active?.profile ?? profile),
+                        .read(activeServerIdProvider.notifier)
+                        .selectServer(profile.id),
                   );
+                  final result = await ref
+                      .read(connectionControllerProvider.notifier)
+                      .connect(profile);
+                  if (context.mounted && result is! VpnCommandAccepted) {
+                    AppFeedback.showError(
+                      context,
+                      ErrorMapper.mapToUserMessage(result),
+                    );
+                  }
                 },
-                onDisconnect: () {
-                  unawaited(
-                    ref
-                        .read(connectionControllerProvider.notifier)
-                        .disconnect(),
-                  );
+                onDisconnect: () async {
+                  final result = await ref
+                      .read(connectionControllerProvider.notifier)
+                      .disconnect();
+                  if (context.mounted && result is! VpnCommandAccepted) {
+                    AppFeedback.showError(
+                      context,
+                      ErrorMapper.mapToUserMessage(result),
+                    );
+                  }
                 },
                 onRemove: () {
                   unawaited(

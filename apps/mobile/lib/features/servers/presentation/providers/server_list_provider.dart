@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobile/core/providers/server_profile_repository_provider.dart';
 import 'package:mobile/features/connection/domain/entities/saved_server.dart';
@@ -70,7 +71,7 @@ final groupedServerListProvider = FutureProvider<GroupedServerList>((
         SubscriptionMetadata(
           id: subId,
           url: '',
-          name: 'Subscription',
+          name: 'servers.subscription_badge'.tr(),
           lastRefreshedAt: DateTime.fromMillisecondsSinceEpoch(0),
           associatedServerIds: profiles.map((p) => p.id).toList(),
         );

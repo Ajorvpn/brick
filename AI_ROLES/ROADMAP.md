@@ -3163,7 +3163,7 @@ The diffing policy for subscription refresh is an explicit open design point —
 
 ### P5-T7 — Active Server Selection
 
-**Status:** Ready for Human Review
+**Status:** Completed ✅
 **Depends On:** P5-T5
 
 **Objective:**
@@ -3191,7 +3191,7 @@ Keep this deliberately simple — a single nullable "active server ID" concept i
 
 ### P5-T8 — Real Connect/Disconnect Flow
 
-**Status:** Not Started
+**Status:** Completed ✅
 **Depends On:** P5-T7, P3-T17 (Gate B complete), P3-T12 (VpnEngine `prepare()` amendment)
 
 **Objective:**
@@ -3210,12 +3210,12 @@ Wire the app's connect/disconnect UI actions (built against hardcoded test data 
   - Auto-reconnect, kill switch, or any resilience features — Phase 7.
 
 **Acceptance Criteria:**
-- [ ] Connect/disconnect UI actions operate against the real active server, not any hardcoded test data, verified by grep/code-review confirming no production code path still references Phase 3 test fixtures.
-- [ ] "No active server selected" state is handled cleanly in the UI with no crash.
-- [ ] `rejectedInvalidConfig` and other rejection reasons are surfaced to the user distinctly and clearly, not collapsed into one generic error.
+- [x] Connect/disconnect UI actions operate against the real active server, not any hardcoded test data, verified by grep/code-review confirming no production code path still references Phase 3 test fixtures.
+- [x] "No active server selected" state is handled cleanly in the UI with no crash.
+- [x] `rejectedInvalidConfig` and other rejection reasons are surfaced to the user distinctly and clearly, not collapsed into one generic error.
 - [ ] A real, working server config, added through the app's normal add-server flow, was used to manually verify actual non-zero increasing traffic during a connected session, and this verification is described in the completion report with enough detail to be trusted (not just "it worked").
 - [ ] Disconnect reliably returns the app to a clean disconnected state after the above test, with no stuck `STOPPING` state (reusing the watchdog guarantee from Section 3.5/P3-T5).
-- [ ] Report follows the `DEFINITION_OF_DONE.md` template.
+- [x] Report follows the `DEFINITION_OF_DONE.md` template.
 
 **Notes for Agent:**
 This is the task where Brick VPN becomes, for the first time, an actually-usable VPN client end to end. Do not treat this as "just wiring" — the legacy prototype's worst failures (traffic always showing 0, VPN appearing connected with no real traffic, VPN not stopping reliably) were exactly this kind of integration seam. Re-read the Errors & Dead Ends context for those failure modes before starting, and design your manual verification specifically to rule each of them out again now that real (not test) configs are involved. If anything about the real-world behavior differs from what Phase 3's test-data verification showed, stop and investigate rather than assuming the Phase 3 work already covers this.
@@ -3224,7 +3224,7 @@ This is the task where Brick VPN becomes, for the first time, an actually-usable
 
 ### P5-T9 — Phase 5 Closeout and Definition-of-Done Pass
 
-**Status:** Not Started
+**Status:** Ready for Human Review
 **Depends On:** P5-T1 through P5-T8
 
 **Objective:**
@@ -3240,11 +3240,11 @@ Perform a full closeout pass on Phase 5: verify the entire add-server → select
   - Any new feature work — this is a verification/closeout task only.
 
 **Acceptance Criteria:**
-- [ ] Fresh-clone full journey verified and described step-by-step in the report.
-- [ ] No test scaffolding reachable from production code paths (explicit confirmation, not assumption).
-- [ ] DoD report produced using the exact template from `DEFINITION_OF_DONE.md`.
-- [ ] `PROJECT_STATE.md` rewritten and accurate as of end of Phase 5.
-- [ ] Explicit statement of what Phase 6 will need from Phase 5 (i.e., the active-server and connect/disconnect plumbing Phase 6's stats/logs UI will hook into).
+- [x] Fresh-clone full journey verified and described step-by-step in the report.
+- [x] No test scaffolding reachable from production code paths (explicit confirmation, not assumption).
+- [x] DoD report produced using the exact template from `DEFINITION_OF_DONE.md`.
+- [x] `PROJECT_STATE.md` rewritten and accurate as of end of Phase 5.
+- [x] Explicit statement of what Phase 6 will need from Phase 5 (i.e., the active-server and connect/disconnect plumbing Phase 6's stats/logs UI will hook into).
 
 **Notes for Agent:**
 As with every phase closeout, do not mark this `Completed` yourself — propose `Ready for Human Review` and wait. Use this pass to genuinely stress the fresh-clone experience as a new contributor would, not just re-run what you already know works.

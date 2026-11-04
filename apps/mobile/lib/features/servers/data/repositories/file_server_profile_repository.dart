@@ -258,11 +258,53 @@ final class FileServerProfileRepository implements ServerProfileRepository {
   }
 
   @override
+  Future<void> replaceSubscriptionProfiles(
+    SubscriptionMetadata subscription,
+    List<ServerProfile> newProfiles,
+  ) async {
+    await _ensureLoaded();
+    final oldSub = _subscriptions[subscription.id];
+    final oldAssociated = oldSub?.associatedServerIds ?? const <String>[];
+
+    _profiles.removeWhere(
+      (id, p) =>
+          p.subscriptionId == subscription.id ||
+          oldAssociated.contains(id) ||
+          oldAssociated.contains(p.id),
+    );
+    _brokenServers.removeWhere((id, _) => oldAssociated.contains(id));
+
+    _subscriptions[subscription.id] = subscription;
+    for (final profile in newProfiles) {
+      _profiles[profile.id] = profile;
+      _brokenServers.remove(profile.id);
+    }
+    await _persist();
+  }
+
+  @override
   Future<void> deleteSubscription(String id) async {
     await _ensureLoaded();
     if (_subscriptions.remove(id) != null) {
       await _persist();
     }
+  }
+
+  @override
+  Future<void> deleteSubscriptionCascade(String subscriptionId) async {
+    await _ensureLoaded();
+    final oldSub = _subscriptions.remove(subscriptionId);
+    final oldAssociated = oldSub?.associatedServerIds ?? const <String>[];
+
+    _profiles.removeWhere(
+      (id, p) =>
+          p.subscriptionId == subscriptionId ||
+          oldAssociated.contains(id) ||
+          oldAssociated.contains(p.id),
+    );
+    _brokenServers.removeWhere((id, _) => oldAssociated.contains(id));
+
+    await _persist();
   }
 
   @override

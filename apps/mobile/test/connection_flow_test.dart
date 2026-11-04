@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import 'package:core_domain/core_domain.dart'
-    show Connected, Connecting, Disconnected, Disconnecting, TrafficStats;
+    show
+        Connected,
+        Connecting,
+        Disconnected,
+        Disconnecting,
+        ServerProfile,
+        TrafficStats;
 import 'package:core_vpn_engine/core_vpn_engine.dart';
 import 'package:flutter/material.dart' hide ConnectionState;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -33,6 +39,14 @@ class _PermissionDeniedVpnEngine extends FakeVpnEngine {
   Future<VpnCommandResult> prepare() async {
     prepareCalls++;
     return const VpnCommandRejectedPermissionDenied();
+  }
+}
+
+/// A [VpnEngine] fake whose [start] is rejected with invalid config.
+class _InvalidConfigVpnEngine extends FakeVpnEngine {
+  @override
+  Future<VpnCommandResult> start(ServerProfile profile) async {
+    return const VpnCommandRejectedInvalidConfig();
   }
 }
 
@@ -229,7 +243,7 @@ void main() {
       );
       expect(tileSubtitle.data, contains('vless'));
       expect(tileSubtitle.data, contains('example.com:443'));
-      expect(find.text('Connect'), findsOneWidget);
+      expect(find.text('Connect'), findsNWidgets(2));
       expect(find.text('Disconnect'), findsOneWidget);
     });
 
@@ -334,7 +348,7 @@ void main() {
 
       expect(engine.startCalls, isEmpty);
 
-      await tester.tap(find.text('Connect'));
+      await tester.tap(find.text('Connect').first);
       await tester.pumpAndSettle();
 
       expect(engine.startCalls, hasLength(1));
@@ -366,7 +380,7 @@ void main() {
       expect(engine.startCalls, isEmpty);
       expect(engine.prepareCalls, 0);
 
-      await tester.tap(find.text('Connect'));
+      await tester.tap(find.text('Connect').first);
       await tester.pumpAndSettle();
 
       expect(engine.prepareCalls, 1);
@@ -458,7 +472,7 @@ void main() {
         dataSource: dataSource,
       );
 
-      await tester.tap(find.text('Connect'));
+      await tester.tap(find.text('Connect').first);
       await tester.pumpAndSettle();
 
       // The engine accepted the command but has emitted NO transition. This
@@ -556,6 +570,264 @@ void main() {
 
         expect(badgeText(tester), 'Connected');
         expect(find.text('Traffic data unavailable'), findsOneWidget);
+      },
+    );
+  });
+
+  group('P5-T8 Real Connect/Disconnect Flow', () {
+    testWidgets('primary toggle connects active server and stamps lastUsedAt', (
+      tester,
+    ) async {
+      final engine = FakeVpnEngine();
+      final dataSource = FakeServerProfileDataSource();
+      addTearDown(engine.dispose);
+      await buildRepository(dataSource).addServer(validVlessUri);
+
+      await pumpConnectionMaterialApp(
+        tester,
+        const HomeScreen(),
+        engine: engine,
+        dataSource: dataSource,
+      );
+
+      final toggleFinder = find.byKey(
+        const ValueKey<String>('home_connect_toggle_button'),
+      );
+      expect(toggleFinder, findsOneWidget);
+      expect(engine.startCalls, isEmpty);
+
+      // Before connect, no profile in savedProfiles with lastUsedAt
+      expect(dataSource.savedProfiles, isEmpty);
+
+      await tester.tap(toggleFinder);
+      await tester.pumpAndSettle();
+
+      expect(engine.prepareCalls, 1);
+      expect(engine.startCalls, hasLength(1));
+      expect(engine.startCalls.single.config.protocol.scheme, 'vless');
+
+      // Verify lastUsedAt was stamped into storage
+      expect(dataSource.savedProfiles, hasLength(1));
+      expect(dataSource.savedProfiles.single.lastUsedAt, isNotNull);
+
+      // Transition engine to Connected
+      engine.emit(const Connected());
+      await tester.pumpAndSettle();
+
+      // Tapping toggle now calls disconnect
+      expect(engine.stopCalls, 0);
+      await tester.tap(toggleFinder);
+      await tester.pumpAndSettle();
+
+      expect(engine.stopCalls, 1);
+    });
+
+    testWidgets(
+      'command rejections surface distinct error messages in snackbar',
+      (tester) async {
+        final engine = _PermissionDeniedVpnEngine();
+        final dataSource = FakeServerProfileDataSource();
+        addTearDown(engine.dispose);
+        await buildRepository(dataSource).addServer(validVlessUri);
+
+        await pumpConnectionMaterialApp(
+          tester,
+          const HomeScreen(),
+          engine: engine,
+          dataSource: dataSource,
+        );
+
+        final toggleFinder = find.byKey(
+          const ValueKey<String>('home_connect_toggle_button'),
+        );
+
+        await tester.tap(toggleFinder);
+        await tester.pump();
+
+        expect(find.byType(SnackBar), findsOneWidget);
+        expect(
+          find.text('VPN permission was denied by the system'),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets('invalid config rejection surfaces invalid config message', (
+      tester,
+    ) async {
+      final engine = _InvalidConfigVpnEngine();
+      final dataSource = FakeServerProfileDataSource();
+      addTearDown(engine.dispose);
+      await buildRepository(dataSource).addServer(validVlessUri);
+
+      await pumpConnectionMaterialApp(
+        tester,
+        const HomeScreen(),
+        engine: engine,
+        dataSource: dataSource,
+      );
+
+      final toggleFinder = find.byKey(
+        const ValueKey<String>('home_connect_toggle_button'),
+      );
+
+      await tester.tap(toggleFinder);
+      await tester.pump();
+
+      expect(find.byType(SnackBar), findsOneWidget);
+      expect(find.text('The server configuration is invalid'), findsOneWidget);
+    });
+
+    testWidgets(
+      'mid-connection switch cleanly stops active tunnel before starting new',
+      (tester) async {
+        final engine = FakeVpnEngine();
+        final dataSource = FakeServerProfileDataSource();
+        addTearDown(engine.dispose);
+        final repo = buildRepository(dataSource);
+        await repo.addServer(validVlessUri);
+        await repo.addServer(validShadowsocksUri);
+
+        await pumpConnectionMaterialApp(
+          tester,
+          const HomeScreen(),
+          engine: engine,
+          dataSource: dataSource,
+        );
+
+        final servers = await repo.getAll();
+        expect(servers, hasLength(2));
+        final server1 = servers[0];
+        final server2 = servers[1];
+
+        // Connect first server
+        final toggleFinder = find.byKey(
+          const ValueKey<String>('home_connect_toggle_button'),
+        );
+        await tester.tap(toggleFinder);
+        await tester.pumpAndSettle();
+
+        expect(engine.startCalls, hasLength(1));
+        expect(engine.startCalls.single.id, equals(server1.id));
+
+        // Engine enters Connected state
+        engine.emit(const Connected());
+        await tester.pumpAndSettle();
+
+        // Mid-connection switch: trigger connect to server 2 while connected
+        final container = ProviderScope.containerOf(
+          tester.element(find.byType(HomeScreen)),
+        );
+        final result = await container
+            .read(connectionControllerProvider.notifier)
+            .connect(server2);
+        await tester.pumpAndSettle();
+
+        expect(result, isA<VpnCommandAccepted>());
+        // Engine stop was called for server 1, and server 2 was started
+        expect(engine.stopCalls, 1);
+        expect(engine.startCalls, hasLength(2));
+        expect(engine.startCalls.last.id, equals(server2.id));
+      },
+    );
+
+    testWidgets('disconnecting state disables toggle button', (tester) async {
+      final engine = FakeVpnEngine();
+      final dataSource = FakeServerProfileDataSource();
+      addTearDown(engine.dispose);
+      await buildRepository(dataSource).addServer(validVlessUri);
+
+      await pumpConnectionMaterialApp(
+        tester,
+        const HomeScreen(),
+        engine: engine,
+        dataSource: dataSource,
+      );
+
+      final toggleFinder = find.byKey(
+        const ValueKey<String>('home_connect_toggle_button'),
+      );
+      expect(toggleFinder, findsOneWidget);
+
+      // Put engine in Disconnecting state
+      engine.emit(const Disconnecting());
+      await tester.pumpAndSettle();
+
+      final button = tester.widget<FilledButton>(toggleFinder);
+      expect(button.onPressed, isNull);
+    });
+
+    testWidgets('empty state displays no active server card or toggle button', (
+      tester,
+    ) async {
+      final engine = FakeVpnEngine();
+      final dataSource = FakeServerProfileDataSource();
+      addTearDown(engine.dispose);
+
+      await pumpConnectionMaterialApp(
+        tester,
+        const HomeScreen(),
+        engine: engine,
+        dataSource: dataSource,
+      );
+
+      expect(
+        find.byKey(const ValueKey<String>('home_active_server_card')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('home_connect_toggle_button')),
+        findsNothing,
+      );
+      expect(find.text('No saved servers yet'), findsOneWidget);
+    });
+
+    testWidgets(
+      'tapping Connect on ServerTile connects to that specific server and '
+      'updates active selection',
+      (tester) async {
+        final engine = FakeVpnEngine();
+        final dataSource = FakeServerProfileDataSource();
+        addTearDown(engine.dispose);
+        final repo = buildRepository(dataSource);
+        await repo.addServer(validVlessUri);
+        await repo.addServer(validShadowsocksUri);
+
+        await pumpConnectionMaterialApp(
+          tester,
+          const HomeScreen(),
+          engine: engine,
+          dataSource: dataSource,
+        );
+
+        final servers = await repo.getAll();
+        expect(servers, hasLength(2));
+        final server1 = servers[0];
+        final server2 = servers[1];
+
+        // Active server auto-falls back to server 1
+        expect(find.text('Active: ${server1.name}'), findsOneWidget);
+
+        // Find the second server's tile and tap its Connect button specifically
+        final secondTile = find.byKey(
+          ValueKey<String>('server_tile_${server2.id}'),
+        );
+        expect(secondTile, findsOneWidget);
+        final connectButton = find.descendant(
+          of: secondTile,
+          matching: find.text('Connect'),
+        );
+        expect(connectButton, findsOneWidget);
+
+        await tester.tap(connectButton);
+        await tester.pumpAndSettle();
+
+        // Engine starts with server 2's profile
+        expect(engine.startCalls, hasLength(1));
+        expect(engine.startCalls.single.id, equals(server2.id));
+
+        // Active server selection switched to server 2
+        expect(find.text('Active: ${server2.name}'), findsOneWidget);
       },
     );
   });

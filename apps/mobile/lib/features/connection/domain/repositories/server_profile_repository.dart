@@ -39,8 +39,18 @@ abstract interface class ServerProfileRepository {
     List<ServerProfile> profiles,
   );
 
+  /// Atomically replaces all server profiles associated with [subscription]
+  /// with [newProfiles] and updates the subscription record.
+  Future<void> replaceSubscriptionProfiles(
+    SubscriptionMetadata subscription,
+    List<ServerProfile> newProfiles,
+  );
+
   /// Deletes the [SubscriptionMetadata] with [id]. Unknown IDs are ignored.
   Future<void> deleteSubscription(String id);
+
+  /// Atomically deletes [subscriptionId] and all associated server profiles.
+  Future<void> deleteSubscriptionCascade(String subscriptionId);
 
   /// Every saved entry, in insertion order.
   ///

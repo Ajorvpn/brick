@@ -48,12 +48,10 @@ final class AddServerParseError extends AddServerError {
 
 /// An error occurred while persisting the server profile to storage.
 final class AddServerStorageError extends AddServerError {
-  const AddServerStorageError(this.message);
-
-  final String message;
+  const AddServerStorageError();
 
   @override
-  String toUserMessage() => message;
+  String toUserMessage() => 'servers.storage_error'.tr();
 }
 
 /// Provides the controller for validating and persisting new server profiles.
@@ -109,10 +107,10 @@ class AddServerController extends AsyncNotifier<void> {
           ref.invalidate(savedServersProvider);
           state = const AsyncData<void>(null);
           return const Ok(null);
-        } on Object catch (e) {
-          final failure = AddServerStorageError(e.toString());
-          state = AsyncError<void>(failure, StackTrace.current);
-          return Err(failure);
+        } on Object catch (_, st) {
+          const failure = AddServerStorageError();
+          state = AsyncError<void>(failure, st);
+          return const Err(failure);
         }
     }
   }

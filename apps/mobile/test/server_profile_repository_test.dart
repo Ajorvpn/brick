@@ -239,9 +239,73 @@ void main() {
       final subscriptions = raw['subscriptions'] as List<dynamic>;
       expect(subscriptions, hasLength(1));
     });
+
+    test('updating lastUsedAt preserves insertion order and persists across '
+        're-instantiation', () async {
+      // Save 3 profiles in specific order: trojan, vless, ss
+      await repository.save(trojanProfile);
+      await repository.save(vlessProfile);
+      await repository.save(ssProfile);
+
+      final initialOrder = await repository.getAll();
+      expect(initialOrder.map((p) => p.id).toList(), [
+        'trojan-1',
+        'vless-1',
+        'ss-1',
+      ]);
+      expect(initialOrder[0].lastUsedAt, isNull);
+
+      // Update lastUsedAt on the first profile (trojan-1)
+      final stampedTime = DateTime.utc(2026, 11, 4, 12, 30);
+      final updatedTrojan = trojanProfile.copyWith(lastUsedAt: stampedTime);
+      await repository.save(updatedTrojan);
+
+      // Verify in-memory order and updated field
+      final updatedOrder = await repository.getAll();
+      expect(updatedOrder.map((p) => p.id).toList(), [
+        'trojan-1',
+        'vless-1',
+        'ss-1',
+      ]);
+      expect(updatedOrder[0].lastUsedAt, equals(stampedTime));
+
+      final loadedServers = await repository.loadServers();
+      expect(loadedServers.map((s) => s.id).toList(), [
+        'trojan-1',
+        'vless-1',
+        'ss-1',
+      ]);
+      expect(
+        (loadedServers[0] as SavedServerProfile).profile.lastUsedAt,
+        equals(stampedTime),
+      );
+
+      // Re-instantiate repository from disk and verify persistence
+      final repo2 = FileServerProfileRepository(storageFile: storageFile);
+      await repo2.init();
+
+      final reloadedOrder = await repo2.getAll();
+      expect(reloadedOrder.map((p) => p.id).toList(), [
+        'trojan-1',
+        'vless-1',
+        'ss-1',
+      ]);
+      expect(reloadedOrder[0].lastUsedAt, equals(stampedTime));
+
+      final reloadedServers = await repo2.loadServers();
+      expect(reloadedServers.map((s) => s.id).toList(), [
+        'trojan-1',
+        'vless-1',
+        'ss-1',
+      ]);
+      expect(
+        (reloadedServers[0] as SavedServerProfile).profile.lastUsedAt,
+        equals(stampedTime),
+      );
+    });
   });
 
-  group('Broken servers persistence (Defect D4)', () {
+  group('Broken servers persistence', () {
     test('persists and restores broken servers across restarts', () async {
       final envelopeWithBroken = {
         'schema_version': 1,
@@ -274,7 +338,7 @@ void main() {
     });
   });
 
-  group('Concurrency and race control (Defect D3)', () {
+  group('Concurrency and race control', () {
     test('concurrent init and write operations complete safely', () async {
       // Fire concurrent reads and writes simultaneously
       await Future.wait([
@@ -456,7 +520,7 @@ void main() {
     });
   });
 
-  group('Legacy compatibility & security (Defect D1)', () {
+  group('Legacy compatibility & security', () {
     test(
       'addServer parses and persists, loadServers returns SavedServerProfile',
       () async {
