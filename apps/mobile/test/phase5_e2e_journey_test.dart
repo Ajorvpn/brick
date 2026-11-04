@@ -49,7 +49,7 @@ const String _subVlessUri1 =
 const String _subVlessUri2 =
     'vless://$_uuid4@sub2.example.com:443?security=none#SubNode2';
 const String _subVlessUri2Refreshed =
-    'vless://$_uuid4@sub2.example.com:443?security=none#SubNode2Refreshed';
+    'vless://$_uuid4@sub2refreshed.example.com:443?security=none#SubNode2Refreshed';
 
 void main() {
   setUpAll(initTestLocalization);
@@ -148,7 +148,13 @@ void main() {
       await tester.pumpAndSettle();
 
       await tester.tap(
-        find.byKey(const ValueKey<String>('servers_scan_qr_appbar_action')),
+        find.byKey(const ValueKey<String>('servers_add_server_action')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AddServerScreen), findsOneWidget);
+      await tester.tap(
+        find.byKey(const ValueKey<String>('add_server_scan_qr_button')),
       );
       await tester.pumpAndSettle();
 
@@ -167,10 +173,10 @@ void main() {
       expect(find.text('QrNode2'), findsOneWidget);
 
       // =====================================================================
-      // STEP 4: Import subscription URL yielding multiple servers (P5-T4, P5-T5)
+      // STEP 4: Import subscription URL yielding servers (P5-T4, P5-T5)
       // =====================================================================
       await tester.tap(
-        find.byKey(const ValueKey<String>('servers_import_sub_appbar_action')),
+        find.byKey(const ValueKey<String>('servers_add_subscription_action')),
       );
       await tester.pumpAndSettle();
 
@@ -193,7 +199,8 @@ void main() {
 
       // Verify standalone vs subscription grouping headers
       expect(find.text('Standalone Servers'), findsOneWidget);
-      expect(find.text('FastVPN Subscription'), findsOneWidget);
+      // Header plus subtitle on both subscription server tiles = 3 widgets
+      expect(find.text('FastVPN Subscription'), findsNWidgets(3));
       expect(find.text('2'), findsNWidgets(2)); // 2 standalone, 2 subscription
 
       // Zero secret token/URL leakage in UI
@@ -204,12 +211,12 @@ void main() {
       expect(find.textContaining('https://sub.example.com'), findsNothing);
 
       // =====================================================================
-      // STEP 5: Edit, Duplicate, Refresh Subscription, Delete with Dialog (P5-T6)
+      // STEP 5: Edit, Duplicate, Refresh, Delete with Dialog (P5-T6)
       // =====================================================================
       final allServers = await buildRepository(dataSource).getAll();
       final manualNode = allServers.firstWhere((s) => s.name == 'ManualNode1');
       final qrNode = allServers.firstWhere((s) => s.name == 'QrNode2');
-      final subNode1 = allServers.firstWhere((s) => s.name == 'SubNode1');
+      final subNode1 = allServers.firstWhere((s) => s.subscriptionId != null);
       final sub = (await buildRepository(
         dataSource,
       ).getAllSubscriptions()).single;
@@ -243,8 +250,9 @@ void main() {
       await tester.tap(duplicateButton);
       await tester.pumpAndSettle();
 
+      final copyName = '${subNode1.name} (Copy)';
       // Standalone section now contains 3 servers including the copy
-      expect(find.text('SubNode1 (Copy)'), findsOneWidget);
+      expect(find.text(copyName), findsOneWidget);
       expect(find.text('3'), findsOneWidget);
 
       // 5c. Refresh subscription with Full-Replace diffing policy
@@ -256,14 +264,18 @@ void main() {
       await tester.tap(refreshButton);
       await tester.pumpAndSettle();
 
-      expect(find.text('SubNode2Refreshed'), findsOneWidget);
-      expect(find.text('SubNode2'), findsNothing);
+      expect(
+        find.text('FastVPN Subscription - sub2refreshed.example.com:443'),
+        findsOneWidget,
+      );
+      expect(
+        find.text('FastVPN Subscription - sub2.example.com:443'),
+        findsNothing,
+      );
 
       // 5d. Delete server with confirmation dialog
       final updatedAll = await buildRepository(dataSource).getAll();
-      final copyNode = updatedAll.firstWhere(
-        (s) => s.name == 'SubNode1 (Copy)',
-      );
+      final copyNode = updatedAll.firstWhere((s) => s.name == copyName);
 
       final deleteButton = find.byKey(
         ValueKey<String>('server_delete_${copyNode.id}'),
@@ -281,7 +293,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('SubNode1 (Copy)'), findsNothing);
+      expect(find.text(copyName), findsNothing);
       expect(find.text('2'), findsNWidgets(2)); // 2 standalone, 2 subscription
 
       // =====================================================================

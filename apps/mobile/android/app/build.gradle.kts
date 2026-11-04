@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "dev.brickvpn.mobile"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 37
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
