@@ -614,3 +614,191 @@ The P1-T3 design question is resolved in favor of the **fully-typed sealed class
 #### lastUsedAt Timestamp Stamping & Fault Tolerance
 - Upon successful dispatch of `engine.start(profile)` returning `VpnCommandAccepted`, `ConnectionController` asynchronously persists an updated profile with `lastUsedAt: DateTime.now().toUtc()` to `ServerProfileRepository` and invalidates `savedServersProvider`.
 - Storage operations are wrapped in an isolated exception guard so that potential local storage failures or disk write delays never interrupt or terminate an established, healthy VPN tunnel.
+
+## 8. Phase 6 — Traffic Stats & Live Logs Architecture
+
+### 8.1 P6-T1 Traffic Stats Data Plumbing & Rate Calculation Architecture
+
+#### Native Android Stats Plumbing & Audit (`packages/vpn_engine_android`)
+- **Native Implementation Class:** `dev.brickvpn.harness.VpnEngineAndroidPlugin.PluginTrafficStatsEventsStreamHandler` in `packages/vpn_engine_android/android/src/main/kotlin/dev/brickvpn/harness/VpnEngineAndroidPlugin.kt`.
+- **Pigeon Event Channel:** Registered under typed channel `dev.flutter.pigeon.vpn_engine_android.VpnEngineEventChannels.trafficStatsEvents` via `TrafficStatsEventsStreamHandler.register(messenger, trafficHandler)`.
+- **Collection Mechanism & Polling Frequency:**
+  - When the native `VpnStateMachine` enters `VpnState.Running`, `startPollingIfRunning(machine)` launches a Kotlin coroutine in plugin lifecycle `scope`.
+  - While `isActive && machine.currentState is VpnState.Running`, it polls at a fixed 1 Hz interval (`delay(1000L)`).
+  - Collects cumulative bytes via a two-tier strategy:
+    1. First reads kernel network statistics `/sys/class/net/tun0/statistics/rx_bytes` and `/sys/class/net/tun0/statistics/tx_bytes`.
+    2. Falls back to Android OS runtime statistics `android.net.TrafficStats.getUidRxBytes(Process.myUid())` and `android.net.TrafficStats.getUidTxBytes(Process.myUid())`.
+  - Emits typed `TrafficStatsEvent(txBytes = tx, rxBytes = rx, epochMillis = System.currentTimeMillis())` directly through `sink.success(...)`.
+  - Cancels immediately on tunnel termination (`onCancel` / `onServiceDestroyed`).
+- **Structural Absence of Legacy Swallowed-Error Bug:**
+  - The legacy prototype failed because it polled an external TCP `CommandClient` where socket connection failures were silently downgraded to warnings and masked by JavaScript-side state gates.
+  - In Brick VPN, stats are collected in-process directly from the Linux kernel virtual network interface and Android OS process accounting. There is no external TCP socket or IPC daemon that can fail to connect or be swallowed.
+- **Dart Platform Adapter:**
+  - `AndroidVpnEngine` (`packages/vpn_engine_android/lib/src/android_vpn_engine.dart`) maps `TrafficStatsEvent` to domain `TrafficStats(txBytes, rxBytes, timestamp)` while enforcing Invariant 2 (stream errors on stats are absorbed cleanly without bubbling to connection state).
+
+#### SessionTrafficMetrics State Model
+- Immutable value entity (`apps/mobile/lib/features/connection/domain/entities/session_traffic_metrics.dart`) annotated with `@immutable` from `package:meta/meta.dart`, tracking:
+  - `txBytes`: cumulative session upload bytes.
+  - `rxBytes`: cumulative session download bytes.
+  - `txBytesPerSec`: real-time upload speed in bytes per second.
+  - `rxBytesPerSec`: real-time download speed in bytes per second.
+  - `lastUpdated`: timestamp of latest snapshot calculation.
+- Strictly adheres to `SECURITY.md` Section 4 by omitting `toString()` to prevent connection telemetry from leaking into system logs.
+
+#### Delta Rate Calculation Invariants
+- Enforced by `SessionTrafficMetricsCalculator` (`apps/mobile/lib/features/connection/domain/usecases/session_traffic_metrics_calculator.dart`):
+  1. *First tick of a session:* instantaneous speeds `txBytesPerSec` and `rxBytesPerSec` are clamped to `0.0`, eliminating false initial speed spikes if the native counter begins with accumulated bytes.
+  2. *Subsequent ticks:* throughput rates are computed as `(deltaBytes * 1000.0) / deltaMs`.
+  3. *Zero-duration & clock-skew protection:* if `deltaMs <= 0` (duplicate timestamp or clock skew), rate is clamped to `0.0` (guaranteeing zero division prevention).
+  4. *Counter-reset protection:* if `deltaBytes < 0`, rate is clamped to `0.0`.
+  5. *Strict zero-NaN/Infinity guarantee:* output rates are guaranteed non-negative, finite numbers.
+
+#### Lifecycle Synchronization & Session Reset
+- `sessionTrafficMetricsProvider` (`apps/mobile/lib/features/connection/presentation/providers/session_traffic_metrics_provider.dart`) synchronizes with `connectionStateProvider`:
+  - Subscribes to `engine.trafficStats` in `build()`.
+  - Ignores duplicate `Connected` -> `Connected` transitions (e.g. app lifecycle resume health-checks) so the baseline is never wiped out mid-session.
+  - When transitioning from non-`Connected` to `Connected`: resets `_calculator` baseline and zeros state for a clean session.
+  - When transitioning to `Disconnected`, `Connecting` (new session starting), or `Error`, resets `_calculator` baseline and zeros state (`SessionTrafficMetrics.zero`) to prevent stale data bleeding across sessions.
+  - When transitioning to `Disconnecting`, clamps rates to `0.0` while preserving session-cumulative byte totals until `Disconnected`.
+
+#### Failure Domain Isolation (VpnEngine Invariant 2)
+- The traffic stats pipeline is strictly decoupled from the connection state pipeline:
+  - Any error on `engine.trafficStats` stream is caught and absorbed gracefully (rates clamped to `0.0`, cumulative bytes retained).
+  - Stream errors on stats never crash the UI, never disrupt `sessionTrafficMetricsProvider`, and never affect `connectionStateProvider`.
+
+#### Formatting Utilities (TrafficFormatter)
+- Zero-dependency binary IEC unit formatter (1024 basis) in `apps/mobile/lib/features/connection/domain/formatters/traffic_formatter.dart`:
+  - `formatBytes(bytes)` -> `0 B`, `1.5 KiB`, `2.0 MiB`, `1.2 GiB`.
+  - `formatSpeed(bytesPerSec)` -> `0 B/s`, `512 B/s`, `12.4 KiB/s`, `3.5 MiB/s`.
+  - Defensively clamps negative values, `NaN`, and `Infinity` to safe zero representations.
+  - Replaces ad-hoc string formatting in `ThroughputReadout`, preserving 100% test compatibility.
+
+### 8.2 P6-T2 Traffic Stats UI Display & Fine-Grained `.select()` Rebuild Isolation
+
+#### Rebuild Isolation Architecture
+- The native stats engine ticks at 1 Hz during an active VPN session. Naively watching `sessionTrafficMetricsProvider` or `trafficStatsProvider` at the screen or card level would trigger continuous high-frequency widget rebuilds, causing UI jank and battery drain.
+- `ThroughputReadout` (`apps/mobile/lib/features/connection/presentation/widgets/throughput_readout.dart`) enforces strict rebuild isolation:
+  1. Neither `HomeScreen` nor `ThroughputReadout` watches the full metrics state.
+  2. `ThroughputReadout` watches only `sessionTrafficMetricsProvider.select((m) => m.hasError)` to render `'connection.traffic_unavailable'` on stream faults (Invariant 2).
+  3. `_CumulativeTotalsText` watches `sessionTrafficMetricsProvider.select((m) => (TrafficFormatter.formatBytes(m.txBytes), TrafficFormatter.formatBytes(m.rxBytes)))`.
+  4. `_InstantaneousSpeedText` watches `sessionTrafficMetricsProvider.select((m) => (TrafficFormatter.formatSpeed(m.txBytesPerSec), TrafficFormatter.formatSpeed(m.rxBytesPerSec)))`.
+  5. Selecting the **formatted string tuple** leverages Dart record equality: if raw byte counters change by an amount that does not alter the displayed text (e.g. `1.0 MiB` -> `1.0 MiB`), Riverpod short-circuits and prevents even the leaf `Text` widget from rebuilding.
+  6. Verified by automated widget test in `traffic_stats_plumbing_test.dart` confirming zero parent or sibling widget rebuilds across continuous traffic ticks.
+
+### 8.3 P6-T3 Live Log Capture, Structured `LogEntry` & Bounded Ring Buffer Architecture
+
+#### Native Android Log Stream Plumbing & Audit (`packages/vpn_engine_android`)
+- **Native Log Source:** sing-box/libbox Go engine invokes `PlatformInterface.writeLog(log: String)` in `packages/vpn_engine_android/android/src/main/kotlin/dev/brickvpn/harness/vpn/LibboxPlatformInterface.kt`.
+- **Global Consumer Forwarding:** `LibboxPlatformInterface.writeLog` writes to Android logcat (`Log.i("LibboxPlatformInterface", "libbox: $log")`) and routes each raw string through `onLogReceived(log)`. `LibboxTunnelEngine.globalLogConsumer` receives this callback.
+- **Platform EventChannel Registration:** In `dev.brickvpn.harness.VpnEngineAndroidPlugin.onAttachedToEngine`, an `EventChannel` named `dev.brickvpn.harness/log_events` is registered with `PluginLogEventsStreamHandler`. `LibboxTunnelEngine.globalLogConsumer` dispatches each line directly to `logHandler.onLog(log)` (`sink?.success(log)`).
+- **Dart Ingestion:** `AndroidVpnEngine.logEvents` maps `EventChannel('dev.brickvpn.harness/log_events').receiveBroadcastStream()` to `Stream<String>`.
+
+#### Structured `LogEntry` & `LogLevel` Domain Model
+- `LogEntry` (`apps/mobile/lib/core/logging/log_entry.dart`) is an immutable, structured representation keeping log fields distinct:
+  - `timestamp: DateTime` (parsed UTC timestamp or fallback timestamp).
+  - `level: LogLevel` enum (`trace`, `debug`, `info`, `warning`, `error`, `fatal`).
+  - `message: String` (clean message payload stripped of timestamp, level, and source prefixes).
+  - `source: String?` (subsystem or component tag, e.g. `'router'`, `'tun'`, `'dns'`).
+  - `raw: String` (original unparsed string preserved for debugging and text display).
+- **Deterministic Parser (`LogEntry.parseEngineLine`):**
+  - Transparently parses structured JSON lines (sing-box JSON format: `{"time":..., "level":..., "msg":..., "tag":...}`).
+  - Parses sing-box standard lines with timezone offsets (e.g. `+0000 2026-11-05 12:00:00 INFO [inbound] starting`).
+  - Parses standard bracketed or level-word log formats (`[WARN] ...`, `ERROR: ...`, `level=info`).
+  - Safely falls back to `LogLevel.info` and fallback timestamp for plain text lines.
+
+#### Bounded In-Memory Ring Buffer (`LogBuffer`)
+- **Memory Bounding & O(1) Eviction:** `LogBuffer` (`apps/mobile/lib/core/logging/log_buffer.dart`) wraps a `ListQueue<LogEntry>` with a strict capacity bound (default `300` entries per P6-T3 architecture, synchronized with `LogManager.maxBufferSize`). When the queue reaches capacity, `removeFirst()` evicts the oldest entry in $O(1)$ time, guaranteeing that long-running VPN sessions cannot cause unbounded memory growth or OOM crashes.
+- **Stress-Tested Bounding:** Verified by automated stress test emitting 5,000 log lines into a capacity-300 buffer, retaining exactly the newest 300 entries (`#4701` through `#5000`) in strict chronological sequence (and custom capacity buffers like 500 retaining `#4501` through `#5000`).
+
+#### Burst Coalescing & Stream Fault Resilience
+- **Microtask Burst Coalescing:** High-frequency bursts (e.g. 1,000 log lines emitted in a tight loop during handshake or routing table setup) are enqueued synchronously into `LogBuffer`, while UI state notification is scheduled via `scheduleMicrotask`. Multiple log arrivals within the same event-loop turn trigger exactly one consolidated UI state emission, preventing UI thread saturation and eliminating dropped frames.
+- **Single Subscription & Stream Error Resilience:** `LogManager` (`apps/mobile/lib/core/logging/log_manager.dart`) is the single subscriber to `engine.logEvents`. Stream errors on `engine.logEvents` are captured and absorbed by `onError(..., cancelOnError: false)` without crashing the app, without terminating the subscription, and without disturbing the VPN connection.
+- **Buffer Clearance (`clear()`):** `LogManager.clear()` atomically flushes both the string buffer and structured ring buffer, truncates `brick_vpn_live.log`, and immediately notifies listeners.
+
+#### Mandatory Phase 8 Log Redaction Known Limitation Flag
+- **KNOWN LIMITATION (DEFERRED TO PHASE 8):** In Phase 6, live log output captured from the native engine arrives without sensitive data scrubbing. Engine logs may contain sensitive information, including server hostnames/IP addresses, port numbers, routing destinations, or authentication credentials depending on log verbosity. Full structured-field redaction and free-text masking are explicitly deferred to **Phase 8 (P8-T2 — Log Redaction)** per the project roadmap.
+- Keeping log entries as structured `LogEntry` records in P6-T3 directly enables Phase 8 to inspect and redact sensitive fields (e.g. redacting known credential fields) cleanly without relying exclusively on fragile regular expressions over free text.
+
+### 8.4 P6-T4 Live Log Viewer Screen Architecture
+
+#### Screen Structure & Route Unification
+- **Single Source of Truth:** `LiveLogsScreen` (`apps/mobile/lib/features/settings/presentation/screens/live_logs_screen.dart`) provides the canonical UI for inspecting real-time diagnostic engine logs.
+- **Unified Navigation Routes:** Both `/settings/logs` (via `SettingsScreen`) and the bottom navigation `/logs` branch (`LogsScreen` at `apps/mobile/lib/features/logs/presentation/screens/logs_screen.dart`) delegate to `LiveLogsScreen`, guaranteeing identical viewer behavior and state synchronization across both entry points.
+- **ConsumerStatefulWidget Lifecycle:** Manages a single `ScrollController` instance that is cleanly disposed in `dispose()` to prevent memory leaks.
+
+#### Virtualized Lazy Rendering (`ListView.builder`)
+- **Memory & Render Virtualization:** Driven by `ListView.builder` bound to `structuredLogEntriesProvider` (up to 300 entries in the bounded ring buffer).
+- **Lazy Mounting:** Verified by automated widget test that when 300 entries are present, only visible viewport items are mounted; offscreen items (e.g., tile #0 at the top) are unmounted by Flutter's render viewport, eliminating jank and OOM risks during high-throughput logging.
+- **Semantic Keys:**
+  - Each list tile is tagged with `ValueKey<String>('log_entry_tile_$index')`.
+  - Each log level badge is tagged with `ValueKey<String>('log_level_badge_${entry.level.name}_$index')`.
+
+#### Level-Based Visual Differentiation
+- **Distinct Visual Badges:** Every log entry renders a dedicated badge with uppercase level text (`INFO`, `WARN`, `ERROR`, `FATAL`, `DEBUG`, `TRACE`).
+- **Semantic Color Palette:**
+  - `LogLevel.fatal` & `LogLevel.error`: theme `colorScheme.error` with translucent error container background.
+  - `LogLevel.warning`: high-contrast amber/orange (`Colors.orange.shade800`).
+  - `LogLevel.info`: theme `colorScheme.primary`.
+  - `LogLevel.debug` & `LogLevel.trace`: theme `colorScheme.outline` / muted secondary.
+- **Structured Metadata Alignment:** Displays deterministic UTC timestamp (`HH:mm:ss`), optional component tag (`[source]`), and clean deduplicated message payload (`SelectableText(entry.message.isNotEmpty ? entry.message : entry.raw)`).
+
+#### Auto-Scroll, Pause Detection & Manual Resume
+- **Auto-Scroll Behavior:** Default state has `_autoScrollEnabled = true`. On initial build and whenever new entries arrive (monitored via `ref.listen(structuredLogEntriesProvider)`), `_scrollController.jumpTo(maxScrollExtent)` is invoked post-frame to keep the latest log line visible.
+- **Scroll-Up Pause Detection:** A `NotificationListener<ScrollNotification>` inspects `metrics.maxScrollExtent - metrics.pixels`. When `distanceToBottom > 48.0` (indicating the user has scrolled up to inspect previous logs), `_autoScrollEnabled` is set to `false`.
+- **"Jump to Latest" Affordance:** When auto-scroll is paused, an overlay `FloatingActionButton.extended` appears (`key: const ValueKey<String>('logs_jump_to_latest_button')`, localized `logs.jump_to_latest`).
+- **Auto-Scroll Resume:** Tapping the jump button immediately jumps to `maxScrollExtent` and sets `_autoScrollEnabled = true`. Alternatively, scrolling down manually back to `distanceToBottom <= 12.0` automatically resumes auto-scroll and dismisses the jump button.
+
+#### Atomic Clear Buffer Action
+- **AppBar Action:** An `IconButton` (`key: const ValueKey<String>('logs_clear_button')`, localized tooltip `logs.clear_tooltip`) in `AppBar.actions` calls `ref.read(logManagerProvider.notifier).clear()`.
+- **Instant Reactive Reset:** Atomically flushes both string and structured ring buffers, resets the live log file, and updates the screen to render the localized empty state (`settings.no_logs`: "No log entries yet").
+
+### 8.5 P6-T5 Log Export / Copy Architecture & Privacy Safeguard
+
+#### Copy-to-Clipboard Action & Disabled State
+- **AppBar Integration:** An `IconButton` (`key: const ValueKey<String>('logs_copy_button')`, localized tooltip `logs.copy_tooltip`) sits in `LiveLogsScreen`'s `AppBar.actions`.
+- **Empty Buffer Guard:** When `entries.isEmpty`, `onPressed` is set to `null` (disabling the action) to prevent accidental clipboard overwrites when no logs exist.
+
+#### Mandatory Non-Dismissible-by-Accident Privacy Warning Dialog
+- **Modal Security Gate:** Before any log data is written to the system clipboard, `_handleCopyLogs` displays an `AlertDialog` (`key: const ValueKey<String>('logs_privacy_warning_dialog')`).
+- **Non-Dismissible Barrier (`barrierDismissible: false`):** Tapping outside the dialog or on the background barrier does not dismiss it, preventing users from bypassing or accidentally clearing the warning.
+- **Clear Privacy Disclosure:** Warns the user explicitly that logs may contain sensitive connection details (server addresses, ports, or routing paths) and reminds them to review before public sharing pending full Phase 8 automated redaction (`P8-T2`).
+- **User Actions:**
+  - `TextButton` (`key: const ValueKey<String>('logs_copy_cancel_button')`, localized `logs.copy_cancel`): dismisses the modal with `false` and leaves the system clipboard completely untouched.
+  - `FilledButton` (`key: const ValueKey<String>('logs_copy_confirm_button')`, localized `logs.copy_confirm`): dismisses the modal with `true` to initiate the copy sequence.
+
+#### Formatted Export Payload & Feedback Notification
+- **Deterministic Structured Formatting:** Each buffered entry is serialized into a newline-separated format:
+  `${entry.timestamp.toUtc().toIso8601String()} [${entry.level.label}]${entry.source != null ? ' [${entry.source}]' : ''} ${entry.message.isNotEmpty ? entry.message : entry.raw}`.
+- **Clipboard Delivery:** Written asynchronously to the OS clipboard via `Clipboard.setData(ClipboardData(text: payload))`.
+- **User Feedback:** Displays a transient confirmation snackbar via `AppFeedback.showInfo(context, 'logs.copied_to_clipboard'.tr())`.
+
+#### Documented File-Export Decision (P6-T5 Criterion 3)
+- In accordance with P6-T5 Scope and Criterion 3, `P6-T5` ships Copy-to-Clipboard of the entire buffer as the primary, zero-extra-dependency export mechanism. Platform native share-sheet file export (via `share_plus`) is explicitly deferred and recorded as a documented future enhancement to avoid adding external binary dependencies before Phase 11.
+
+### 8.6 P6-T6 Connection Session Info Panel & Duration Timer Architecture
+
+#### Glanceable Session Consolidation
+- **Location:** Mounted on `HomeScreen` directly beneath `ThroughputReadout` and above the active server card.
+- **Card Container:** Rendered inside a `Card` (`key: const ValueKey<String>('session_info_panel')`) styled consistently with Material Design 3 surface tokens.
+- **Sub-Component Architecture:** To guarantee strict rebuild isolation, `SessionInfoPanel` delegates rendering to three independent leaf `ConsumerWidget`s:
+  1. `_ActiveServerText`: Renders the active server name and protocol type (`key: const ValueKey<String>('session_server_text')`), or fallback "None selected".
+  2. `_SessionStatusText`: Renders the engine state from `connectionStateProvider` (`key: const ValueKey<String>('session_status_text')`).
+  3. `_SessionDurationText`: Renders the formatted elapsed session duration (`key: const ValueKey<String>('session_duration_text')`).
+
+#### Reactive Duration Tracking (`sessionDurationProvider`)
+- **1 Hz Deterministic Ticking:** Driven by an in-memory `Timer.periodic(const Duration(seconds: 1), ...)` inside `SessionDurationNotifier`.
+- **Authoritative Stream Synchronization:** Listens to `connectionStateProvider`:
+  - When the engine transitions to `Connected`, duration resets to `Duration.zero` and starts the 1-second periodic timer.
+  - Idempotent against consecutive `Connected` emissions (e.g. app lifecycle resume resyncs) so the running timer is never reset mid-session.
+  - Cancels timer and resets duration to `Duration.zero` upon transitioning to `Disconnecting`, `Disconnected`, `Connecting`, or `Error`.
+  - Disposes the timer cleanly in `ref.onDispose`.
+
+#### Zero-Dependency Duration Formatting (`TrafficFormatter.formatDuration`)
+- Formats standard `Duration` instances into `HH:MM:SS` notation (e.g., `00:00:00`, `01:05:30`).
+- Defensive clamping: Clamps negative durations to `00:00:00`. Preserves hours >= 100 without truncation (e.g. `100:00:00`).
+
+#### Rebuild Isolation
+- `_SessionDurationText` watches `sessionDurationProvider.select(TrafficFormatter.formatDuration)`.
+- 1 Hz timer ticks trigger rebuilds *only* on `_SessionDurationText`. Parent `SessionInfoPanel`, `HomeScreen`, and sibling widgets (`_ActiveServerText`, `_SessionStatusText`, `ConnectionStateBadge`, `ThroughputReadout`) remain completely untouched.
+
+

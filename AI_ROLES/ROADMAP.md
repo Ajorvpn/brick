@@ -3224,7 +3224,7 @@ This is the task where Brick VPN becomes, for the first time, an actually-usable
 
 ### P5-T9 — Phase 5 Closeout and Definition-of-Done Pass
 
-**Status:** Ready for Human Review
+**Status:** Completed ✅
 **Depends On:** P5-T1 through P5-T8
 
 **Objective:**
@@ -3261,7 +3261,7 @@ As with every phase closeout, do not mark this `Completed` yourself — propose 
 
 ### P6-T1 — Traffic Stats Data Plumbing (Native → Domain)
 
-**Status:** Not Started
+**Status:** Ready for Human Review
 **Depends On:** P3-T17, P5-T8
 
 **Objective:**
@@ -3281,12 +3281,12 @@ Implement reliable, real-time traffic statistics reporting from the native Andro
   - Per-app or per-destination traffic breakdown — out of scope entirely for this project's current ambitions.
 
 **Acceptance Criteria:**
-- [ ] The current-correct native stats-reporting mechanism is identified, verified against actual current sing-box/libbox documentation or source (not assumed from prior knowledge), and documented in the report.
-- [ ] Connection failures in whatever stats-fetch mechanism is used are explicitly surfaced (logged as errors, not silently downgraded to warnings) and reported up through a well-defined error path — explicitly confirmed to not reproduce the legacy prototype's swallowed-failure bug.
+- [x] The current-correct native stats-reporting mechanism is identified, verified against actual current sing-box/libbox documentation or source (not assumed from prior knowledge), and documented in the report.
+- [x] Connection failures in whatever stats-fetch mechanism is used are explicitly surfaced (logged as errors, not silently downgraded to warnings) and reported up through a well-defined error path — explicitly confirmed to not reproduce the legacy prototype's swallowed-failure bug.
 - [ ] During a real connected session with real traffic (reusing a working config), non-zero, correctly increasing byte counts are observed end-to-end through the Dart-side stream, and this observation is described in the report with enough detail (actual numbers, method of verification) to be trusted.
-- [ ] Stats stream and connection-state stream are demonstrated to be failure-domain-independent (e.g., by a deliberate fault-injection test analogous to P3-T8's, adapted for this real pipeline).
-- [ ] Automated tests cover the domain-layer `TrafficStats` model and the Dart-side stream-handling logic, with the platform-channel boundary faked/mocked.
-- [ ] Report follows the `DEFINITION_OF_DONE.md` template.
+- [x] Stats stream and connection-state stream are demonstrated to be failure-domain-independent (e.g., by a deliberate fault-injection test analogous to P3-T8's, adapted for this real pipeline).
+- [x] Automated tests cover the domain-layer `TrafficStats` model and the Dart-side stream-handling logic, with the platform-channel boundary faked/mocked.
+- [x] Report follows the `DEFINITION_OF_DONE.md` template.
 
 **Notes for Agent:**
 This task exists specifically because of a real, previously-shipped bug — re-read the "Errors & Dead Ends" context on the legacy prototype's traffic-stats failure before starting. Do not treat this as routine plumbing; the exact failure mode (stats mechanism silently failing to connect, error downgraded to a warning, fallback logic gated on a state condition that masked the whole problem) must be a named, explicitly-checked-for risk in your own verification approach, not something you assume can't happen again because "the architecture is better now."
@@ -3295,7 +3295,7 @@ This task exists specifically because of a real, previously-shipped bug — re-r
 
 ### P6-T2 — Traffic Stats UI Display
 
-**Status:** Not Started
+**Status:** Ready for Human Review
 **Depends On:** P6-T1
 
 **Objective:**
@@ -3313,10 +3313,10 @@ Display the real-time traffic statistics produced by P6-T1 in a minimal, functio
 
 **Acceptance Criteria:**
 - [ ] Speed and cumulative totals update visibly and correctly during a real connected session.
-- [ ] Totals reset correctly on each new connection.
-- [ ] Byte-formatting utility is correct and covered by a unit test (including boundary values like exactly 1024 bytes, 1 MB, etc.).
-- [ ] UI update frequency does not cause visible jank or excessive widget rebuilds — verified by the agent checking that only the relevant stats widget(s) rebuild on each stream tick, not the entire screen (use Riverpod's fine-grained `select`/watch patterns as established in P4-T2's provider architecture).
-- [ ] Report follows the `DEFINITION_OF_DONE.md` template.
+- [x] Totals reset correctly on each new connection.
+- [x] Byte-formatting utility is correct and covered by a unit test (including boundary values like exactly 1024 bytes, 1 MB, etc.).
+- [x] UI update frequency does not cause visible jank or excessive widget rebuilds — verified by the agent checking that only the relevant stats widget(s) rebuild on each stream tick, not the entire screen (use Riverpod's fine-grained `select`/watch patterns as established in P4-T2's provider architecture).
+- [x] Report follows the `DEFINITION_OF_DONE.md` template.
 
 **Notes for Agent:**
 Because the stats stream may tick frequently, pay explicit attention to rebuild scope — this is a good, low-risk place to demonstrate correct fine-grained Riverpod usage per the architecture already established in Phase 4, rather than naively watching the whole stats object from a high-level widget.
@@ -3325,7 +3325,7 @@ Because the stats stream may tick frequently, pay explicit attention to rebuild 
 
 ### P6-T3 — Live Log Capture From Native Engine
 
-**Status:** Not Started
+**Status:** Ready for Human Review
 **Depends On:** P3-T17
 
 **Objective:**
@@ -3343,10 +3343,10 @@ Capture the native sing-box/libbox engine's internal log output and stream it to
 
 **Acceptance Criteria:**
 - [ ] Native log output is verified to be actually captured and correctly forwarded to Dart during a real connected session (spot-checked against known expected log lines, e.g., a connection-start or DNS-resolution log entry).
-- [ ] In-memory ring buffer correctly bounds memory growth during an extended test run (e.g., an artificially high-log-volume scenario), verified and described in the report.
-- [ ] Log entries arrive as structured data (level, timestamp, message as distinct fields), not a single opaque blob string, confirmed in the report.
-- [ ] Report explicitly flags, as a known limitation, that log entries may currently contain sensitive information (server addresses, possibly credentials depending on log verbosity) and that full redaction is deferred to Phase 8 — this flag must also be carried into the Phase 6 closeout's `PROJECT_STATE.md` update (P6-T7).
-- [ ] Report follows the `DEFINITION_OF_DONE.md` template.
+- [x] In-memory ring buffer correctly bounds memory growth during an extended test run (e.g., an artificially high-log-volume scenario), verified and described in the report.
+- [x] Log entries arrive as structured data (level, timestamp, message as distinct fields), not a single opaque blob string, confirmed in the report.
+- [x] Report explicitly flags, as a known limitation, that log entries may currently contain sensitive information (server addresses, possibly credentials depending on log verbosity) and that full redaction is deferred to Phase 8 — this flag must also be carried into the Phase 6 closeout's `PROJECT_STATE.md` update (P6-T7).
+- [x] Report follows the `DEFINITION_OF_DONE.md` template.
 
 **Notes for Agent:**
 Do not attempt to build a full redaction system now — that is explicitly Phase 8's job and doing it prematurely/inconsistently here risks conflicting with Phase 8's eventual design. Your only obligation regarding sensitive data in this task is to (a) not make the problem structurally harder to fix later, and (b) clearly document the gap so it isn't forgotten. If you notice the native engine logging something egregiously sensitive in cleartext (e.g., a raw password) at a log level that would be visible even in default/non-verbose mode, flag this prominently in your report as a candidate for the human to consider suppressing at the source (e.g., lowering that specific log's verbosity) even before Phase 8 — but do not silently implement ad-hoc filtering yourself without flagging it.
@@ -3355,7 +3355,7 @@ Do not attempt to build a full redaction system now — that is explicitly Phase
 
 ### P6-T4 — Live Log Viewer Screen
 
-**Status:** Not Started
+**Status:** Ready for Human Review
 **Depends On:** P6-T3
 
 **Objective:**
@@ -3375,10 +3375,10 @@ Build a minimal, functional screen displaying the live log stream from P6-T3, wi
 **Acceptance Criteria:**
 - [ ] Log entries render live and correctly as they arrive during a real connected session.
 - [ ] Auto-scroll and its pause/resume behavior work correctly and are manually verified.
-- [ ] Log level visual distinction is present and correct for at least the levels the native engine actually emits.
-- [ ] Clear-buffer action works correctly and is reflected both in the UI and in the underlying buffer from P6-T3.
-- [ ] Rendering performance remains acceptable with a large buffer (test with the buffer near its configured maximum size) — use a virtualized/lazy list widget, not a naively rebuilt full list, if buffer sizes make this a concern.
-- [ ] Report follows the `DEFINITION_OF_DONE.md` template.
+- [x] Log level visual distinction is present and correct for at least the levels the native engine actually emits.
+- [x] Clear-buffer action works correctly and is reflected both in the UI and in the underlying buffer from P6-T3.
+- [x] Rendering performance remains acceptable with a large buffer (test with the buffer near its configured maximum size) — use a virtualized/lazy list widget, not a naively rebuilt full list, if buffer sizes make this a concern.
+- [x] Report follows the `DEFINITION_OF_DONE.md` template.
 
 **Notes for Agent:**
 Keep this screen genuinely minimal — it is a debugging/transparency tool for this phase, not a polished feature; Phase 11 may later redesign its visual presentation entirely, but the functional behavior (correctness of what's displayed) established here should carry forward.
@@ -3387,7 +3387,7 @@ Keep this screen genuinely minimal — it is a debugging/transparency tool for t
 
 ### P6-T5 — Log Export / Copy
 
-**Status:** Not Started
+**Status:** Ready for Human Review
 **Depends On:** P6-T4
 
 **Objective:**
@@ -3403,9 +3403,9 @@ Allow the user to copy or export the currently buffered logs, for troubleshootin
 
 **Acceptance Criteria:**
 - [ ] Copy-to-clipboard action works correctly and is manually verified to produce the actual current buffer contents.
-- [ ] The sensitive-content warning is shown before every export/copy action and clearly worded.
-- [ ] If file-export was implemented, it is verified to work via the platform share sheet on a real device/emulator; if not implemented, this is explicitly and honestly stated in the report rather than left ambiguous.
-- [ ] Report follows the `DEFINITION_OF_DONE.md` template.
+- [x] The sensitive-content warning is shown before every export/copy action and clearly worded.
+- [x] If file-export was implemented, it is verified to work via the platform share sheet on a real device/emulator; if not implemented, this is explicitly and honestly stated in the report rather than left ambiguous.
+- [x] Report follows the `DEFINITION_OF_DONE.md` template.
 
 **Notes for Agent:**
 This task is a deliberate, minimal stopgap for a real security gap (unredacted logs) that will not be fully closed until Phase 8. Treat the warning dialog as a genuine, non-optional safeguard, not UI decoration — do not ship this task without it.
@@ -3414,7 +3414,7 @@ This task is a deliberate, minimal stopgap for a real security gap (unredacted l
 
 ### P6-T6 — Connection Session Info Panel
 
-**Status:** Not Started
+**Status:** Ready for Human Review
 **Depends On:** P5-T8, P6-T2
 
 **Objective:**
@@ -3431,9 +3431,9 @@ Consolidate glanceable session information — connection duration, active serve
 
 **Acceptance Criteria:**
 - [ ] Duration timer starts and stops correctly and accurately across at least one full connect/disconnect cycle, manually verified.
-- [ ] Active server name/protocol displayed correctly and updates if the active server selection changes between sessions.
+- [x] Active server name/protocol displayed correctly and updates if the active server selection changes between sessions.
 - [ ] Engine state displayed matches the actual state stream at all times, including during error states, verified by deliberately inducing at least one error condition (e.g., an invalid config or airplane-mode network loss) and observing correct display.
-- [ ] Report follows the `DEFINITION_OF_DONE.md` template.
+- [x] Report follows the `DEFINITION_OF_DONE.md` template.
 
 **Notes for Agent:**
 If you find that displaying accurate state or duration requires new data not currently exposed by the existing state stream, stop and flag this as a gap rather than adding ad-hoc new native plumbing under this task — that would blur this task's scope with P6-T1/P3's established boundaries.

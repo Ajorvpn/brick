@@ -12,6 +12,6 @@ class LogsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const LiveLogsScreen();
+    return const LiveLogsScreen(titleKey: 'logs.title');
   }
 }

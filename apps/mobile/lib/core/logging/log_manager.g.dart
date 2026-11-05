@@ -12,12 +12,16 @@ part of 'log_manager.dart';
 ///
 /// CRITICAL ARCHITECTURAL CONSTRAINTS:
 /// 1. RAM Protection: Keeps at most [maxBufferSize] (300) lines in memory
-///    using a bounded [ListQueue<String>].
-/// 2. Asynchronous File Streaming: Streams all lines to a temporary file
-///    `brick_vpn_live.log` using [IOSink] with [FileMode.write], which
+///    for string consumers and structured entries in a bounded [LogBuffer].
+/// 2. Burst Coalescing: Coalesces high-volume bursts per microtask so rapid
+///    log streams do not flood the UI thread with hundreds of rebuilds.
+/// 3. Stream Resilience: Catches and absorbs errors from engine logEvents
+///    gracefully without disrupting the VPN connection or UI.
+/// 4. Asynchronous File Streaming: Streams all lines to a temporary file
+///    `brick_vpn_live.log` using [IOSink] with default write mode, which
 ///    automatically clears past session logs on initialization to protect
 ///    privacy.
-/// 3. Resource Cleanup: Closes [IOSink] and cancels subscription on disposal.
+/// 5. Resource Cleanup: Closes [IOSink] and cancels subscription on disposal.
 
 @ProviderFor(LogManager)
 final logManagerProvider = LogManagerProvider._();
@@ -26,24 +30,32 @@ final logManagerProvider = LogManagerProvider._();
 ///
 /// CRITICAL ARCHITECTURAL CONSTRAINTS:
 /// 1. RAM Protection: Keeps at most [maxBufferSize] (300) lines in memory
-///    using a bounded [ListQueue<String>].
-/// 2. Asynchronous File Streaming: Streams all lines to a temporary file
-///    `brick_vpn_live.log` using [IOSink] with [FileMode.write], which
+///    for string consumers and structured entries in a bounded [LogBuffer].
+/// 2. Burst Coalescing: Coalesces high-volume bursts per microtask so rapid
+///    log streams do not flood the UI thread with hundreds of rebuilds.
+/// 3. Stream Resilience: Catches and absorbs errors from engine logEvents
+///    gracefully without disrupting the VPN connection or UI.
+/// 4. Asynchronous File Streaming: Streams all lines to a temporary file
+///    `brick_vpn_live.log` using [IOSink] with default write mode, which
 ///    automatically clears past session logs on initialization to protect
 ///    privacy.
-/// 3. Resource Cleanup: Closes [IOSink] and cancels subscription on disposal.
+/// 5. Resource Cleanup: Closes [IOSink] and cancels subscription on disposal.
 final class LogManagerProvider
     extends $NotifierProvider<LogManager, ListQueue<String>> {
   /// Manages live streaming logs from the native VPN engine.
   ///
   /// CRITICAL ARCHITECTURAL CONSTRAINTS:
   /// 1. RAM Protection: Keeps at most [maxBufferSize] (300) lines in memory
-  ///    using a bounded [ListQueue<String>].
-  /// 2. Asynchronous File Streaming: Streams all lines to a temporary file
-  ///    `brick_vpn_live.log` using [IOSink] with [FileMode.write], which
+  ///    for string consumers and structured entries in a bounded [LogBuffer].
+  /// 2. Burst Coalescing: Coalesces high-volume bursts per microtask so rapid
+  ///    log streams do not flood the UI thread with hundreds of rebuilds.
+  /// 3. Stream Resilience: Catches and absorbs errors from engine logEvents
+  ///    gracefully without disrupting the VPN connection or UI.
+  /// 4. Asynchronous File Streaming: Streams all lines to a temporary file
+  ///    `brick_vpn_live.log` using [IOSink] with default write mode, which
   ///    automatically clears past session logs on initialization to protect
   ///    privacy.
-  /// 3. Resource Cleanup: Closes [IOSink] and cancels subscription on disposal.
+  /// 5. Resource Cleanup: Closes [IOSink] and cancels subscription on disposal.
   LogManagerProvider._()
     : super(
         from: null,
@@ -71,18 +83,22 @@ final class LogManagerProvider
   }
 }
 
-String _$logManagerHash() => r'eedfd8f2f245b8e2cff98f69eb140fb73672d38d';
+String _$logManagerHash() => r'4b6e05ce59cef8ebf937df9391031ce07e539ef1';
 
 /// Manages live streaming logs from the native VPN engine.
 ///
 /// CRITICAL ARCHITECTURAL CONSTRAINTS:
 /// 1. RAM Protection: Keeps at most [maxBufferSize] (300) lines in memory
-///    using a bounded [ListQueue<String>].
-/// 2. Asynchronous File Streaming: Streams all lines to a temporary file
-///    `brick_vpn_live.log` using [IOSink] with [FileMode.write], which
+///    for string consumers and structured entries in a bounded [LogBuffer].
+/// 2. Burst Coalescing: Coalesces high-volume bursts per microtask so rapid
+///    log streams do not flood the UI thread with hundreds of rebuilds.
+/// 3. Stream Resilience: Catches and absorbs errors from engine logEvents
+///    gracefully without disrupting the VPN connection or UI.
+/// 4. Asynchronous File Streaming: Streams all lines to a temporary file
+///    `brick_vpn_live.log` using [IOSink] with default write mode, which
 ///    automatically clears past session logs on initialization to protect
 ///    privacy.
-/// 3. Resource Cleanup: Closes [IOSink] and cancels subscription on disposal.
+/// 5. Resource Cleanup: Closes [IOSink] and cancels subscription on disposal.
 
 abstract class _$LogManager extends $Notifier<ListQueue<String>> {
   ListQueue<String> build();
@@ -101,3 +117,50 @@ abstract class _$LogManager extends $Notifier<ListQueue<String>> {
     return element.handleCreate(ref, build);
   }
 }
+
+/// Structured log entries from the native VPN engine's bounded buffer.
+
+@ProviderFor(structuredLogEntries)
+final structuredLogEntriesProvider = StructuredLogEntriesProvider._();
+
+/// Structured log entries from the native VPN engine's bounded buffer.
+
+final class StructuredLogEntriesProvider
+    extends $FunctionalProvider<List<LogEntry>, List<LogEntry>, List<LogEntry>>
+    with $Provider<List<LogEntry>> {
+  /// Structured log entries from the native VPN engine's bounded buffer.
+  StructuredLogEntriesProvider._()
+    : super(
+        from: null,
+        argument: null,
+        retry: null,
+        name: r'structuredLogEntriesProvider',
+        isAutoDispose: false,
+        dependencies: null,
+        $allTransitiveDependencies: null,
+      );
+
+  @override
+  String debugGetCreateSourceHash() => _$structuredLogEntriesHash();
+
+  @$internal
+  @override
+  $ProviderElement<List<LogEntry>> $createElement($ProviderPointer pointer) =>
+      $ProviderElement(pointer);
+
+  @override
+  List<LogEntry> create(Ref ref) {
+    return structuredLogEntries(ref);
+  }
+
+  /// {@macro riverpod.override_with_value}
+  Override overrideWithValue(List<LogEntry> value) {
+    return $ProviderOverride(
+      origin: this,
+      providerOverride: $SyncValueProvider<List<LogEntry>>(value),
+    );
+  }
+}
+
+String _$structuredLogEntriesHash() =>
+    r'9c8f0e8023444a176e20d79fb64e50a90b0b54fd';

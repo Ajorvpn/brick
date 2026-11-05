@@ -527,6 +527,20 @@ Map<String, dynamic> testEnglishTranslations() => const {
     'live_logs_subtitle': 'Real-time diagnostic logs',
     'no_logs': 'No log entries yet',
   },
+  'logs': {
+    'title': 'Logs',
+    'jump_to_latest': 'Jump to latest',
+    'clear_tooltip': 'Clear logs',
+    'copy_tooltip': 'Copy logs',
+    'copy_warning_title': 'Sensitive Information Warning',
+    'copy_warning_body':
+        'Logs may contain server addresses, ports, or other connection '
+        'details. Please review and remove any sensitive information '
+        'before sharing publicly.',
+    'copy_cancel': 'Cancel',
+    'copy_confirm': 'Copy Logs',
+    'copied_to_clipboard': 'Logs copied to clipboard',
+  },
   'connection': {
     'add_server': 'Add Server',
     'add_subscription': 'Add Subscription',
@@ -546,8 +560,13 @@ Map<String, dynamic> testEnglishTranslations() => const {
     'state_disconnecting': 'Disconnecting',
     'state_error': 'Connection error',
     'traffic': '{tx} up / {rx} down',
+    'traffic_speed': 'Speed: ↑ {tx_speed} · ↓ {rx_speed}',
     'traffic_none': 'No traffic data',
     'traffic_unavailable': 'Traffic data unavailable',
+    'session_duration': 'Duration: {duration}',
+    'session_server': 'Server: {name} ({protocol})',
+    'session_server_none': 'Server: None selected',
+    'session_status': 'Tunnel: {status}',
   },
   'error': {
     'generic': 'An unexpected error occurred',

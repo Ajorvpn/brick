@@ -96,8 +96,8 @@ void main() {
         localizedMaterialApp(home: const LogsScreen()),
       );
 
-      expect(find.widgetWithText(AppBar, 'Live Logs'), findsOneWidget);
-      expect(find.text('settings.live_logs'), findsNothing);
+      expect(find.widgetWithText(AppBar, 'Logs'), findsOneWidget);
+      expect(find.text('logs.title'), findsNothing);
       expect(find.text('No log entries yet'), findsOneWidget);
       expect(find.text('settings.no_logs'), findsNothing);
     });
@@ -295,12 +295,33 @@ void main() {
               'label': 'Einstellungen',
               'back_to_home': 'Zurück zur Startseite',
             },
+            'logs': {
+              'title': 'Protokolle',
+              'jump_to_latest': 'Nach unten springen',
+              'clear_tooltip': 'Protokolle löschen',
+              'copy_tooltip': 'Protokolle kopieren',
+              'copy_warning_title': 'Warnung vor sensiblen Informationen',
+              'copy_warning_body':
+                  'Protokolle können Serveradressen, Ports oder andere '
+                  'Verbindungsdetails enthalten. Bitte überprüfen und '
+                  'entfernen Sie sensible Informationen vor der '
+                  'Weitergabe.',
+              'copy_cancel': 'Abbrechen',
+              'copy_confirm': 'Protokolle kopieren',
+              'copied_to_clipboard': 'Protokolle in die Zwischenablage kopiert',
+            },
             'connection': {
               'add_server': 'Server hinzufügen',
               'add_subscription': 'Abonnement hinzufügen',
               'no_servers': 'Noch keine Server gespeichert',
               'state_disconnected': 'Getrennt',
+              'traffic': '{tx} hoch / {rx} runter',
+              'traffic_speed': 'Geschwindigkeit: ↑ {tx_speed} · ↓ {rx_speed}',
               'traffic_none': 'Keine Verkehrsdaten',
+              'session_duration': 'Dauer: {duration}',
+              'session_server': 'Server: {name} ({protocol})',
+              'session_server_none': 'Server: Keiner ausgewählt',
+              'session_status': 'Tunnel: {status}',
             },
             'add_server': {
               'title': 'Server hinzufügen',

@@ -18,6 +18,7 @@ import 'package:mobile/features/connection/presentation/providers/connection_sta
 import 'package:mobile/features/connection/presentation/providers/saved_servers_provider.dart';
 import 'package:mobile/features/connection/presentation/widgets/connection_state_badge.dart';
 import 'package:mobile/features/connection/presentation/widgets/server_tile.dart';
+import 'package:mobile/features/connection/presentation/widgets/session_info_panel.dart';
 import 'package:mobile/features/connection/presentation/widgets/throughput_readout.dart';
 
 /// Home screen for the `connection` feature.
@@ -87,6 +88,8 @@ class HomeScreen extends ConsumerWidget {
                 const ConnectionStateBadge(),
                 const SizedBox(height: 8),
                 const ThroughputReadout(),
+                const SizedBox(height: 8),
+                const SessionInfoPanel(),
                 const SizedBox(height: 16),
                 if (activeServer != null) ...[
                   Card(
