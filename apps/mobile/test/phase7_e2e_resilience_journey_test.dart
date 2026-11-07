@@ -29,6 +29,7 @@ import 'package:mobile/features/connection/presentation/providers/auto_reconnect
 import 'package:mobile/features/connection/presentation/providers/connection_controller_provider.dart';
 import 'package:mobile/features/connection/presentation/providers/connection_state_provider.dart';
 import 'package:mobile/features/connection/presentation/providers/kill_switch_provider.dart';
+import 'package:mobile/features/connection/presentation/providers/session_duration_provider.dart';
 import 'package:mobile/features/connection/presentation/screens/home_screen.dart';
 
 import 'localization_test_harness.dart';
@@ -58,6 +59,7 @@ Future<void> _pumpApp(
   await tester.pumpWidget(
     localizedApp(
       overrides: [
+        initialConnectionStateProvider.overrideWithValue(engine.lastState),
         vpnEngineProvider.overrideWithValue(engine),
         serverProfileRepositoryProvider.overrideWith(
           (ref) async => buildRepository(dataSource),
@@ -70,6 +72,11 @@ Future<void> _pumpApp(
     ),
   );
   await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+  await tester.pump();
+  // Frame-0 check: zero "Disconnected" flash when engine was Connected
+  if (engine.lastState is Connected) {
+    expect(find.text('Disconnected'), findsNothing);
+  }
   await tester.pumpAndSettle();
 }
 
@@ -326,6 +333,40 @@ void main() {
       expect(container.read(killSwitchProvider), isA<KillSwitchArmed>());
       expect(
         container.read(autoReconnectProvider.notifier).isUserSessionActive,
+        isTrue,
+      );
+
+      // Verify session duration resumes ticking in relaunched process
+      await tester.pump(const Duration(seconds: 2));
+      expect(
+        container.read(sessionDurationProvider).inSeconds,
+        greaterThanOrEqualTo(2),
+      );
+      expect(find.textContaining('Duration:'), findsOneWidget);
+
+      // Verify traffic stats resume streaming in relaunched process
+      final now = DateTime.now();
+      engine.emitStats(
+        TrafficStats(txBytes: 1024, rxBytes: 2048, timestamp: now),
+      );
+      await tester.pump(const Duration(seconds: 1));
+      engine.emitStats(
+        TrafficStats(
+          txBytes: 3072,
+          rxBytes: 6144,
+          timestamp: now.add(const Duration(seconds: 1)),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.text('3.0 KiB up / 6.0 KiB down'), findsOneWidget);
+      expect(find.text('Speed: ↑ 2.0 KiB/s · ↓ 4.0 KiB/s'), findsOneWidget);
+
+      // Verify live logs resume capturing in relaunched process
+      engine.emitLog('2026-11-06 12:00:00 INFO Resumed log line in Stage D');
+      await tester.pump(const Duration(milliseconds: 100));
+      final stageDLogs = container.read(structuredLogEntriesProvider);
+      expect(
+        stageDLogs.any((l) => l.raw.contains('Resumed log line in Stage D')),
         isTrue,
       );
 

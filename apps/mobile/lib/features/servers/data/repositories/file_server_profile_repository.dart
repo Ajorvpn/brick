@@ -118,18 +118,16 @@ final class FileServerProfileRepository implements ServerProfileRepository {
               copy['url'] = decryptedUrl;
               final sub = SubscriptionMetadata.tryParse(copy);
               if (sub != null) {
-                _subscriptions[sub.id] = sub;
+                _subscriptions[sub.id] = _sanitizeSubscription(sub);
               }
             } on Object catch (_) {
-              _logger.w(
-                'Corrupt or tampered subscription ${raw['id']}',
-              );
+              _logger.w('Corrupt or tampered subscription ${raw['id']}');
             }
           } else {
             needsMigration = true;
             final sub = SubscriptionMetadata.tryParse(raw);
             if (sub != null) {
-              _subscriptions[sub.id] = sub;
+              _subscriptions[sub.id] = _sanitizeSubscription(sub);
             }
           }
         }
@@ -283,10 +281,24 @@ final class FileServerProfileRepository implements ServerProfileRepository {
         }
         configMap['transport'] = transportMap;
       }
+      if (configMap['extra_params'] is Map) {
+        final extraMap = Map<String, dynamic>.from(
+          configMap['extra_params'] as Map,
+        );
+        for (final entry in extraMap.entries) {
+          if (entry.value is String) {
+            final val = entry.value as String;
+            if (_cipher.isEncrypted(val)) {
+              extraMap[entry.key] = await _cipher.decrypt(val);
+            } else {
+              onPlaintextEncountered();
+            }
+          }
+        }
+        configMap['extra_params'] = extraMap;
+      }
     } on Object catch (_) {
-      _logger.w(
-        'Integrity check failed for profile $id; surfacing as broken',
-      );
+      _logger.w('Integrity check failed for profile $id; surfacing as broken');
       _brokenServers[id] = 'Decryption failed: integrity check violated';
       return;
     }
@@ -300,10 +312,25 @@ final class FileServerProfileRepository implements ServerProfileRepository {
             : null;
         final subId = raw['subscription_id'] as String?;
 
+        final transport = _parseTransport(configMap['transport']);
+        final extraParams = configMap['extra_params'] is Map
+            ? Map<String, dynamic>.from(configMap['extra_params'] as Map)
+            : null;
+        final enrichedConfig = _enrichOutboundConfig(
+          value,
+          transport: transport,
+          extraParams: extraParams,
+        );
+
+        final cleanName =
+            BuildServerProfile.sanitizeRemark(name) ??
+            '${enrichedConfig.server}:${enrichedConfig.serverPort}';
+        final cleanName = BuildServerProfile.sanitizeRemark(name) ??
+            '${enrichedConfig.server}:${enrichedConfig.serverPort}';
         _profiles[id] = ServerProfile(
           id: id,
-          name: name,
-          config: value,
+          name: cleanName,
+          config: enrichedConfig,
           addedAt: addedAt,
           lastUsedAt: lastUsedAt,
           subscriptionId: subId,
@@ -395,6 +422,27 @@ final class FileServerProfileRepository implements ServerProfileRepository {
         }
         configMap['transport'] = transportMap;
       }
+      if (profile.config.extraParams != null &&
+          profile.config.extraParams!.isNotEmpty) {
+        final extraMap = Map<String, dynamic>.from(profile.config.extraParams!);
+        for (final entry in extraMap.entries) {
+          if (entry.value is String) {
+            extraMap[entry.key] = await _cipher.encrypt(entry.value as String);
+          }
+        }
+        profile.config.extraParams!.keys.forEach(configMap.remove);
+        configMap['extra_params'] = extraMap;
+      } else if (configMap['extra_params'] is Map) {
+        final extraMap = Map<String, dynamic>.from(
+          configMap['extra_params'] as Map,
+        );
+        for (final entry in extraMap.entries) {
+          if (entry.value is String) {
+            extraMap[entry.key] = await _cipher.encrypt(entry.value as String);
+          }
+        }
+        configMap['extra_params'] = extraMap;
+      }
 
       serializedProfiles.add(<String, dynamic>{
         'id': profile.id,
@@ -453,8 +501,9 @@ final class FileServerProfileRepository implements ServerProfileRepository {
   @override
   Future<void> save(ServerProfile profile) async {
     await _ensureLoaded();
-    _profiles[profile.id] = profile;
-    _brokenServers.remove(profile.id);
+    final sanitized = _sanitizeServerProfile(profile);
+    _profiles[sanitized.id] = sanitized;
+    _brokenServers.remove(sanitized.id);
     await _persist();
   }
 
@@ -483,7 +532,8 @@ final class FileServerProfileRepository implements ServerProfileRepository {
   @override
   Future<void> saveSubscription(SubscriptionMetadata subscription) async {
     await _ensureLoaded();
-    _subscriptions[subscription.id] = subscription;
+    final sanitized = _sanitizeSubscription(subscription);
+    _subscriptions[sanitized.id] = sanitized;
     await _persist();
   }
 
@@ -493,10 +543,12 @@ final class FileServerProfileRepository implements ServerProfileRepository {
     List<ServerProfile> profiles,
   ) async {
     await _ensureLoaded();
-    _subscriptions[subscription.id] = subscription;
+    final sanitizedSub = _sanitizeSubscription(subscription);
+    _subscriptions[sanitizedSub.id] = sanitizedSub;
     for (final profile in profiles) {
-      _profiles[profile.id] = profile;
-      _brokenServers.remove(profile.id);
+      final sanitized = _sanitizeServerProfile(profile);
+      _profiles[sanitized.id] = sanitized;
+      _brokenServers.remove(sanitized.id);
     }
     await _persist();
   }
@@ -518,10 +570,12 @@ final class FileServerProfileRepository implements ServerProfileRepository {
     );
     _brokenServers.removeWhere((id, _) => oldAssociated.contains(id));
 
-    _subscriptions[subscription.id] = subscription;
+    final sanitizedSub = _sanitizeSubscription(subscription);
+    _subscriptions[sanitizedSub.id] = sanitizedSub;
     for (final profile in newProfiles) {
-      _profiles[profile.id] = profile;
-      _brokenServers.remove(profile.id);
+      final sanitized = _sanitizeServerProfile(profile);
+      _profiles[sanitized.id] = sanitized;
+      _brokenServers.remove(sanitized.id);
     }
     await _persist();
   }
@@ -599,4 +653,214 @@ final class FileServerProfileRepository implements ServerProfileRepository {
     }
     return candidate;
   }
+}
+
+TransportSettings? _parseTransport(dynamic json) {
+  if (json is! Map) return null;
+  final map = Map<String, dynamic>.from(json);
+  final type = map['type'] as String?;
+  switch (type) {
+    case 'ws':
+      final path = map['path'] as String? ?? '/';
+      final headersRaw = map['headers'];
+      final headers = (headersRaw is Map)
+          ? headersRaw.map((k, v) => MapEntry(k.toString(), v.toString()))
+          : null;
+      final maxEarlyData = map['max_early_data'] as int?;
+      final earlyDataHeaderName = map['early_data_header_name'] as String?;
+      return WebSocketTransport(
+        path: path,
+        headers: headers,
+        maxEarlyData: maxEarlyData,
+        earlyDataHeaderName: earlyDataHeaderName,
+      );
+    case 'grpc':
+      final serviceName = map['service_name'] as String? ?? '';
+      final idleTimeoutMicros = map['idle_timeout'] as int?;
+      final pingTimeoutMicros = map['ping_timeout'] as int?;
+      final permitWithoutStream = map['permit_without_stream'] == true;
+      return GrpcTransport(
+        serviceName: serviceName,
+        idleTimeout: idleTimeoutMicros != null
+            ? Duration(microseconds: idleTimeoutMicros)
+            : null,
+        pingTimeout: pingTimeoutMicros != null
+            ? Duration(microseconds: pingTimeoutMicros)
+            : null,
+        permitWithoutStream: permitWithoutStream,
+      );
+    case 'http':
+      final hostRaw = map['host'];
+      final host = (hostRaw is List)
+          ? hostRaw.map((e) => e.toString()).toList()
+          : null;
+      final path = map['path'] as String?;
+      final method = map['method'] as String?;
+      final headersRaw = map['headers'];
+      final headers = (headersRaw is Map)
+          ? headersRaw.map((k, v) => MapEntry(k.toString(), v.toString()))
+          : null;
+      return HttpTransport(
+        host: host,
+        path: path,
+        method: method,
+        headers: headers,
+      );
+    case 'httpupgrade':
+      final host = map['host'] as String?;
+      final path = map['path'] as String?;
+      final headersRaw = map['headers'];
+      final headers = (headersRaw is Map)
+          ? headersRaw.map((k, v) => MapEntry(k.toString(), v.toString()))
+          : null;
+      return HttpUpgradeTransport(host: host, path: path, headers: headers);
+    default:
+      return null;
+  }
+}
+
+OutboundConfig _enrichOutboundConfig(
+  OutboundConfig base, {
+  TransportSettings? transport,
+  Map<String, dynamic>? extraParams,
+}) {
+  if (transport == null && (extraParams == null || extraParams.isEmpty)) {
+    return base;
+  }
+  return switch (base) {
+    final VlessOutbound v => VlessOutbound(
+      server: v.server,
+      serverPort: v.serverPort,
+      uuid: v.uuid,
+      flow: v.flow,
+      packetEncoding: v.packetEncoding,
+      tls: v.tls,
+      transport: transport ?? v.transport,
+      multiplex: v.multiplex,
+      extraParams: extraParams ?? v.extraParams,
+    ),
+    final VmessOutbound v => VmessOutbound(
+      server: v.server,
+      serverPort: v.serverPort,
+      uuid: v.uuid,
+      security: v.security,
+      alterId: v.alterId,
+      tls: v.tls,
+      transport: transport ?? v.transport,
+      multiplex: v.multiplex,
+      extraParams: extraParams ?? v.extraParams,
+    ),
+    final TrojanOutbound v => TrojanOutbound(
+      server: v.server,
+      serverPort: v.serverPort,
+      password: v.password,
+      tls: v.tls,
+      transport: transport ?? v.transport,
+      multiplex: v.multiplex,
+      extraParams: extraParams ?? v.extraParams,
+    ),
+    final ShadowsocksOutbound v => ShadowsocksOutbound(
+      server: v.server,
+      serverPort: v.serverPort,
+      method: v.method,
+      password: v.password,
+      plugin: v.plugin,
+      pluginOpts: v.pluginOpts,
+      udpOverTcp: v.udpOverTcp,
+      multiplex: v.multiplex,
+      extraParams: extraParams ?? v.extraParams,
+    ),
+    final Hysteria2Outbound v => Hysteria2Outbound(
+      server: v.server,
+      serverPort: v.serverPort,
+      password: v.password,
+      upMbps: v.upMbps,
+      downMbps: v.downMbps,
+      serverPorts: v.serverPorts,
+      obfsType: v.obfsType,
+      obfsPassword: v.obfsPassword,
+      bbrProfile: v.bbrProfile,
+      tls: v.tls,
+      quic: v.quic,
+      extraParams: extraParams ?? v.extraParams,
+    ),
+    final TuicOutbound v => TuicOutbound(
+      server: v.server,
+      serverPort: v.serverPort,
+      uuid: v.uuid,
+      password: v.password,
+      congestionControl: v.congestionControl,
+      udpRelayMode: v.udpRelayMode,
+      zeroRttHandshake: v.zeroRttHandshake,
+      heartbeat: v.heartbeat,
+      tls: v.tls,
+      extraParams: extraParams ?? v.extraParams,
+    ),
+    final AmneziaWgOutbound v => AmneziaWgOutbound(
+      server: v.server,
+      serverPort: v.serverPort,
+      privateKey: v.privateKey,
+      peerPublicKey: v.peerPublicKey,
+      localAddresses: v.localAddresses,
+      presharedKey: v.presharedKey,
+      reserved: v.reserved,
+      mtu: v.mtu,
+      workers: v.workers,
+      dnsServers: v.dnsServers,
+      tls: v.tls,
+      jc: v.jc,
+      jmin: v.jmin,
+      jmax: v.jmax,
+      s1: v.s1,
+      s2: v.s2,
+      h1: v.h1,
+      h2: v.h2,
+      h3: v.h3,
+      h4: v.h4,
+      extraParams: extraParams ?? v.extraParams,
+    ),
+    final WireGuardOutbound v => WireGuardOutbound(
+      server: v.server,
+      serverPort: v.serverPort,
+      privateKey: v.privateKey,
+      peerPublicKey: v.peerPublicKey,
+      localAddresses: v.localAddresses,
+      presharedKey: v.presharedKey,
+      reserved: v.reserved,
+      mtu: v.mtu,
+      workers: v.workers,
+      dnsServers: v.dnsServers,
+      tls: v.tls,
+      extraParams: extraParams ?? v.extraParams,
+    ),
+  };
+}
+
+ServerProfile _sanitizeServerProfile(ServerProfile profile) {
+  final cleanName =
+      BuildServerProfile.sanitizeRemark(profile.name) ??
+      '${profile.config.server}:${profile.config.serverPort}';
+  if (cleanName == profile.name) return profile;
+  return profile.copyWith(name: cleanName);
+}
+
+SubscriptionMetadata _sanitizeSubscription(SubscriptionMetadata subscription) {
+  final cleanName =
+      BuildServerProfile.sanitizeRemark(subscription.name) ?? 'Subscription';
+  if (cleanName == subscription.name) return subscription;
+  return subscription.copyWith(name: cleanName);
+}
+
+ServerProfile _sanitizeServerProfile(ServerProfile profile) {
+  final cleanName = BuildServerProfile.sanitizeRemark(profile.name) ??
+      '${profile.config.server}:${profile.config.serverPort}';
+  if (cleanName == profile.name) return profile;
+  return profile.copyWith(name: cleanName);
+}
+
+SubscriptionMetadata _sanitizeSubscription(SubscriptionMetadata subscription) {
+  final cleanName = BuildServerProfile.sanitizeRemark(subscription.name) ??
+      'Subscription';
+  if (cleanName == subscription.name) return subscription;
+  return subscription.copyWith(name: cleanName);
 }

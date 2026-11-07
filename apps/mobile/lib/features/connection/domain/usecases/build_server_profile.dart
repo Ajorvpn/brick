@@ -25,6 +25,22 @@ final class BuildServerProfile {
   /// Creates the use case.
   const BuildServerProfile();
 
+  /// Sanitizes untrusted remarks/names by stripping ASCII control characters
+  /// (`[\x00-\x1F\x7F]`), newlines (`\r`, `\n`), and Unicode directional
+  /// formatting characters (`[\u202A-\u202E\u2066-\u2069]`), collapsing
+  /// internal whitespace, and clamping length to at most 128 characters.
+  static String? sanitizeRemark(String? raw) {
+    if (raw == null) return null;
+    var sanitized = raw
+        .replaceAll(RegExp(r'[\x00-\x1F\x7F\u202A-\u202E\u2066-\u2069]'), '')
+        .trim();
+    sanitized = sanitized.replaceAll(RegExp(r'\s+'), ' ');
+    if (sanitized.length > 128) {
+      sanitized = sanitized.substring(0, 128).trim();
+    }
+    return sanitized.isEmpty ? null : sanitized;
+  }
+
   /// Parses [uri] and wraps the result in a [ServerProfile].
   ///
   /// Returns the [ConfigParseError] untouched on failure so the caller can
@@ -42,7 +58,7 @@ final class BuildServerProfile {
           addedAt: addedAt,
           // A URI fragment is the user's own label for the server; without
           // one, `toServerProfile` falls back to `host:port`.
-          customRemark: parseUriRemark(uri),
+          customRemark: sanitizeRemark(parseUriRemark(uri)),
         ),
       ),
       Err(:final error) => Err(error),

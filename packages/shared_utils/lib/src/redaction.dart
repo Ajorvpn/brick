@@ -7,12 +7,12 @@
 /// Section 4 and P8-T2 specifications.
 ///
 /// Redaction Rules:
-/// 1. Known Secrets: literal occurrences of strings in [knownSecrets] with
-///    length >= 4 are replaced with `[REDACTED]`.
-/// 2. Share-Link & Subscription URIs: proxy/VPN schemes and HTTP(S) URLs are
+/// 1. Share-Link & Subscription URIs: proxy/VPN schemes and HTTP(S) URLs are
 ///    scrubbed to `<scheme>://[REDACTED]`.
-/// 3. Structured JSON Keys: sensitive key-value pairs in JSON strings are
+/// 2. Structured JSON Keys: sensitive key-value pairs in JSON strings are
 ///    scrubbed to `"$key":"[REDACTED]"`.
+/// 3. Known Secrets: literal occurrences of strings in [knownSecrets] with
+///    length >= 4 are replaced with `[REDACTED]`.
 /// 4. Key=Value / Key: Value Free-Text: sensitive parameter assignments in
 ///    free-text are scrubbed to `$key$sep[REDACTED]`.
 /// 5. UUIDs: RFC 4122 UUID strings are scrubbed to `[REDACTED_UUID]`.
@@ -41,19 +41,9 @@ String redact(
     return '"$key"$sep"[REDACTED]"';
   });
 
-  // 3. Free-text Key=Value or Key: Value assignments
-  result = result.replaceAllMapped(_freeTextRegex, (match) {
-    final key = match.group(1);
-    final sep = match.group(2) ?? '=';
-    return '$key$sep[REDACTED]';
-  });
-
-  // 4. UUIDs
-  result = result.replaceAllMapped(_uuidRegex, (match) {
-    return '[REDACTED_UUID]';
-  });
-
-  // 5. Known literal secrets (length >= 4) sorted by descending length
+  // 3. Known literal secrets (length >= 4) sorted by descending length
+  // Runs before free-text regex to prevent partial mangling of complex
+  // semicolon-separated secrets (e.g. plugin_opts).
   final secrets =
       knownSecrets.where((s) => s.trim().length >= 4).toSet().toList()
         ..sort((a, b) => b.length.compareTo(a.length));
@@ -61,6 +51,18 @@ String redact(
   for (final secret in secrets) {
     result = result.replaceAll(secret, '[REDACTED]');
   }
+
+  // 4. Free-text Key=Value or Key: Value assignments
+  result = result.replaceAllMapped(_freeTextRegex, (match) {
+    final key = match.group(1);
+    final sep = match.group(2) ?? '=';
+    return '$key$sep[REDACTED]';
+  });
+
+  // 5. UUIDs
+  result = result.replaceAllMapped(_uuidRegex, (match) {
+    return '[REDACTED_UUID]';
+  });
 
   // 6. External IPv4 / IPv6 addresses
   result = result.replaceAllMapped(_ipv4Regex, (match) {
@@ -89,17 +91,17 @@ String redact(
 }
 
 final RegExp _uriRegex = RegExp(
-  r'''\b(vless|vmess|trojan|ss|hy2|hysteria2|tuic|wg|wireguard|awg|amneziawg|brick|https?)://[^\s"'()\[\]]+''',
+  r'''\b(vless|vmess|trojan|ss|hy2|hysteria2|tuic|wg|wireguard|awg|amneziawg|brick|https?)://(?:\[[0-9a-fA-F:]+\]|[^\s"'()\[\]])+''',
   caseSensitive: false,
 );
 
 final RegExp _jsonKeyRegex = RegExp(
-  r'''"(uuid|password|passwd|pwd|secret|token|private_key|privateKey|pre_shared_key|presharedKey|public_key|publicKey|short_id|shortId|obfs_password|obfsPassword|auth|authorization|plugin_opts)"(\s*:\s*)"[^"]*"''',
+  r'''"(uuid|password|passwd|pwd|secret|token|private_key|privateKey|pre_shared_key|preshared_key|presharedKey|public_key|publicKey|peer_public_key|peerpublickey|short_id|shortId|obfs_password|obfsPassword|auth|authorization|plugin_opts|sni|server_name|servername)"(\s*:\s*)"[^"]*"''',
   caseSensitive: false,
 );
 
 final RegExp _freeTextRegex = RegExp(
-  r'''\b(uuid|password|passwd|pwd|secret|token|private_key|privateKey|pre_shared_key|preshared_key|public_key|short_id|obfs_password|auth|authorization|plugin_opts)(\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s,;\]\}]+)''',
+  r'''\b(uuid|password|passwd|pwd|secret|token|private_key|privateKey|pre_shared_key|preshared_key|presharedKey|public_key|publicKey|peer_public_key|peerpublickey|short_id|shortId|obfs_password|obfsPassword|auth|authorization|plugin_opts|sni|server_name|servername)(\s*[:=]\s*)(?:\[REDACTED(?:_[A-Z]+)?\]|"[^"]*"|'[^']*'|[^\s,;\]\}]+)''',
   caseSensitive: false,
 );
 

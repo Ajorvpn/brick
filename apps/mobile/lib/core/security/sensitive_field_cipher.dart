@@ -73,7 +73,9 @@ class AndroidKeystoreSensitiveFieldCipher implements SensitiveFieldCipher {
     } on MissingPluginException {
       // Platform channel unavailable; fall back to deterministic local cipher.
       return await fallback.encrypt(plaintext);
-    } on Object catch (_) {
+      // Uninitialized binding in pure unit tests throws FlutterError; fallback.
+      // ignore: avoid_catching_errors
+    } on FlutterError {
       // Uninitialized binding in pure unit tests; fall back to local cipher.
       return await fallback.encrypt(plaintext);
     }
@@ -93,7 +95,9 @@ class AndroidKeystoreSensitiveFieldCipher implements SensitiveFieldCipher {
     } on MissingPluginException {
       // Platform channel unavailable; fall back to deterministic local cipher.
       return await fallback.decrypt(ciphertext);
-    } on Object catch (_) {
+      // Uninitialized binding in pure unit tests throws FlutterError; fallback.
+      // ignore: avoid_catching_errors
+    } on FlutterError {
       // Uninitialized binding in pure unit tests; fall back to local cipher.
       return await fallback.decrypt(ciphertext);
     }

@@ -38,6 +38,36 @@ void main() {
       expect(redacted, 'Connected to endpoint with token [REDACTED]');
     });
 
+    test('redacts semicolon-separated known secrets without free-text mangling', () {
+      const raw =
+          'Config plugin_opts=server;tls;host=mysecret.domain.com;token=secret-token-12345';
+      const secret =
+          'server;tls;host=mysecret.domain.com;token=secret-token-12345';
+      final redacted = redact(raw, knownSecrets: [secret]);
+      expect(redacted.contains('mysecret.domain.com'), isFalse);
+      expect(redacted.contains('secret-token-12345'), isFalse);
+      expect(redacted, 'Config plugin_opts=[REDACTED]');
+    });
+
+    test('redacts IPv6 share links, sni, and peer_public_key parameters', () {
+      const uri =
+          'Imported profile vless://uuid@[2001:db8::1]:443?security=tls&sni=secret-sni.org#Node';
+      final redactedUri = redact(uri);
+      expect(redactedUri, 'Imported profile vless://[REDACTED]');
+      expect(redactedUri.contains('2001:db8::1'), isFalse);
+      expect(redactedUri.contains('secret-sni.org'), isFalse);
+
+      const freeText =
+          'Connected sni=secret-sni.org peer_public_key=secretPeerKey123';
+      final redactedFreeText = redact(freeText);
+      expect(
+        redactedFreeText,
+        'Connected sni=[REDACTED] peer_public_key=[REDACTED]',
+      );
+      expect(redactedFreeText.contains('secret-sni.org'), isFalse);
+      expect(redactedFreeText.contains('secretPeerKey123'), isFalse);
+    });
+
     test('redacts share links and subscription URIs across protocols', () {
       expect(
         redact(

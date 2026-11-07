@@ -128,6 +128,16 @@ void main() {
       // Background service remains connected
       expect(engine.lastState, isA<Connected>());
 
+      // In fakeAsync, wall-clock DateTime.now() does not advance when pumping.
+      // Adjust the persisted session start timestamp by 2 seconds to simulate
+      // the real-world time elapsed during Session 1.
+      final startedAt = fakePrefs.getActiveSessionStartedAt();
+      if (startedAt != null) {
+        await fakePrefs.setActiveSessionStartedAt(
+          startedAt.subtract(const Duration(seconds: 2)),
+        );
+      }
+
       // 3. Relaunch UI (Session 2) with persistent engine & storage
       await pumpConnectionMaterialApp(
         tester,
@@ -153,9 +163,14 @@ void main() {
         isTrue,
       );
 
-      // Duration timer resumes ticking for re-attached session
+      // Duration timer resumes ticking for re-attached session,
+      // preserving elapsed time
       await tester.pump(const Duration(seconds: 3));
-      expect(find.text('Duration: 00:00:03'), findsOneWidget);
+      expect(
+        container.read(sessionDurationProvider).inSeconds,
+        greaterThanOrEqualTo(5),
+      );
+      expect(find.text('Duration: 00:00:05'), findsOneWidget);
 
       // Two TrafficStats snapshots continue flowing into active session
       final now = DateTime.now();
@@ -285,9 +300,21 @@ void main() {
         expect(find.text('Connected'), findsWidgets);
 
         // Case B: Launch with AppBootstrap.init pre-warming
+        final dataSource = FakeServerProfileDataSource();
+        final profile = await _seedServer(
+          dataSource,
+          'vless://11111111-2222-3333-4444-555555555555@example.com:443#Tokyo%20Node',
+        );
+        final repo = buildRepository(dataSource);
+        final fakePrefs = FakeAppPreferencesRepository(
+          initialActiveServerId: profile.id,
+        );
+
         final prewarmedContainer = await tester.runAsync(
           () => AppBootstrap.init(
             vpnEngineOverride: delayedEngine,
+            serverProfileRepositoryOverride: repo,
+            preferencesRepositoryOverride: fakePrefs,
             ensureBinding: false,
             ensureLocalization: false,
           ),
@@ -319,6 +346,16 @@ void main() {
         expect((prewarmedBadge.label as Text).data, equals('Connected'));
         expect(find.text('Checking...'), findsNothing);
         expect(find.text('Disconnected'), findsNothing);
+
+        // Frame-0 assertions: SessionInfoPanel already displays Tunnel & Server
+        expect(find.text('Tunnel: Connected'), findsOneWidget);
+        expect(find.text('Server: Tokyo Node (vless)'), findsOneWidget);
+
+        // Frame-0 assertion: HomeScreen connect button already shows Disconnect
+        expect(find.widgetWithText(FilledButton, 'Disconnect'), findsOneWidget);
+
+        await tester.pumpWidget(const SizedBox.shrink());
+        prewarmedContainer.dispose();
       },
     );
 
@@ -374,6 +411,82 @@ void main() {
         expect(switchRes, isA<VpnCommandAccepted>());
         expect(engine.stopCalls, equals(1));
         expect(engine.startCalls, contains(profile2));
+      },
+    );
+
+    testWidgets(
+      'Test 4: Stale activeSessionStartedAt timestamp from a dead prior '
+      'session is wiped on Disconnected cold boot and never pollutes a new '
+      'connection',
+      (tester) async {
+        tester.view.physicalSize = const Size(1200, 2400);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(() {
+          tester.view.resetPhysicalSize();
+          tester.view.resetDevicePixelRatio();
+        });
+
+        final dataSource = FakeServerProfileDataSource();
+        final profile = await _seedServer(
+          dataSource,
+          'vless://11111111-2222-3333-4444-555555555555@example.com:443#Stale%20Node',
+        );
+
+        // Simulate a stale session started 5 hours ago before OS killed both
+        // UI and native VPN service
+        final staleTimestamp = DateTime.now().toUtc().subtract(
+          const Duration(hours: 5),
+        );
+        final fakePrefs = FakeAppPreferencesRepository(
+          initialActiveSessionStartedAt: staleTimestamp,
+        );
+        final engine = FakeVpnEngine()..lastState = const Disconnected();
+
+        await pumpConnectionMaterialApp(
+          tester,
+          const HomeScreen(),
+          engine: engine,
+          dataSource: dataSource,
+          preferencesRepository: fakePrefs,
+        );
+
+        final container = ProviderScope.containerOf(
+          tester.element(find.byType(HomeScreen)),
+        );
+        final controller = container.read(
+          connectionControllerProvider.notifier,
+        );
+
+        // 1. Initial state is Disconnected and stale timestamp was cleaned up
+        expect(
+          container.read(connectionStateProvider).value,
+          isA<Disconnected>(),
+        );
+        expect(fakePrefs.getActiveSessionStartedAt(), isNull);
+        expect(container.read(sessionDurationProvider), equals(Duration.zero));
+        expect(find.text('Duration: 00:00:00'), findsOneWidget);
+
+        // 2. User initiates new connection (Connecting -> Connected)
+        final res = await controller.connect(profile);
+        expect(res, isA<VpnCommandAccepted>());
+        engine.emit(const Connected());
+        await tester.pumpAndSettle();
+
+        // 3. New session duration starts at 00:00:00 (NOT 05:00:00)
+        expect(container.read(sessionDurationProvider), equals(Duration.zero));
+        expect(find.text('Duration: 00:00:00'), findsOneWidget);
+        expect(find.textContaining('05:00:'), findsNothing);
+
+        // 4. Pump 2 seconds -> verify sessionDurationProvider is 2s
+        // (Duration: 00:00:02), NOT 5 hours!
+        await tester.pump(const Duration(seconds: 2));
+        expect(container.read(sessionDurationProvider).inSeconds, equals(2));
+        expect(find.text('Duration: 00:00:02'), findsOneWidget);
+        expect(find.textContaining('05:00:'), findsNothing);
+
+        // Clean up UI tree and fake timer
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pumpAndSettle();
       },
     );
   });

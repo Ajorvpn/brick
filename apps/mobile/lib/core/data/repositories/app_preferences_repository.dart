@@ -57,6 +57,13 @@ abstract class AppPreferencesRepository {
 
   /// Persists [enabled].
   Future<void> setKillSwitchEnabled({required bool enabled});
+
+  /// Reads the timestamp when the current active VPN session started,
+  /// or `null`.
+  DateTime? getActiveSessionStartedAt();
+
+  /// Persists the active session start timestamp, or clears it when `null`.
+  Future<void> setActiveSessionStartedAt(DateTime? timestamp);
 }
 
 /// Concrete implementation of [AppPreferencesRepository] backed by
@@ -86,6 +93,10 @@ class SharedPreferencesAppPreferencesRepository
   /// Preference key for whether kill switch protection is enabled.
   static const String keyKillSwitchEnabled =
       'brick.preferences.kill_switch_enabled';
+
+  /// Preference key for the active session start timestamp (UTC epoch ms).
+  static const String keyActiveSessionStartedAt =
+      'brick.preferences.active_session_started_at';
 
   @override
   ThemeMode getThemeMode() {
@@ -162,6 +173,25 @@ class SharedPreferencesAppPreferencesRepository
   Future<void> setKillSwitchEnabled({required bool enabled}) async {
     await _prefs.setBool(keyKillSwitchEnabled, enabled);
   }
+
+  @override
+  DateTime? getActiveSessionStartedAt() {
+    final ms = _prefs.getInt(keyActiveSessionStartedAt);
+    if (ms == null) return null;
+    return DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true);
+  }
+
+  @override
+  Future<void> setActiveSessionStartedAt(DateTime? timestamp) async {
+    if (timestamp == null) {
+      await _prefs.remove(keyActiveSessionStartedAt);
+    } else {
+      await _prefs.setInt(
+        keyActiveSessionStartedAt,
+        timestamp.toUtc().millisecondsSinceEpoch,
+      );
+    }
+  }
 }
 
 /// In-memory fake implementation of [AppPreferencesRepository] for unit/widget
@@ -176,17 +206,20 @@ class FakeAppPreferencesRepository implements AppPreferencesRepository {
     String? initialActiveServerId,
     bool initialAutoReconnectEnabled = true,
     bool initialKillSwitchEnabled = false,
+    DateTime? initialActiveSessionStartedAt,
   }) : _themeMode = initialThemeMode,
        _locale = initialLocale,
        _activeServerId = initialActiveServerId,
        _autoReconnectEnabled = initialAutoReconnectEnabled,
-       _killSwitchEnabled = initialKillSwitchEnabled;
+       _killSwitchEnabled = initialKillSwitchEnabled,
+       _activeSessionStartedAt = initialActiveSessionStartedAt?.toUtc();
 
   ThemeMode _themeMode;
   Locale? _locale;
   String? _activeServerId;
   bool _autoReconnectEnabled;
   bool _killSwitchEnabled;
+  DateTime? _activeSessionStartedAt;
 
   @override
   ThemeMode getThemeMode() => _themeMode;
@@ -228,5 +261,13 @@ class FakeAppPreferencesRepository implements AppPreferencesRepository {
   @override
   Future<void> setKillSwitchEnabled({required bool enabled}) async {
     _killSwitchEnabled = enabled;
+  }
+
+  @override
+  DateTime? getActiveSessionStartedAt() => _activeSessionStartedAt;
+
+  @override
+  Future<void> setActiveSessionStartedAt(DateTime? timestamp) async {
+    _activeSessionStartedAt = timestamp?.toUtc();
   }
 }

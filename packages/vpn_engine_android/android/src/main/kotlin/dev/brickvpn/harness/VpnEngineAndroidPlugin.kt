@@ -438,6 +438,7 @@ internal object SecureStorageHelper {
     private const val GCM_TAG_LENGTH_BITS = 128
     private var fallbackKey: SecretKey? = null
 
+    @Synchronized
     fun getOrCreateKey(): SecretKey {
         return try {
             val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
@@ -452,21 +453,21 @@ internal object SecureStorageHelper {
                     .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
                     .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
                     .setKeySize(256)
+                    .setUserAuthenticationRequired(false)
                     .build()
                 keyGenerator.init(spec)
                 keyGenerator.generateKey()
             }
         } catch (_: Throwable) {
-            fallbackKey ?: synchronized(this) {
-                fallbackKey ?: run {
-                    val kg = KeyGenerator.getInstance("AES")
-                    kg.init(256)
-                    kg.generateKey().also { fallbackKey = it }
-                }
+            fallbackKey ?: run {
+                val kg = KeyGenerator.getInstance("AES")
+                kg.init(256)
+                kg.generateKey().also { fallbackKey = it }
             }
         }
     }
 
+    @Synchronized
     fun encrypt(plaintext: String): String {
         val secretKey = getOrCreateKey()
         val cipher = Cipher.getInstance(AES_GCM_TRANSFORMATION)
@@ -480,6 +481,7 @@ internal object SecureStorageHelper {
         return "enc:v1:$b64"
     }
 
+    @Synchronized
     fun decrypt(ciphertext: String): String {
         if (!ciphertext.startsWith("enc:v1:")) {
             throw IllegalArgumentException("Invalid ciphertext prefix")

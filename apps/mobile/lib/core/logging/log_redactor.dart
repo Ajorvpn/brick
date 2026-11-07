@@ -113,6 +113,16 @@ abstract final class LogRedactor {
 
     // 2. Structured outbound config properties
     final config = profile.config;
+    final tls = switch (config) {
+      TcpBasedOutbound(:final tls) => tls,
+      QuicBasedOutbound(:final tls) => tls,
+      _ => null,
+    };
+    final sni = tls?.serverName?.trim();
+    if (sni != null && sni.isNotEmpty && !_isSafeDiagnosticHost(sni)) {
+      secrets.add(sni);
+    }
+
     switch (config) {
       case VlessOutbound(:final uuid, :final tls):
         _addNonEmpty(secrets, uuid);
@@ -157,6 +167,25 @@ abstract final class LogRedactor {
       if (uri != null) {
         if (uri.userInfo.isNotEmpty) {
           secrets.add(uri.userInfo);
+        }
+        if (uri.host.isNotEmpty && !_isSafeDiagnosticHost(uri.host)) {
+          _addNonEmpty(secrets, uri.host);
+        }
+        const nonSecretWords = {
+          'subscribe',
+          'subscriptions',
+          'subscription',
+          'sub',
+          'api',
+          'v1',
+          'v2',
+        };
+        for (final segment in uri.pathSegments) {
+          final trimmed = segment.trim();
+          if (trimmed.length >= 8 &&
+              !nonSecretWords.contains(trimmed.toLowerCase())) {
+            _addNonEmpty(secrets, trimmed);
+          }
         }
         for (final val in uri.queryParameters.values) {
           _addNonEmpty(secrets, val);
@@ -229,10 +258,16 @@ abstract final class LogRedactor {
       for (final val in transport.headers!.values) {
         _addNonEmpty(secrets, val);
       }
+    } else if (transport is HttpUpgradeTransport && transport.headers != null) {
+      for (final val in transport.headers!.values) {
+        _addNonEmpty(secrets, val);
+      }
     } else if (transport is HttpTransport && transport.headers != null) {
       for (final val in transport.headers!.values) {
         _addNonEmpty(secrets, val);
       }
+    } else if (transport is GrpcTransport) {
+      _addNonEmpty(secrets, transport.serviceName);
     }
   }
 
@@ -241,7 +276,13 @@ abstract final class LogRedactor {
       for (final entry in json.entries) {
         final key = entry.key.toString().toLowerCase().replaceAll('_', '');
         final val = entry.value;
-        if (_isSensitiveKey(key) && val is String) {
+        if (key == 'extraparams' && val is Map) {
+          for (final extraVal in val.values) {
+            if (extraVal is String) {
+              _addNonEmpty(secrets, extraVal);
+            }
+          }
+        } else if (_isSensitiveKey(key) && val is String) {
           _addNonEmpty(secrets, val);
         } else {
           _extractFromJson(val, secrets);

@@ -90,6 +90,21 @@ void main() {
         expect(repo.isKillSwitchEnabled(), isFalse);
       },
     );
+
+    test(
+      'manages active session start timestamp in FakeAppPreferencesRepository',
+      () async {
+        final repo = FakeAppPreferencesRepository();
+        expect(repo.getActiveSessionStartedAt(), isNull);
+
+        final now = DateTime.utc(2026, 11, 7, 4, 30);
+        await repo.setActiveSessionStartedAt(now);
+        expect(repo.getActiveSessionStartedAt(), equals(now));
+
+        await repo.setActiveSessionStartedAt(null);
+        expect(repo.getActiveSessionStartedAt(), isNull);
+      },
+    );
   });
 
   group('SharedPreferencesAppPreferencesRepository', () {
@@ -212,6 +227,39 @@ void main() {
 
         final repo2 = SharedPreferencesAppPreferencesRepository(prefs);
         expect(repo2.isKillSwitchEnabled(), isTrue);
+      },
+    );
+
+    test(
+      'persists active session start timestamp and survives restart',
+      () async {
+        SharedPreferences.setMockInitialValues(<String, Object>{});
+        final prefs = await SharedPreferences.getInstance();
+        final repo1 = SharedPreferencesAppPreferencesRepository(prefs);
+
+        expect(repo1.getActiveSessionStartedAt(), isNull);
+
+        final now = DateTime.utc(2026, 11, 7, 4, 30);
+        await repo1.setActiveSessionStartedAt(now);
+        expect(repo1.getActiveSessionStartedAt(), equals(now));
+        expect(
+          prefs.getInt(
+            SharedPreferencesAppPreferencesRepository.keyActiveSessionStartedAt,
+          ),
+          equals(now.millisecondsSinceEpoch),
+        );
+
+        final repo2 = SharedPreferencesAppPreferencesRepository(prefs);
+        expect(repo2.getActiveSessionStartedAt(), equals(now));
+
+        await repo2.setActiveSessionStartedAt(null);
+        expect(repo2.getActiveSessionStartedAt(), isNull);
+        expect(
+          prefs.containsKey(
+            SharedPreferencesAppPreferencesRepository.keyActiveSessionStartedAt,
+          ),
+          isFalse,
+        );
       },
     );
   });

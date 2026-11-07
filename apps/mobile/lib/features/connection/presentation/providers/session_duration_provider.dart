@@ -11,6 +11,7 @@ import 'package:core_domain/core_domain.dart'
         Disconnecting,
         Error;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:mobile/core/providers/app_preferences_provider.dart';
 import 'package:mobile/features/connection/presentation/providers/connection_state_provider.dart';
 
 /// Tracks active connection session duration via a 1 Hz timer.
@@ -36,19 +37,42 @@ class SessionDurationNotifier extends Notifier<Duration> {
       previous,
       next,
     ) {
-      final prevConn = previous?.value;
+      final prevConn =
+          previous?.value ??
+          (previous?.isLoading == true
+              ? ref.read(initialConnectionStateProvider)
+              : null);
       final nextConn = next.value;
 
       if (prevConn is Connected && nextConn is Connected) {
-        // Idempotent Connected emission (e.g. lifecycle resume resync):
-        // do not reset timer mid-session!
+        // Idempotent Connected emission (e.g. lifecycle resume resync or
+        // initial microtask settling): do not reset timer mid-session!
         return;
       }
 
+      final prefs = ref.read(appPreferencesRepositoryProvider);
       if (nextConn is Connected) {
-        state = Duration.zero;
+        final now = DateTime.now().toUtc();
+        if (prevConn != null && prevConn is! Connected) {
+          // Brand-new connection handshake just completed in this session:
+          // ALWAYS start fresh from zero.
+          unawaited(prefs.setActiveSessionStartedAt(now));
+          state = Duration.zero;
+        } else {
+          // Initial stream resolution re-attaching to an already-Connected
+          // background session: restore elapsed time from persistent storage.
+          final existingStart = prefs.getActiveSessionStartedAt();
+          if (existingStart == null) {
+            unawaited(prefs.setActiveSessionStartedAt(now));
+            state = Duration.zero;
+          } else {
+            final elapsed = now.difference(existingStart);
+            state = elapsed.isNegative ? Duration.zero : elapsed;
+          }
+        }
         _startTimer();
       } else {
+        unawaited(prefs.setActiveSessionStartedAt(null));
         _stopTimer();
       }
     });
@@ -56,11 +80,24 @@ class SessionDurationNotifier extends Notifier<Duration> {
     final initialConn =
         ref.read(connectionStateProvider).value ??
         ref.read(initialConnectionStateProvider);
+    var initialDuration = Duration.zero;
+    final prefs = ref.read(appPreferencesRepositoryProvider);
     if (initialConn is Connected) {
+      final startedAt = prefs.getActiveSessionStartedAt();
+      if (startedAt != null) {
+        final elapsed = DateTime.now().toUtc().difference(startedAt);
+        initialDuration = elapsed.isNegative ? Duration.zero : elapsed;
+      } else {
+        unawaited(prefs.setActiveSessionStartedAt(DateTime.now().toUtc()));
+      }
       _startTimer();
+    } else if (initialConn != null) {
+      // Clean up any stale persisted timestamp if previous session was killed
+      // while UI was dead.
+      unawaited(prefs.setActiveSessionStartedAt(null));
     }
 
-    return Duration.zero;
+    return initialDuration;
   }
 
   void _startTimer() {

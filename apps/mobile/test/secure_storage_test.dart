@@ -257,7 +257,9 @@ void main() {
             );
           } else if (type == 'vmess') {
             expect((config['uuid'] as String).startsWith('enc:v1:'), isTrue);
-          } else if (type == 'trojan' || type == 'shadowsocks') {
+          } else if (type == 'trojan' ||
+              type == 'shadowsocks' ||
+              type == 'ss') {
             expect(
               (config['password'] as String).startsWith('enc:v1:'),
               isTrue,
@@ -275,7 +277,7 @@ void main() {
               (config['password'] as String).startsWith('enc:v1:'),
               isTrue,
             );
-          } else if (type == 'wireguard') {
+          } else if (type == 'wireguard' || type == 'amneziawg') {
             expect(
               (config['private_key'] as String).startsWith('enc:v1:'),
               isTrue,
@@ -284,6 +286,8 @@ void main() {
               (config['pre_shared_key'] as String).startsWith('enc:v1:'),
               isTrue,
             );
+          } else {
+            fail('Unexpected unverified protocol type: $type');
           }
         }
 
@@ -603,7 +607,7 @@ void main() {
         expect(rawContent.contains('enc:v1:'), isTrue);
 
         // Reload repo and verify decrypted plugin_opts matches
-        var reloadRepo = FileServerProfileRepository(
+        final reloadRepo = FileServerProfileRepository(
           storageFile: storageFile,
           cipher: cipher,
         );
@@ -619,29 +623,27 @@ void main() {
           ),
         );
 
-        // Test transport.headers encryption via repository migration/save
-        final rawMap = jsonDecode(rawContent) as Map<String, dynamic>;
-        final profilesList = rawMap['server_profiles'] as List<dynamic>;
-        final firstProfile = profilesList[0] as Map<String, dynamic>;
-        final config = firstProfile['config'] as Map<String, dynamic>;
-        config['transport'] = <String, dynamic>{
-          'type': 'ws',
-          'headers': <String, dynamic>{
-            'Authorization': 'Bearer super-secret-auth-token-12345',
-            'X-Custom-Secret': 'custom-secret-header-val',
-          },
-        };
-
-        // Write plaintext headers to disk
-        await storageFile.writeAsString(jsonEncode(rawMap), flush: true);
-
-        // Reload triggers encryption on next persist
-        reloadRepo = FileServerProfileRepository(
-          storageFile: storageFile,
-          cipher: cipher,
+        // Test transport.headers encryption via real VlessOutbound with
+        // WebSocketTransport
+        final vlessWsProfile = ServerProfile(
+          id: 'vless-ws-1',
+          name: 'VLESS WebSocket Node',
+          config: VlessOutbound(
+            server: 'vless.example.com',
+            serverPort: 443,
+            uuid: '44444444-5555-6666-7777-888888888888',
+            transport: WebSocketTransport(
+              path: '/ws',
+              headers: {
+                'Authorization': 'Bearer super-secret-auth-token-12345',
+                'X-Custom-Secret': 'custom-secret-header-val',
+              },
+            ),
+          ),
+          addedAt: DateTime.utc(2026, 11, 7, 3),
         );
-        await reloadRepo.init();
-        await reloadRepo.save(loaded);
+
+        await repository.save(vlessWsProfile);
 
         rawContent = await storageFile.readAsString();
         expect(
@@ -650,6 +652,70 @@ void main() {
         );
         expect(rawContent.contains('custom-secret-header-val'), isFalse);
         expect(rawContent.contains('enc:v1:'), isTrue);
+
+        // Reload fresh FileServerProfileRepository and assert decrypted headers
+        final reloadRepoWs = FileServerProfileRepository(
+          storageFile: storageFile,
+          cipher: cipher,
+        );
+        await reloadRepoWs.init();
+        final loadedWs = await reloadRepoWs.getById('vless-ws-1');
+        expect(loadedWs, isNotNull);
+        final ws =
+            (loadedWs!.config as VlessOutbound).transport!
+                as WebSocketTransport;
+        expect(
+          ws.headers?['Authorization'],
+          equals('Bearer super-secret-auth-token-12345'),
+        );
+        expect(
+          ws.headers?['X-Custom-Secret'],
+          equals('custom-secret-header-val'),
+        );
+      },
+    );
+
+    test(
+      'Scenario 9: extra_params string values encryption and decryption',
+      () async {
+        final tuicExtraProfile = ServerProfile(
+          id: 'tuic-extra-1',
+          name: 'TUIC Extra Node',
+          config: TuicOutbound(
+            server: 'tuic.example.com',
+            serverPort: 443,
+            uuid: '11111111-2222-3333-4444-555555555555',
+            password: 'tuic-password',
+            congestionControl: 'bbr',
+            tls: TlsSettings(enabled: true),
+            extraParams: {
+              'secret_param_key': 'super-secret-extra-val-999',
+              'numeric_param': 42,
+            },
+          ),
+          addedAt: DateTime.utc(2026, 11, 7),
+        );
+
+        await repository.save(tuicExtraProfile);
+
+        final rawContent = await storageFile.readAsString();
+        expect(rawContent.contains('super-secret-extra-val-999'), isFalse);
+        expect(rawContent.contains('enc:v1:'), isTrue);
+
+        // Reload and assert decrypted
+        final reloadedRepo2 = FileServerProfileRepository(
+          storageFile: storageFile,
+          cipher: cipher,
+        );
+        await reloadedRepo2.init();
+        final loadedTuic =
+            (await reloadedRepo2.getById('tuic-extra-1'))!.config
+                as TuicOutbound;
+        expect(
+          loadedTuic.extraParams?['secret_param_key'],
+          equals('super-secret-extra-val-999'),
+        );
+        expect(loadedTuic.extraParams?['numeric_param'], equals(42));
       },
     );
   });

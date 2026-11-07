@@ -7,8 +7,10 @@ import 'dart:io';
 import 'package:mobile/core/logging/log_buffer.dart';
 import 'package:mobile/core/logging/log_entry.dart';
 import 'package:mobile/core/logging/log_redactor.dart';
+import 'package:mobile/core/providers/server_profile_repository_provider.dart';
 import 'package:mobile/core/providers/vpn_engine_provider.dart';
 import 'package:mobile/features/connection/domain/entities/saved_server.dart';
+import 'package:mobile/features/connection/domain/repositories/server_profile_repository.dart';
 import 'package:mobile/features/connection/presentation/providers/saved_servers_provider.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -69,6 +71,24 @@ class LogManager extends _$LogManager {
       cancelOnError: false,
     );
 
+    ref.listen<AsyncValue<ServerProfileRepository>>(
+      serverProfileRepositoryProvider,
+      (_, next) async {
+        final repo = next.asData?.value;
+        if (repo != null) {
+          try {
+            final subs = await repo.getAllSubscriptions();
+            for (final sub in subs) {
+              registerKnownSecrets(
+                LogRedactor.extractSecretsFromSubscription(sub),
+              );
+            }
+          } on Object catch (_) {}
+        }
+      },
+      fireImmediately: true,
+    );
+
     ref.listen<AsyncValue<List<SavedServer>>>(savedServersProvider, (_, next) {
       final servers = next.asData?.value;
       if (servers != null) {
@@ -78,6 +98,21 @@ class LogManager extends _$LogManager {
               LogRedactor.extractSecretsFromProfile(server.profile),
             );
           }
+        }
+        final repo = ref.read(serverProfileRepositoryProvider).asData?.value;
+        if (repo != null) {
+          unawaited(
+            repo
+                .getAllSubscriptions()
+                .then((subs) {
+                  for (final sub in subs) {
+                    registerKnownSecrets(
+                      LogRedactor.extractSecretsFromSubscription(sub),
+                    );
+                  }
+                })
+                .catchError((_) {}),
+          );
         }
       }
     }, fireImmediately: true);
@@ -137,7 +172,11 @@ class LogManager extends _$LogManager {
       log,
       knownSecrets: _knownSecrets,
     );
-    final entry = LogEntry.fromRaw(safeLine, knownSecrets: _knownSecrets);
+    final entry = LogEntry.fromRaw(
+      safeLine,
+      knownSecrets: _knownSecrets,
+      alreadyRedacted: true,
+    );
 
     // 1. Structured parsing and insertion into bounded ring buffer
     _structuredBuffer.add(entry);

@@ -1173,6 +1173,11 @@ In Phases 5–7, `FileServerProfileRepository` persisted `ServerProfile` and `Su
 2. **Deterministic Tamper Rejection (Fail-Closed):** Any single-bit modification of an `enc:v1:...` payload causes GCM/HMAC authentication to fail. Decryption throws `FormatException`, which `FileServerProfileRepository` catches safely, surfacing the compromised entry as `SavedServerBroken` without crashing or leaking secrets.
 3. **Transparent v1 -> v2 Migration:** If `schema_version: 1` or plaintext records are loaded, the repository parses them, automatically writes back `schema_version: 2` with encrypted fields, and logs `"Migrated plaintext server profiles to encrypted storage v2"`.
 
+#### Hardware Security & Android Keystore API Quirks
+1. **Thread-Safety & Synchronization (`@Synchronized`):** `SecureStorageHelper` methods (`getOrCreateKey()`, `encrypt()`, `decrypt()`) are annotated with `@Synchronized` to prevent race conditions during concurrent MethodChannel invocations from multi-threaded isolate environments.
+2. **Biometric Enrollment Resilience (`setUserAuthenticationRequired(false)`):** The master key generated via `KeyGenParameterSpec.Builder` explicitly configures `.setUserAuthenticationRequired(false)`. If omitted or set to true, any subsequent biometric enrollment change (e.g. user adds or removes a fingerprint) triggers a fatal `android.security.keystore.KeyPermanentlyInvalidatedException`, permanently destroying access to stored server profiles.
+3. **StrongBox vs. TEE Fallback:** While StrongBox Keymaster offers dedicated hardware tamper-resistance on supported SoC chipsets (Pixel 3+), requesting StrongBox unconditionally causes `StrongBoxUnavailableException` on devices lacking dedicated hardware modules. Brick VPN targets standard hardware-backed AndroidKeyStore (TEE), ensuring universal hardware isolation across all supported Android versions without risking initialization failures.
+
 ### 10.2 Systematic Log Redaction Architecture (P8-T2)
 
 #### Purpose & Threat Model
@@ -1224,6 +1229,122 @@ In Phases 6 and 7, native engine log events and diagnostic traces were ingested 
 
 #### Architectural Limitations
 - **Regex & Heuristic Boundary:** Redaction relies on deterministic regex matching and registration of known profile secrets. Unstructured free text containing high-entropy tokens or unconventional credential delimiters not matching the standard key patterns and not present in active profiles could theoretically bypass heuristic scrubbing. Registering profile and subscription secrets into `LogManager._knownSecrets` provides deterministic defense-in-depth against this limitation.
+
+### 10.3 Input Validation and Untrusted-Data Security Architecture (P8-T3)
+
+#### Purpose & Threat Vectors
+Brick VPN processes externally-sourced, untrusted data across three ingress surfaces:
+1. **Manual Link Pasting:** User clipboard paste in `AddServerScreen` (`vless://`, `trojan://`, `ss://`, etc.).
+2. **Camera Optical Scanning:** Real-time barcode frames in `QrScanScreen`.
+3. **Remote Subscription Document Retrieval:** Automated network ingestion in `SubscriptionFetcher` and `AddSubscriptionScreen`.
+
+`P8-T3` implements a unified, defense-in-depth input validation architecture to eliminate buffer/memory exhaustion, remote code execution, SSRF, stack overflow recursion, transport downgrades, and credential reflection.
+
+#### Component Topology & Security Controls
+
+```
+[ User Input / QR Frame / Subscription Feed ]
+                      │
+                      ▼
+        [ Ingress Bounds Check ] ── (maxUriLength = 8 KiB / maxSubscriptionLength = 5 MiB)
+                      │ (Fast O(1) Reject)
+                      ▼
+     [ Safe Parsing & Normalization ]
+    ┌─────────────────┴─────────────────┐
+    ▼                                   ▼
+[ Protocol Parsers (1..8) ]    [ SubscriptionFetcher ]
+- RFC 6066 SNI Sanitization    - Mandatory HTTPS Scheme
+- Exact-Byte Base64 Decodes    - Redirect Downgrade Block
+- Iterative Depth JSON (<=32)  - Incremental Byte-Cap Stream
+- Discard Unknown Query Params - Whole-Fetch Deadline (10s)
+    └─────────────────┬─────────────────┘
+                      │
+                      ▼
+         [ Domain Error Mapping ]
+     (Zero Secret / Host Echoing)
+                      │
+                      ▼
+[ UI Presentation (ErrorMapper / Toast) ]
+```
+
+#### Invariant Guarantees
+1. **Strict Bounds Enforcement:** Length limits are evaluated *prior* to parsing or allocation. Inputs exceeding `maxUriLength` (8 KiB) or `maxSubscriptionLength` (5 MiB) are rejected in O(1) time without recursive copying or string decoding.
+2. **JSON Recursion Depth Bounding:** `safeJsonDecode` performs breadth-first depth checks capped at `maxJsonDepth = 32`, preventing stack overflow denial-of-service from adversarial nested payloads.
+3. **Transport Security & Downgrade Prevention:** `SubscriptionFetcher` enforces HTTPS exclusively across initial URLs and all redirect hops. Cleartext HTTP and non-HTTP schemes are rejected immediately. Redirects from HTTPS to HTTP are terminated as security violations with `InsecureTransportError`.
+4. **Incremental Memory-DoS Throttling:** Subscription streams are read chunk-by-chunk. If cumulative byte volume exceeds 5 MiB, the underlying `StreamSubscription` is cancelled immediately and the socket is drained, preventing memory exhaustion from endless streaming attacks.
+5. **Zero Secret Echoing:** Presentation controllers (`AddServerController`, `AddSubscriptionController`) and `ErrorMapper` never reflect raw input strings, passwords, UUIDs, or tokens in user-visible error dialogs or SnackBar notifications.
+
+#### Formal Reference
+Comprehensive per-parser audit matrices and threat analysis are documented in `AI_ROLES/UNTRUSTED_INPUT_SECURITY_REVIEW.md` and verified by `apps/mobile/test/untrusted_input_security_review_test.dart`.
+
+### 10.4 App Update Integrity & Release Verification Architecture (P8-T4)
+
+#### Purpose & Threat Model
+Brick VPN is designed for deployment in hostile censorship and surveillance environments where centralized app stores (Google Play, Apple App Store) may be blocked, restricted, or subject to geopolitical coercion. Consequently, users frequently obtain installation binaries via direct APK downloads from GitHub Releases, mirrors, or peer-to-peer distribution.
+
+Without end-to-end cryptographic verification, direct binary distribution leaves users vulnerable to:
+1. **Malicious Binary Tampering / Repackaging:** Attackers embedding spyware, telemetry, or compromised sing-box cores into modified APKs.
+2. **Adversarial Network MITM:** In-flight packet injection or SSL-stripping during direct downloads from mirror sites.
+3. **Distribution Infrastructure Compromise:** Tampering with hosted release assets or CDN edge caches.
+
+`P8-T4` establishes an open, verifiable release integrity framework comprising deterministic checksum publication, user-facing verification protocols, and an honest technical evaluation of reproducible builds.
+
+#### Release Integrity Architecture & Pipeline Mechanics
+
+```
+[ Developer / CI Pipeline (GitHub Actions) ]
+                      │
+                      ▼
+        [ Tagged Release Trigger (v*) ]
+                      │
+                      ▼
+          [ flutter build apk --release ]
+                      │
+                      ▼
+[ scripts/generate_and_verify_checksums.sh ]
+  ├── 1. Discovers Release Artifacts (*.apk, *.aab)
+  ├── 2. Computes Cryptographic SHA-256 Hashes
+  ├── 3. Normalizes Basenames & Sorts Deterministically
+  ├── 4. Writes Canonical SHA256SUMS.txt
+  └── 5. Self-Verifies (sha256sum -c SHA256SUMS.txt)
+                      │
+                      ▼
+[ GitHub Releases / Artifact Storage ]
+  ├── app-arm64-v8a-release.apk
+  ├── app-armeabi-v7a-release.apk
+  ├── app-x86_64-release.apk
+  └── SHA256SUMS.txt
+                      │
+                      ▼
+[ User / Downloader Verification Surface ]
+  ├── Step 1: Checksum Match (sha256sum -c SHA256SUMS.txt)
+  └── Step 2: Signature Inspection (apksigner verify --print-certs)
+```
+
+#### Android Signing Key Strategy & Governance (Phase 8 vs. Phase 10)
+- **Current Development State (Phase 8):** In `apps/mobile/android/app/build.gradle.kts`, the `release` build type currently inherits debug signing keys:
+  ```kotlin
+  buildTypes {
+      release {
+          signingConfig = signingConfigs.getByName("debug")
+      }
+  }
+  ```
+- **Phase 10 Boundary:** Per `P8-T4` Scope 1 & Criterion 1, production release keystore generation, physical hardware token / offline air-gapped key custody, and GitHub Actions repository secrets provisioning (`ANDROID_KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`) are explicitly scoped to **Phase 10 (Release Preparation)**.
+- **Certificate Verification Structure:** User-facing documentation (`docs/verifying-releases.md`) establishes the standard verification workflow using `apksigner` and `keytool`, providing a defined placeholder for the production SHA-256 certificate fingerprint to be populated upon Phase 10 key generation.
+
+#### Feasibility Investigation: Reproducible Builds
+An honest evaluation of byte-for-byte reproducible builds was conducted across Brick VPN's composite toolchain:
+1. **Flutter / Dart AOT Engine (`gen_snapshot`):** Compiles Dart code into `libapp.so`. Upstream Flutter builds embed build environment timestamps, absolute path symbols, and non-deterministic memory layouts unless specialized flags and hermetic containers are enforced.
+2. **Go Engine (`libbox.aar` / gomobile):** Compiles sing-box core into native ELF binaries packaged within an Android Archive. Gomobile archives embed filesystem timestamps and host GOROOT metadata unless stripped with `-trimpath` and `SOURCE_DATE_EPOCH`.
+3. **Android Gradle Plugin (AGP) / AAPT2 / D8:** Jar and APK ZIP packaging produces non-deterministic zip entry order and timestamps across different host OSes.
+
+**Conclusion & Phase 10+ Roadmap:** Byte-for-byte reproducibility is not achievable out-of-the-box at Phase 8. Full reproducibility will be implemented in Phase 10+ by introducing:
+- A hermetic, pinned Docker build container (`ubuntu:24.04` with pinned Flutter 3.47.4, Dart 3.13.3, Go 1.23, and Android NDK r27b).
+- Git-commit-derived `SOURCE_DATE_EPOCH` and Go `-trimpath` compilation flags.
+- Deterministic APK ZIP archive re-packing and timestamp zeroing prior to APK Signature Scheme v2/v3 signing.
+
+
 
 
 

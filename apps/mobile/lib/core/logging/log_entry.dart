@@ -4,7 +4,6 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart' show immutable;
 import 'package:mobile/core/logging/log_redactor.dart';
-import 'package:shared_utils/shared_utils.dart';
 
 /// Severity levels for native VPN engine log events.
 enum LogLevel {
@@ -50,11 +49,13 @@ final class LogEntry {
     String rawLine, {
     DateTime? fallbackTimestamp,
     Iterable<String> knownSecrets = const <String>[],
+    bool alreadyRedacted = false,
   }) {
     return LogEntry.parseEngineLine(
       rawLine,
       fallbackTimestamp: fallbackTimestamp,
       knownSecrets: knownSecrets,
+      alreadyRedacted: alreadyRedacted,
     );
   }
 
@@ -72,12 +73,12 @@ final class LogEntry {
     String rawLine, {
     DateTime? fallbackTimestamp,
     Iterable<String> knownSecrets = const <String>[],
+    bool alreadyRedacted = false,
   }) {
     final now = fallbackTimestamp ?? DateTime.now().toUtc();
-    final safeRaw = LogRedactor.redactRawLine(
-      rawLine,
-      knownSecrets: knownSecrets,
-    );
+    final safeRaw = alreadyRedacted
+        ? rawLine
+        : LogRedactor.redactRawLine(rawLine, knownSecrets: knownSecrets);
     final trimmed = safeRaw.trim();
 
     if (trimmed.isEmpty) {
@@ -94,10 +95,7 @@ final class LogEntry {
       try {
         final dynamic decoded = jsonDecode(trimmed);
         if (decoded is Map<String, dynamic>) {
-          final redactedMap = LogRedactor.redactJsonMap(
-            decoded,
-            knownSecrets: knownSecrets,
-          );
+          final redactedMap = decoded;
 
           final levelStr =
               redactedMap['level'] ??
@@ -119,7 +117,7 @@ final class LogEntry {
               redactedMap['text'] ??
               redactedMap['error'] ??
               '';
-          final safeMsg = redact(msg.toString(), knownSecrets: knownSecrets);
+          final safeMsg = msg.toString();
 
           final source =
               redactedMap['source'] ??
@@ -203,7 +201,7 @@ final class LogEntry {
     // D. Clean leading colon or dashes if left behind
     working = working.replaceFirst(RegExp(r'^[:\-\s]+'), '').trim();
     final cleanMsg = working.isEmpty ? trimmed : working;
-    final safeMsg = redact(cleanMsg, knownSecrets: knownSecrets);
+    final safeMsg = cleanMsg;
 
     return LogEntry(
       timestamp: parsedTimestamp ?? now,

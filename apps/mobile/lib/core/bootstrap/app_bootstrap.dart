@@ -16,6 +16,7 @@ import 'package:mobile/core/providers/vpn_engine_provider.dart';
 import 'package:mobile/features/connection/domain/repositories/server_profile_repository.dart';
 import 'package:mobile/features/connection/presentation/providers/connection_controller_provider.dart';
 import 'package:mobile/features/connection/presentation/providers/connection_state_provider.dart';
+import 'package:mobile/features/connection/presentation/providers/saved_servers_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vpn_engine_android/vpn_engine_android.dart';
 
@@ -64,6 +65,7 @@ class AppBootstrap {
   ///    mounting into [UncontrolledProviderScope].
   static Future<ProviderContainer> init({
     Future<SharedPreferences> Function()? preferencesLoader,
+    AppPreferencesRepository? preferencesRepositoryOverride,
     ServerProfileRepository? serverProfileRepositoryOverride,
     VpnEngine? vpnEngineOverride,
     AppLogger? logger,
@@ -95,18 +97,22 @@ class AppBootstrap {
     // in-memory defaults instead of crashing on launch.
     // -------------------------------------------------------------------------
     AppPreferencesRepository preferencesRepo;
-    try {
-      final prefs = await (preferencesLoader != null
-          ? preferencesLoader()
-          : SharedPreferences.getInstance());
-      preferencesRepo = SharedPreferencesAppPreferencesRepository(prefs);
-    } on Object catch (error, stackTrace) {
-      appLogger.e(
-        'Failed to initialize SharedPreferences; degrading to in-memory fake',
-        error,
-        stackTrace,
-      );
-      preferencesRepo = FakeAppPreferencesRepository();
+    if (preferencesRepositoryOverride != null) {
+      preferencesRepo = preferencesRepositoryOverride;
+    } else {
+      try {
+        final prefs = await (preferencesLoader != null
+            ? preferencesLoader()
+            : SharedPreferences.getInstance());
+        preferencesRepo = SharedPreferencesAppPreferencesRepository(prefs);
+      } on Object catch (error, stackTrace) {
+        appLogger.e(
+          'Failed to initialize SharedPreferences; degrading to in-memory fake',
+          error,
+          stackTrace,
+        );
+        preferencesRepo = FakeAppPreferencesRepository();
+      }
     }
 
     // -------------------------------------------------------------------------
@@ -154,9 +160,14 @@ class AppBootstrap {
           ..read(connectionControllerProvider);
 
     try {
-      await container
-          .read(connectionStateProvider.future)
-          .timeout(const Duration(milliseconds: 500));
+      await Future.wait([
+        container
+            .read(connectionStateProvider.future)
+            .timeout(const Duration(milliseconds: 500)),
+        container
+            .read(savedServersProvider.future)
+            .timeout(const Duration(milliseconds: 500)),
+      ]);
     } on Object {
       // Gracefully absorb warm-up timeout/error; initialStatus already injected.
     }

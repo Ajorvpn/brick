@@ -6,6 +6,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:core_domain/core_domain.dart'
     show
         Connected,
+        Connecting,
         ConnectionState,
         Disconnected,
         Error,
@@ -217,6 +218,7 @@ class AutoReconnectNotifier extends Notifier<AutoReconnectState> {
   Timer? _backoffTimer;
   Timer? _debounceTimer;
   List<ConnectivityResult> _lastConnectivity = const <ConnectivityResult>[];
+  bool _connectivityInitialized = false;
   bool _isExecuting = false;
   bool _isStoppingForReconnect = false;
   StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
@@ -241,6 +243,7 @@ class AutoReconnectNotifier extends Notifier<AutoReconnectState> {
     unawaited(
       connSource.checkConnectivity().then((initial) {
         _lastConnectivity = List<ConnectivityResult>.unmodifiable(initial);
+        _connectivityInitialized = true;
       }),
     );
     _connectivitySub = connSource.onConnectivityChanged.listen(
@@ -264,6 +267,11 @@ class AutoReconnectNotifier extends Notifier<AutoReconnectState> {
         state = const AutoReconnectIdle();
         if (wasReconnecting) {
           _logDiagnostic('Auto-reconnect succeeded. Tunnel re-established.');
+        }
+      } else if (conn is Connecting) {
+        if (!_userSessionActive) {
+          _userSessionActive = true;
+          _activeProfile ??= ref.read(activeServerProvider)?.profile;
         }
       } else if (conn is Error) {
         if (_isExecuting || _isStoppingForReconnect) {
@@ -304,7 +312,7 @@ class AutoReconnectNotifier extends Notifier<AutoReconnectState> {
     final initialConn =
         ref.read(connectionStateProvider).value ??
         ref.read(initialConnectionStateProvider);
-    if (initialConn is Connected) {
+    if (initialConn is Connected || initialConn is Connecting) {
       _userSessionActive = true;
       _activeProfile ??= ref.read(activeServerProvider)?.profile;
     }
@@ -328,8 +336,9 @@ class AutoReconnectNotifier extends Notifier<AutoReconnectState> {
     }
 
     final isOffline =
-        _lastConnectivity.isEmpty ||
-        _lastConnectivity.every((r) => r == ConnectivityResult.none);
+        _connectivityInitialized &&
+        (_lastConnectivity.isEmpty ||
+            _lastConnectivity.every((r) => r == ConnectivityResult.none));
     if (isOffline) {
       state = AutoReconnectWaitingForNetwork(attempt: _currentAttempt);
       _logDiagnostic('Tunnel dropped while offline. Waiting for network.');
@@ -348,6 +357,7 @@ class AutoReconnectNotifier extends Notifier<AutoReconnectState> {
   }
 
   void _processDebouncedConnectivity(List<ConnectivityResult> results) {
+    _connectivityInitialized = true;
     final prev = _lastConnectivity;
     _lastConnectivity = List<ConnectivityResult>.unmodifiable(results);
 
@@ -446,8 +456,9 @@ class AutoReconnectNotifier extends Notifier<AutoReconnectState> {
     }
 
     final isOffline =
-        _lastConnectivity.isEmpty ||
-        _lastConnectivity.every((r) => r == ConnectivityResult.none);
+        _connectivityInitialized &&
+        (_lastConnectivity.isEmpty ||
+            _lastConnectivity.every((r) => r == ConnectivityResult.none));
     if (isOffline) {
       state = AutoReconnectWaitingForNetwork(attempt: _currentAttempt);
       return;
