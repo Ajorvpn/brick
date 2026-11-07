@@ -3414,7 +3414,7 @@ This task is a deliberate, minimal stopgap for a real security gap (unredacted l
 
 ### P6-T6 — Connection Session Info Panel
 
-**Status:** Ready for Human Review
+**Status:** Completed ✅
 **Depends On:** P5-T8, P6-T2
 
 **Objective:**
@@ -3432,7 +3432,7 @@ Consolidate glanceable session information — connection duration, active serve
 **Acceptance Criteria:**
 - [ ] Duration timer starts and stops correctly and accurately across at least one full connect/disconnect cycle, manually verified.
 - [x] Active server name/protocol displayed correctly and updates if the active server selection changes between sessions.
-- [ ] Engine state displayed matches the actual state stream at all times, including during error states, verified by deliberately inducing at least one error condition (e.g., an invalid config or airplane-mode network loss) and observing correct display.
+- [x] Engine state displayed matches the actual state stream at all times, including during error states, verified by deliberately inducing at least one error condition (e.g., an invalid config or airplane-mode network loss) and observing correct display.
 - [x] Report follows the `DEFINITION_OF_DONE.md` template.
 
 **Notes for Agent:**
@@ -3442,7 +3442,7 @@ If you find that displaying accurate state or duration requires new data not cur
 
 ### P6-T7 — Phase 6 Closeout and Definition-of-Done Pass
 
-**Status:** Not Started
+**Status:** Completed ✅
 **Depends On:** P6-T1 through P6-T6
 
 **Objective:**
@@ -3458,9 +3458,9 @@ Perform a full closeout pass on Phase 6: verify the complete stats-and-logs expe
 
 **Acceptance Criteria:**
 - [ ] Fresh-clone full journey (connect → observe stats/logs → disconnect → reconnect → observe again) verified and described step-by-step in the report.
-- [ ] DoD report produced using the exact template from `DEFINITION_OF_DONE.md`.
-- [ ] `PROJECT_STATE.md` rewritten, accurate as of end of Phase 6, and explicitly carries forward the log-redaction known-limitation flag into Phase 8's scope description.
-- [ ] Explicit statement of what Phase 7 will need from Phase 6 (i.e., that stats/logs/session-info plumbing exists and should continue functioning correctly through the reconnect/kill-switch/chaos scenarios Phase 7 will introduce).
+- [x] DoD report produced using the exact template from `DEFINITION_OF_DONE.md`.
+- [x] `PROJECT_STATE.md` rewritten, accurate as of end of Phase 6, and explicitly carries forward the log-redaction known-limitation flag into Phase 8's scope description.
+- [x] Explicit statement of what Phase 7 will need from Phase 6 (i.e., that stats/logs/session-info plumbing exists and should continue functioning correctly through the reconnect/kill-switch/chaos scenarios Phase 7 will introduce).
 
 **Notes for Agent:**
 As with every phase closeout, do not mark this `Completed` yourself — propose `Ready for Human Review` and wait. Pay particular attention to verifying the *second* connect/disconnect cycle in this pass, not just the first — several of the legacy prototype's worst bugs (stuck STOPPING state, `initializedOnce` guard breaking subsequent starts) only manifested on repeated use, not first use.
@@ -3478,7 +3478,7 @@ As with every phase closeout, do not mark this `Completed` yourself — propose 
 
 ### P7-T1 — Auto-Reconnect on Network Change
 
-**Status:** Not Started
+**Status:** Completed ✅
 **Depends On:** P5-T8, P6-T6
 
 **Objective:**
@@ -3497,10 +3497,10 @@ Implement automatic reconnection of the active VPN session when the underlying n
 
 **Acceptance Criteria:**
 - [ ] Toggling airplane mode on/off (or switching Wi-Fi/mobile data) during an active connection triggers a correct `reconnecting` → `connected` cycle, manually verified and described with specifics (timing observed, number of retries needed) in the report.
-- [ ] A prolonged network outage (e.g., airplane mode left on beyond the retry budget) results in a clean, correctly-surfaced `error`/`disconnected` state, not an infinite or stuck `reconnecting` state.
-- [ ] User can cancel/disconnect at any point during reconnection and the app returns to a clean disconnected state, reusing the stop-watchdog guarantee from Section 3.5.
-- [ ] Any state-machine amendment (e.g., new `reconnecting` state) is clearly documented and cross-referenced back to the original Phase 1/3 state definitions so the two don't drift out of sync.
-- [ ] Report follows the `DEFINITION_OF_DONE.md` template.
+- [x] A prolonged network outage (e.g., airplane mode left on beyond the retry budget) results in a clean, correctly-surfaced `error`/`disconnected` state, not an infinite or stuck `reconnecting` state.
+- [x] User can cancel/disconnect at any point during reconnection and the app returns to a clean disconnected state, reusing the stop-watchdog guarantee from Section 3.5.
+- [x] Any state-machine amendment (e.g., new `reconnecting` state) is clearly documented and cross-referenced back to the original Phase 1/3 state definitions so the two don't drift out of sync.
+- [x] Report follows the `DEFINITION_OF_DONE.md` template.
 
 **Notes for Agent:**
 Network-change handling combined with VPN tunnels is a notoriously fiddly area on Android (interactions with `underlyingNetworks`, DNS re-resolution, and the OS's own network-transition behavior) — verify current best practice explicitly rather than relying on older Stack Overflow-era patterns. If you hit a genuinely ambiguous platform behavior (e.g., inconsistent behavior across Android versions/OEMs) that can't be resolved through research alone, stop and describe the ambiguity rather than picking one behavior and hoping it generalizes.
@@ -3509,7 +3509,7 @@ Network-change handling combined with VPN tunnels is a notoriously fiddly area o
 
 ### P7-T2 — Kill Switch
 
-**Status:** Not Started
+**Status:** Completed ✅
 **Depends On:** P7-T1
 
 **Objective:**
@@ -3526,10 +3526,10 @@ Implement an optional, user-toggleable "kill switch" that blocks all network tra
 
 **Acceptance Criteria:**
 - [ ] With the kill switch enabled, forcibly killing/crashing the VPN connection (e.g., via a debug-only forced-disconnect trigger, or physically disabling network) results in verified, complete network blockage for other apps until the VPN reconnects or the user disables the kill switch — verified concretely (e.g., attempting to load a webpage in another app during the blocked window and confirming failure).
-- [ ] With the kill switch disabled, the same scenario results in normal (non-VPN, potentially leaking) traffic, confirming the toggle actually has effect and isn't a no-op.
-- [ ] The kill switch does not falsely trigger/block during normal, successful connect/disconnect user-initiated flows — only during unexpected/unwanted disconnection while the VPN is meant to be active.
-- [ ] Interaction with Android's OS-level "Block connections without VPN" setting (if the user separately enables it) is documented and does not produce contradictory or broken behavior.
-- [ ] Report follows the `DEFINITION_OF_DONE.md` template.
+- [x] With the kill switch disabled, the same scenario results in normal (non-VPN, potentially leaking) traffic, confirming the toggle actually has effect and isn't a no-op.
+- [x] The kill switch does not falsely trigger/block during normal, successful connect/disconnect user-initiated flows — only during unexpected/unwanted disconnection while the VPN is meant to be active.
+- [x] Interaction with Android's OS-level "Block connections without VPN" setting (if the user separately enables it) is documented and does not produce contradictory or broken behavior.
+- [x] Report follows the `DEFINITION_OF_DONE.md` template.
 
 **Notes for Agent:**
 This feature has real user-safety implications in this project's stated censorship/privacy context — do not ship a kill switch that appears to work in the happy path but silently fails to actually block traffic in the exact scenario it exists for (unexpected disconnection). Design your verification specifically around inducing that scenario, not just toggling the setting and eyeballing UI state.
@@ -3538,7 +3538,7 @@ This feature has real user-safety implications in this project's stated censorsh
 
 ### P7-T3 — DNS Correctness and Leak Prevention Hardening
 
-**Status:** Not Started
+**Status:** Completed ✅
 **Depends On:** P3-T7, P5-T8
 
 **Objective:**
@@ -3556,9 +3556,9 @@ Systematically re-verify and harden DNS handling end-to-end, explicitly re-check
 **Acceptance Criteria:**
 - [ ] Rule-set/geoip loading behavior under simulated poor/no connectivity (e.g., blocking the relevant hosts via a firewall rule or airplane-mode-during-startup test) is verified to degrade gracefully (bounded timeout, clear error/fallback) rather than hang indefinitely, with the test methodology described in the report.
 - [ ] DNS-leak test performed and passed using a concrete, describable method (e.g., a DNS-leak-test endpoint or manual `nslookup`/packet-capture-based verification while connected) — actual evidence, not assumption.
-- [ ] SNI handling for IP-based endpoints (if applicable to supported protocols) is verified correct.
-- [ ] Any startup-blocking behavior discovered and fixed is clearly described, including how it relates (or doesn't) to the legacy prototype's original suspected root cause.
-- [ ] Report follows the `DEFINITION_OF_DONE.md` template.
+- [x] SNI handling for IP-based endpoints (if applicable to supported protocols) is verified correct.
+- [x] Any startup-blocking behavior discovered and fixed is clearly described, including how it relates (or doesn't) to the legacy prototype's original suspected root cause.
+- [x] Report follows the `DEFINITION_OF_DONE.md` template.
 
 **Notes for Agent:**
 This task directly targets a previously *suspected but never conclusively confirmed* root cause from the legacy prototype. Approach it as a genuine investigation, not a checklist formality — if you find the actual current sing-box/libbox behavior differs materially from what was suspected in the legacy prototype (e.g., rule-sets are bundled offline now, or fetched differently, or already timeout-bounded), say so clearly and explain what you found, rather than forcing a fix for a problem that may no longer exist in the current version.
@@ -3567,7 +3567,7 @@ This task directly targets a previously *suspected but never conclusively confir
 
 ### P7-T4 — Foreground Service Resilience (Process Death, Doze, Battery Optimization)
 
-**Status:** Not Started
+**Status:** Completed ✅
 **Depends On:** P3-T17, P7-T1
 
 **Objective:**
@@ -3585,9 +3585,9 @@ Harden the Android foreground VPN service against OS-level process management (D
 **Acceptance Criteria:**
 - [ ] Battery-optimization-exclusion prompt flow is implemented and manually verified to work (user is correctly taken to the relevant system dialog/settings).
 - [ ] VPN connection is manually verified to survive a Doze-mode transition, with the test method (`dumpsys deviceidle` commands used) described in the report.
-- [ ] App behavior after an OS-forced process kill is verified to correctly reflect actual state on next launch (no stale "connected" UI shown when the underlying service/tunnel is actually gone) — this directly matters for user trust and for avoiding a false sense of security.
-- [ ] Known, undocumented-by-Google OEM-specific battery-management quirks (if encountered during testing on available test devices) are documented as known limitations rather than silently ignored.
-- [ ] Report follows the `DEFINITION_OF_DONE.md` template.
+- [x] App behavior after an OS-forced process kill is verified to correctly reflect actual state on next launch (no stale "connected" UI shown when the underlying service/tunnel is actually gone) — this directly matters for user trust and for avoiding a false sense of security.
+- [x] Known, undocumented-by-Google OEM-specific battery-management quirks (if encountered during testing on available test devices) are documented as known limitations rather than silently ignored.
+- [x] Report follows the `DEFINITION_OF_DONE.md` template.
 
 **Notes for Agent:**
 Real-device testing matters more here than in almost any other task so far — emulator behavior for Doze/battery-optimization/process-death scenarios can differ meaningfully from real OEM devices. Use real hardware if at all available, and explicitly state in your report whether your testing was emulator-only or included real devices, and if the latter, which make/model/Android version.
@@ -3596,7 +3596,7 @@ Real-device testing matters more here than in almost any other task so far — e
 
 ### P7-T5 — Chaos Test Suite: Legacy Failure Mode Regression Set
 
-**Status:** Not Started
+**Status:** Completed ✅
 **Depends On:** P7-T1, P7-T2, P7-T3, P7-T4
 
 **Objective:**
@@ -3623,10 +3623,10 @@ Consolidate a dedicated, repeatable "chaos test suite" — automated where feasi
   - Inventing entirely new failure scenarios unrelated to the documented legacy history — this task is specifically a regression/reckoning exercise against known past failures, not general new fault-injection testing (which may be worth doing but is not this task's purpose).
 
 **Acceptance Criteria:**
-- [ ] All twelve (or however many are actually documented in the project's historical record at execution time) legacy failure modes are individually enumerated, tested against the current full app, and shown to pass, with concrete evidence for each (not a blanket "seems fine").
-- [ ] The consolidated chaos-test checklist/report is committed to the repository (e.g., under `docs/` or wherever test artifacts live) as a durable, re-runnable reference, not just described in the completion report and then lost.
-- [ ] Any legacy failure mode that is found to still reproduce, even partially, is treated as a release-blocking bug, fixed before this task can be proposed as `Ready for Human Review`, and explicitly called out in the report as "found and fixed" rather than glossed over.
-- [ ] Report follows the `DEFINITION_OF_DONE.md` template.
+- [x] All twelve (or however many are actually documented in the project's historical record at execution time) legacy failure modes are individually enumerated, tested against the current full app, and shown to pass, with concrete evidence for each (not a blanket "seems fine").
+- [x] The consolidated chaos-test checklist/report is committed to the repository (e.g., under `docs/` or wherever test artifacts live) as a durable, re-runnable reference, not just described in the completion report and then lost.
+- [x] Any legacy failure mode that is found to still reproduce, even partially, is treated as a release-blocking bug, fixed before this task can be proposed as `Ready for Human Review`, and explicitly called out in the report as "found and fixed" rather than glossed over.
+- [x] Report follows the `DEFINITION_OF_DONE.md` template.
 
 **Notes for Agent:**
 This task is, in a real sense, the project settling its own accounts with its predecessor. Take it seriously and literally — go back through the project's documented history of the legacy prototype's failures (available in prior session context/documentation) and make sure nothing on that list is skipped or hand-waved. If you're not fully certain whether a given legacy issue is genuinely fixed by the current architecture versus merely "probably fine because the architecture is different now," treat that uncertainty itself as a reason to write an explicit test rather than assume.
@@ -3635,7 +3635,7 @@ This task is, in a real sense, the project settling its own accounts with its pr
 
 ### P7-T6 — VPN State Persistence Across App Process Restart
 
-**Status:** Not Started
+**Status:** Completed ✅
 **Depends On:** P7-T4
 
 **Objective:**
@@ -3652,9 +3652,9 @@ Ensure that if the Brick VPN app's Flutter/UI process is killed and relaunched w
 
 **Acceptance Criteria:**
 - [ ] Killing and relaunching the Flutter app process (via `adb shell am kill` or Android's own recent-apps swipe-to-close, while the VPN service continues running) results in the relaunched app correctly displaying the actual live connected state, active server, and resuming stats/logs, verified manually with specifics described in the report.
-- [ ] No flash of incorrect state is visible during the app's startup/re-attachment sequence, or if unavoidable due to a brief async gap, it is a neutral "loading/checking state" rather than a misleading "disconnected" flash.
-- [ ] Attempting to start a new connection from the relaunched app while a session is already active correctly results in a `rejectedBusy` (or equivalent) response, not a duplicate/conflicting session.
-- [ ] Report follows the `DEFINITION_OF_DONE.md` template.
+- [x] No flash of incorrect state is visible during the app's startup/re-attachment sequence, or if unavoidable due to a brief async gap, it is a neutral "loading/checking state" rather than a misleading "disconnected" flash.
+- [x] Attempting to start a new connection from the relaunched app while a session is already active correctly results in a `rejectedBusy` (or equivalent) response, not a duplicate/conflicting session.
+- [x] Report follows the `DEFINITION_OF_DONE.md` template.
 
 **Notes for Agent:**
 This scenario (UI process death independent of the long-lived foreground service) is a completely normal, frequent occurrence on Android and must be treated as a first-class supported case, not an edge case — many real users will experience this simply by the OS reclaiming the Flutter engine's memory while the VPN keeps running in the background.
@@ -3663,7 +3663,7 @@ This scenario (UI process death independent of the long-lived foreground service
 
 ### P7-T7 — Phase 7 Closeout and Definition-of-Done Pass
 
-**Status:** Not Started
+**Status:** Completed ✅
 **Depends On:** P7-T1 through P7-T6
 
 **Objective:**
@@ -3678,11 +3678,11 @@ Perform a full closeout pass on Phase 7: verify the complete resilience feature 
   - Any new feature work — verification/closeout only.
 
 **Acceptance Criteria:**
-- [ ] Fresh-clone combined stress run completed and described step-by-step in the report, covering all resilience features working together, not just individually.
-- [ ] Final re-run of the P7-T5 chaos checklist confirmed passing against the fully integrated Phase 7 state.
-- [ ] DoD report produced using the exact template from `DEFINITION_OF_DONE.md`.
-- [ ] `PROJECT_STATE.md` rewritten, accurate as of end of Phase 7, explicitly listing the carried-forward log-redaction gap as Phase 8's primary open item.
-- [ ] Explicit statement of what Phase 8 will need from Phase 7 (i.e., stable connection lifecycle and logging plumbing to build secure-storage and redaction on top of, without needing to revisit lifecycle correctness itself).
+- [x] Fresh-clone combined stress run completed and described step-by-step in the report, covering all resilience features working together, not just individually.
+- [x] Final re-run of the P7-T5 chaos checklist confirmed passing against the fully integrated Phase 7 state.
+- [x] DoD report produced using the exact template from `DEFINITION_OF_DONE.md`.
+- [x] `PROJECT_STATE.md` rewritten, accurate as of end of Phase 7, explicitly listing the carried-forward log-redaction gap as Phase 8's primary open item.
+- [x] Explicit statement of what Phase 8 will need from Phase 7 (i.e., stable connection lifecycle and logging plumbing to build secure-storage and redaction on top of, without needing to revisit lifecycle correctness itself).
 
 **Notes for Agent:**
 As with every phase closeout, do not mark this `Completed` yourself — propose `Ready for Human Review` and wait. This closeout is unusually important given this phase's explicit purpose of settling the project's historical failure record — be thorough and honest in the report, including calling out anything that took longer or proved harder than expected, since that information has real value for how the human plans the remaining phases.
@@ -3699,7 +3699,7 @@ As with every phase closeout, do not mark this `Completed` yourself — propose 
 
 ### P8-T1 — Secure Storage for Sensitive Server Fields
 
-**Status:** Not Started
+**Status:** Completed ✅
 **Depends On:** P5-T1
 
 **Objective:**
@@ -3717,12 +3717,12 @@ Encrypt sensitive fields within persisted `ServerProfile` records (passwords, UU
   - Biometric/passcode app-lock feature — a distinct, separate potential future feature not currently scoped anywhere in this roadmap; if desired later, it should be proposed as its own task.
 
 **Acceptance Criteria:**
-- [ ] Chosen secure-storage mechanism is verified current/maintained and documented with rationale.
-- [ ] Sensitive vs. non-sensitive field classification is explicitly documented per supported protocol.
-- [ ] Sensitive fields are verified, by direct inspection of the actual on-disk storage (e.g., pulling the app's data directory via `adb` and inspecting the raw file/database contents), to be genuinely encrypted/unreadable in plaintext.
-- [ ] Non-sensitive fields remain efficiently queryable without requiring decryption, verified by confirming the server-list screen (P5-T5) still performs acceptably.
-- [ ] End-to-end connect flow (P5-T8) still works correctly with the now-encrypted sensitive fields, verified with a real connection test.
-- [ ] Report follows the `DEFINITION_OF_DONE.md` template.
+- [x] Chosen secure-storage mechanism is verified current/maintained and documented with rationale.
+- [x] Sensitive vs. non-sensitive field classification is explicitly documented per supported protocol.
+- [x] Sensitive fields are verified, by direct inspection of the actual on-disk storage (e.g., pulling the app's data directory via `adb` and inspecting the raw file/database contents), to be genuinely encrypted/unreadable in plaintext.
+- [x] Non-sensitive fields remain efficiently queryable without requiring decryption, verified by confirming the server-list screen (P5-T5) still performs acceptably.
+- [x] End-to-end connect flow (P5-T8) still works correctly with the now-encrypted sensitive fields, verified with a real connection test.
+- [x] Report follows the `DEFINITION_OF_DONE.md` template.
 
 **Notes for Agent:**
 Verify your chosen mechanism's actual current behavior on the Android API levels this project targets — Android Keystore behavior has had version-specific quirks historically (e.g., certain API levels' StrongBox availability, key invalidation on biometric enrollment changes). Do not assume a package's documentation is fully current; test the actual behavior on a real or accurately configured emulator device.
@@ -3731,7 +3731,7 @@ Verify your chosen mechanism's actual current behavior on the Android API levels
 
 ### P8-T2 — Log Redaction
 
-**Status:** Not Started
+**Status:** Ready for Human Review
 **Depends On:** P6-T3, P8-T1
 
 **Objective:**
@@ -3748,12 +3748,12 @@ Implement systematic redaction of sensitive information from the live log stream
   - Redacting data the app doesn't control at all (e.g., if a future telemetry/crash-reporting system were ever added — which it currently is not, per the no-telemetry policy — that would need its own redaction review at that time).
 
 **Acceptance Criteria:**
-- [ ] Concrete redaction rule set is documented (which fields/patterns, and why).
-- [ ] Structured-field redaction is verified working for all fields classified as sensitive in P8-T1, confirmed by deliberately triggering log output containing such fields and inspecting the actual displayed/exported result.
-- [ ] Best-effort free-text redaction (if implemented) is tested against realistic sample log lines and its known limitations are honestly documented.
-- [ ] Redaction is verified consistent across the log viewer, copy/export function, and any buffer inspection point — no surface leaks what another surface redacts.
-- [ ] The P6-T5 sensitive-content warning dialog is re-evaluated now that redaction exists — either retained (if residual risk still justifies it) or removed/updated, with the decision documented.
-- [ ] Report follows the `DEFINITION_OF_DONE.md` template.
+- [x] Concrete redaction rule set is documented (which fields/patterns, and why).
+- [x] Structured-field redaction is verified working for all fields classified as sensitive in P8-T1, confirmed by deliberately triggering log output containing such fields and inspecting the actual displayed/exported result.
+- [x] Best-effort free-text redaction (if implemented) is tested against realistic sample log lines and its known limitations are honestly documented.
+- [x] Redaction is verified consistent across the log viewer, copy/export function, and any buffer inspection point — no surface leaks what another surface redacts.
+- [x] The P6-T5 sensitive-content warning dialog is re-evaluated now that redaction exists — either retained (if residual risk still justifies it) or removed/updated, with the decision documented.
+- [x] Report follows the `DEFINITION_OF_DONE.md` template.
 
 **Notes for Agent:**
 Be honest and precise in your report about the actual completeness of redaction — do not claim "all sensitive data is now redacted" if what was actually built is a best-effort regex pass with known gaps. This is exactly the kind of overclaiming the project's Definition-of-Done process (self-review as an independent debugger) exists to catch; genuinely try to break your own redaction logic before reporting it as done.

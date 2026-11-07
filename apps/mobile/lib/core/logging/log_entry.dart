@@ -3,6 +3,8 @@
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart' show immutable;
+import 'package:mobile/core/logging/log_redactor.dart';
+import 'package:shared_utils/shared_utils.dart';
 
 /// Severity levels for native VPN engine log events.
 enum LogLevel {
@@ -43,7 +45,21 @@ final class LogEntry {
     required this.raw,
   });
 
-  /// Deterministically parses a raw engine log line into a [LogEntry].
+  /// Canonical constructor enforcing redaction at the ingestion boundary.
+  factory LogEntry.fromRaw(
+    String rawLine, {
+    DateTime? fallbackTimestamp,
+    Iterable<String> knownSecrets = const <String>[],
+  }) {
+    return LogEntry.parseEngineLine(
+      rawLine,
+      fallbackTimestamp: fallbackTimestamp,
+      knownSecrets: knownSecrets,
+    );
+  }
+
+  /// Deterministically parses a raw engine log line into a [LogEntry]
+  /// with automated redaction of sensitive fields.
   ///
   /// Supports:
   /// - JSON structured lines: `{"level":"info","time":"...","msg":"..."}`
@@ -55,16 +71,21 @@ final class LogEntry {
   factory LogEntry.parseEngineLine(
     String rawLine, {
     DateTime? fallbackTimestamp,
+    Iterable<String> knownSecrets = const <String>[],
   }) {
     final now = fallbackTimestamp ?? DateTime.now().toUtc();
-    final trimmed = rawLine.trim();
+    final safeRaw = LogRedactor.redactRawLine(
+      rawLine,
+      knownSecrets: knownSecrets,
+    );
+    final trimmed = safeRaw.trim();
 
     if (trimmed.isEmpty) {
       return LogEntry(
         timestamp: now,
         level: LogLevel.info,
         message: '',
-        raw: rawLine,
+        raw: safeRaw,
       );
     }
 
@@ -73,39 +94,46 @@ final class LogEntry {
       try {
         final dynamic decoded = jsonDecode(trimmed);
         if (decoded is Map<String, dynamic>) {
+          final redactedMap = LogRedactor.redactJsonMap(
+            decoded,
+            knownSecrets: knownSecrets,
+          );
+
           final levelStr =
-              decoded['level'] ??
-              decoded['severity'] ??
-              decoded['lvl'] ??
-              decoded['log_level'];
+              redactedMap['level'] ??
+              redactedMap['severity'] ??
+              redactedMap['lvl'] ??
+              redactedMap['log_level'];
           final level = _parseLevel(levelStr?.toString());
 
           final timeVal =
-              decoded['time'] ??
-              decoded['timestamp'] ??
-              decoded['ts'] ??
-              decoded['@timestamp'];
+              redactedMap['time'] ??
+              redactedMap['timestamp'] ??
+              redactedMap['ts'] ??
+              redactedMap['@timestamp'];
           final timestamp = _parseTimestamp(timeVal) ?? now;
 
           final msg =
-              decoded['message'] ??
-              decoded['msg'] ??
-              decoded['text'] ??
-              decoded['error'] ??
+              redactedMap['message'] ??
+              redactedMap['msg'] ??
+              redactedMap['text'] ??
+              redactedMap['error'] ??
               '';
+          final safeMsg = redact(msg.toString(), knownSecrets: knownSecrets);
+
           final source =
-              decoded['source'] ??
-              decoded['tag'] ??
-              decoded['caller'] ??
-              decoded['logger'] ??
-              decoded['component'];
+              redactedMap['source'] ??
+              redactedMap['tag'] ??
+              redactedMap['caller'] ??
+              redactedMap['logger'] ??
+              redactedMap['component'];
 
           return LogEntry(
             timestamp: timestamp,
             level: level,
-            message: msg.toString(),
+            message: safeMsg,
             source: source?.toString(),
-            raw: rawLine,
+            raw: safeRaw,
           );
         }
       } on Object catch (_) {
@@ -174,13 +202,15 @@ final class LogEntry {
 
     // D. Clean leading colon or dashes if left behind
     working = working.replaceFirst(RegExp(r'^[:\-\s]+'), '').trim();
+    final cleanMsg = working.isEmpty ? trimmed : working;
+    final safeMsg = redact(cleanMsg, knownSecrets: knownSecrets);
 
     return LogEntry(
       timestamp: parsedTimestamp ?? now,
       level: parsedLevel ?? LogLevel.info,
-      message: working.isEmpty ? trimmed : working,
+      message: safeMsg,
       source: parsedSource,
-      raw: rawLine,
+      raw: safeRaw,
     );
   }
 

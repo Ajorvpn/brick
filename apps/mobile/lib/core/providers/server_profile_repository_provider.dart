@@ -3,6 +3,7 @@
 import 'dart:io';
 
 import 'package:mobile/core/logging/app_logger.dart';
+import 'package:mobile/core/security/sensitive_field_cipher.dart';
 import 'package:mobile/features/connection/domain/repositories/server_profile_repository.dart';
 import 'package:mobile/features/servers/data/repositories/file_server_profile_repository.dart';
 import 'package:path_provider/path_provider.dart';
@@ -22,6 +23,7 @@ part 'server_profile_repository_provider.g.dart';
 /// crashing the application.
 @Riverpod(keepAlive: true)
 Future<ServerProfileRepository> serverProfileRepository(Ref ref) async {
+  final cipher = ref.watch(sensitiveFieldCipherProvider);
   try {
     if (Platform.environment.containsKey('FLUTTER_TEST')) {
       final tempDir = Directory.systemTemp.createTempSync('brick_test_');
@@ -33,14 +35,17 @@ Future<ServerProfileRepository> serverProfileRepository(Ref ref) async {
         } on Object catch (_) {}
       });
       final testFile = File('${tempDir.path}/server_profiles.json');
-      final testRepo = FileServerProfileRepository(storageFile: testFile);
+      final testRepo = FileServerProfileRepository(
+        storageFile: testFile,
+        cipher: cipher,
+      );
       await testRepo.init();
       return testRepo;
     }
 
     final directory = await getApplicationSupportDirectory();
     final file = File('${directory.path}/server_profiles.json');
-    final repo = FileServerProfileRepository(storageFile: file);
+    final repo = FileServerProfileRepository(storageFile: file, cipher: cipher);
     await repo.init();
     return repo;
   } on Object catch (error, stackTrace) {
@@ -59,7 +64,10 @@ Future<ServerProfileRepository> serverProfileRepository(Ref ref) async {
       } on Object catch (_) {}
     });
     final fallbackFile = File('${tempDir.path}/server_profiles.json');
-    final fallbackRepo = FileServerProfileRepository(storageFile: fallbackFile);
+    final fallbackRepo = FileServerProfileRepository(
+      storageFile: fallbackFile,
+      cipher: cipher,
+    );
     await fallbackRepo.init();
     return fallbackRepo;
   }

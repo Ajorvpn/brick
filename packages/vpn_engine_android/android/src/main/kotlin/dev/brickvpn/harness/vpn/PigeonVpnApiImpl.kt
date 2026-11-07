@@ -133,7 +133,7 @@ class PigeonVpnApiImpl(
         }
     }
 
-    private fun buildConfigJson(outbound: Map<*, *>, isBlock: Boolean): String {
+    internal fun buildConfigJson(outbound: Map<*, *>, isBlock: Boolean): String {
         val root = JSONObject()
         root.put("log", JSONObject().put("level", "info").put("timestamp", false))
         val inbounds = JSONArray()
@@ -142,7 +142,9 @@ class PigeonVpnApiImpl(
                 .put("type", "tun")
                 .put("tag", "tun-in")
                 .put("address", JSONArray().put("10.111.222.1/24"))
-                .put("mtu", 9000),
+                .put("mtu", 9000)
+                .put("auto_route", true)
+                .put("strict_route", true),
         )
         root.put("inbounds", inbounds)
         val outbounds = JSONArray()
@@ -160,15 +162,40 @@ class PigeonVpnApiImpl(
             val dnsServers = JSONArray()
             dnsServers.put(
                 JSONObject()
-                    .put("address", "1.1.1.1")
                     .put("tag", "dns-direct")
+                    .put("address", "1.1.1.1")
                     .put("detour", "direct-out"),
             )
-            root.put("dns", JSONObject().put("servers", dnsServers))
+            dnsServers.put(
+                JSONObject()
+                    .put("tag", "dns-remote")
+                    .put("address", "tcp://1.1.1.1")
+                    .put("detour", outboundTag),
+            )
+            val dnsRules = JSONArray()
+            dnsRules.put(
+                JSONObject()
+                    .put("outbound", JSONArray().put("any"))
+                    .put("server", "dns-direct"),
+            )
+            val dnsObj = JSONObject()
+                .put("servers", dnsServers)
+                .put("rules", dnsRules)
+                .put("final", "dns-remote")
+                .put("strategy", "prefer_ipv4")
+            root.put("dns", dnsObj)
+
+            val routeRules = JSONArray()
+            routeRules.put(
+                JSONObject()
+                    .put("protocol", "dns")
+                    .put("action", "hijack-dns"),
+            )
             root.put(
                 "route",
                 JSONObject()
                     .put("auto_detect_interface", true)
+                    .put("rules", routeRules)
                     .put("final", outboundTag),
             )
         }

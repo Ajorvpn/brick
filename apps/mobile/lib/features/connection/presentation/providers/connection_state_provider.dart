@@ -5,6 +5,7 @@ import 'dart:async';
 import 'package:core_domain/core_domain.dart';
 import 'package:core_vpn_engine/core_vpn_engine.dart';
 import 'package:flutter/widgets.dart' hide ConnectionState;
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobile/core/providers/vpn_engine_provider.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
@@ -27,20 +28,32 @@ part 'connection_state_provider.g.dart';
 ///    if the native layer transitioned while the Dart VM was suspended.
 ///
 /// Distinct emissions ensure no redundant UI rebuilds.
+final initialConnectionStateProvider = Provider<ConnectionState?>(
+  (ref) => null,
+);
+
 @Riverpod(keepAlive: true)
 Stream<ConnectionState> connectionState(Ref ref) {
   final engine = ref.watch(vpnEngineProvider);
+  final preWarmed = ref.watch(initialConnectionStateProvider);
   final controller = StreamController<ConnectionState>();
   var hasEmitted = false;
+
+  if (preWarmed != null) {
+    hasEmitted = true;
+    controller.add(preWarmed);
+  }
 
   // 1. Initial snapshot from native truth on startup
   unawaited(
     engine
         .getStatus()
         .then((initial) {
-          if (!controller.isClosed && !hasEmitted) {
-            hasEmitted = true;
-            controller.add(initial);
+          if (!controller.isClosed) {
+            if (!hasEmitted || initial != preWarmed) {
+              hasEmitted = true;
+              controller.add(initial);
+            }
           }
         })
         .catchError((Object error, StackTrace stack) {

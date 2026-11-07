@@ -13,6 +13,7 @@ import 'package:mobile/core/presentation/utils/app_feedback.dart';
 import 'package:mobile/core/presentation/utils/error_mapper.dart';
 import 'package:mobile/features/connection/domain/entities/saved_server.dart';
 import 'package:mobile/features/connection/presentation/providers/active_server_provider.dart';
+import 'package:mobile/features/connection/presentation/providers/auto_reconnect_provider.dart';
 import 'package:mobile/features/connection/presentation/providers/connection_controller_provider.dart';
 import 'package:mobile/features/connection/presentation/providers/connection_state_provider.dart';
 import 'package:mobile/features/connection/presentation/providers/saved_servers_provider.dart';
@@ -69,12 +70,18 @@ class HomeScreen extends ConsumerWidget {
 
     final servers = ref.watch(savedServersProvider);
     final activeServer = ref.watch(activeServerProvider);
-    final connectionState = ref.watch(connectionStateProvider).value;
+    final connStateAsync = ref.watch(connectionStateProvider);
+    final prewarmed = ref.watch(initialConnectionStateProvider);
+    ref.watch(connectionControllerProvider);
+    final connectionState = connStateAsync.value ?? prewarmed;
+    final isChecking = connStateAsync.isLoading && connectionState == null;
 
     final isConnecting = connectionState is Connecting;
     final isConnected = connectionState is Connected;
     final isDisconnecting = connectionState is Disconnecting;
-    final isConnectedOrConnecting = isConnected || isConnecting;
+    final autoReconnect = ref.watch(autoReconnectProvider);
+    final isConnectedOrConnecting =
+        isConnected || isConnecting || autoReconnect.isReconnecting;
 
     return Scaffold(
       appBar: AppBar(title: Text('home.title'.tr())),
@@ -122,7 +129,7 @@ class HomeScreen extends ConsumerWidget {
                         key: const ValueKey<String>(
                           'home_connect_toggle_button',
                         ),
-                        onPressed: isDisconnecting
+                        onPressed: (isDisconnecting || isChecking)
                             ? null
                             : () async {
                                 if (isConnectedOrConnecting) {
@@ -205,15 +212,16 @@ class HomeScreen extends ConsumerWidget {
               ServerTile(
                 server: entry,
                 onConnect: (profile) async {
-                  unawaited(
-                    ref
-                        .read(activeServerIdProvider.notifier)
-                        .selectServer(profile.id),
-                  );
                   final result = await ref
                       .read(connectionControllerProvider.notifier)
                       .connect(profile);
-                  if (context.mounted && result is! VpnCommandAccepted) {
+                  if (result is VpnCommandAccepted) {
+                    unawaited(
+                      ref
+                          .read(activeServerIdProvider.notifier)
+                          .selectServer(profile.id),
+                    );
+                  } else if (context.mounted) {
                     AppFeedback.showError(
                       context,
                       ErrorMapper.mapToUserMessage(result),

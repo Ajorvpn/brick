@@ -404,4 +404,113 @@ void main() {
       }
     });
   });
+
+  group('P7-T3 RFC 6066 SNI hardening', () {
+    test('preserves valid domain SNI on domain endpoints', () {
+      final out = buildSingBoxOutbound(
+        VlessOutbound(
+          server: 'node.example.com',
+          serverPort: 443,
+          uuid: _uuid,
+          tls: TlsSettings(enabled: true, serverName: 'node.example.com'),
+        ),
+      );
+      final tls = out['tls'] as Map<String, dynamic>;
+      expect(tls['server_name'], 'node.example.com');
+    });
+
+    test('preserves valid domain SNI on IP-based endpoints', () {
+      final out = buildSingBoxOutbound(
+        VlessOutbound(
+          server: '203.0.113.5',
+          serverPort: 443,
+          uuid: _uuid,
+          tls: TlsSettings(enabled: true, serverName: 'cdn.example.com'),
+        ),
+      );
+      final tls = out['tls'] as Map<String, dynamic>;
+      expect(tls['server_name'], 'cdn.example.com');
+    });
+
+    test('omits server_name when serverName is null or empty', () {
+      final outNull = buildSingBoxOutbound(
+        VlessOutbound(
+          server: 'node.example.com',
+          serverPort: 443,
+          uuid: _uuid,
+          tls: TlsSettings(enabled: true),
+        ),
+      );
+      final tlsNull = outNull['tls'] as Map<String, dynamic>;
+      expect(tlsNull.containsKey('server_name'), isFalse);
+
+      final outEmpty = buildSingBoxOutbound(
+        VlessOutbound(
+          server: 'node.example.com',
+          serverPort: 443,
+          uuid: _uuid,
+          tls: TlsSettings(enabled: true, serverName: ''),
+        ),
+      );
+      final tlsEmpty = outEmpty['tls'] as Map<String, dynamic>;
+      expect(tlsEmpty.containsKey('server_name'), isFalse);
+    });
+
+    test('omits server_name when serverName is raw IPv4 literal', () {
+      final out = buildSingBoxOutbound(
+        VlessOutbound(
+          server: '203.0.113.5',
+          serverPort: 443,
+          uuid: _uuid,
+          tls: TlsSettings(enabled: true, serverName: '203.0.113.5'),
+        ),
+      );
+      final tls = out['tls'] as Map<String, dynamic>;
+      expect(tls.containsKey('server_name'), isFalse);
+    });
+
+    test('omits server_name when serverName is raw IPv6 literal', () {
+      final out = buildSingBoxOutbound(
+        VlessOutbound(
+          server: '2001:db8::1',
+          serverPort: 443,
+          uuid: _uuid,
+          tls: TlsSettings(enabled: true, serverName: '2001:db8::1'),
+        ),
+      );
+      final tls = out['tls'] as Map<String, dynamic>;
+      expect(tls.containsKey('server_name'), isFalse);
+    });
+
+    test(
+      'omits server_name when serverName is bracketed IPv6 literal [::1]',
+      () {
+        final out = buildSingBoxOutbound(
+          VlessOutbound(
+            server: '[::1]',
+            serverPort: 443,
+            uuid: _uuid,
+            tls: TlsSettings(enabled: true, serverName: '[::1]'),
+          ),
+        );
+        final tls = out['tls'] as Map<String, dynamic>;
+        expect(tls.containsKey('server_name'), isFalse);
+      },
+    );
+
+    test('omits server_name in extraParams when it is an IP literal', () {
+      final out = buildSingBoxOutbound(
+        Hysteria2Outbound(
+          server: '203.0.113.5',
+          serverPort: 443,
+          password: 'pass',
+          tls: TlsSettings(enabled: true),
+          extraParams: {'server_name': '203.0.113.5', 'insecure': true},
+        ),
+      );
+      final tls = out['tls'] as Map<String, dynamic>;
+      expect(tls.containsKey('server_name'), isFalse);
+      expect(tls['insecure'], isTrue);
+    });
+  });
 }

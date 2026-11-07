@@ -194,39 +194,84 @@ class SingBoxOutboundSerializer {
     return const <String, dynamic>{};
   }
 
+  /// Checks whether [host] is a raw IPv4 or IPv6 address (including bracketed
+  /// IPv6 literals like `[::1]`). Per RFC 6066 Section 3, literal IP addresses
+  /// are not permitted in the TLS SNI `server_name` extension.
+  static bool _isIpLiteral(String host) {
+    var clean = host.trim();
+    if (clean.startsWith('[') && clean.endsWith(']')) {
+      clean = clean.substring(1, clean.length - 1);
+    }
+    if (clean.isEmpty) return false;
+    try {
+      Uri.parseIPv4Address(clean);
+      return true;
+    } on FormatException {
+      // Not IPv4
+    }
+    try {
+      Uri.parseIPv6Address(clean);
+      return true;
+    } on FormatException {
+      // Not IPv6
+    }
+    return false;
+  }
+
   /// Emits the `tls` object, then merges any schema keys a parser parked in
   /// [extraParams] (currently only `disable_sni`, which has no field on the
   /// domain `TlsSettings` type yet).
   Map<String, dynamic> _tlsWithExtras(
     TlsSettings tls,
     Map<String, dynamic>? extraParams,
-  ) => <String, dynamic>{
-    'tls': <String, dynamic>{
-      ..._tls(tls),
-      if (extraParams != null) ...extraParams,
-    },
-  };
+  ) {
+    final sanitizedExtras = extraParams != null
+        ? <String, dynamic>{
+            for (final entry in extraParams.entries)
+              if (entry.key != 'server_name' ||
+                  (entry.value is String &&
+                      (entry.value as String).isNotEmpty &&
+                      !_isIpLiteral(entry.value as String)))
+                entry.key: entry.value,
+          }
+        : null;
 
-  Map<String, dynamic> _tls(TlsSettings tls) => <String, dynamic>{
-    'enabled': tls.enabled,
-    if (tls.serverName != null) 'server_name': tls.serverName,
-    if (tls.insecure) 'insecure': tls.insecure,
-    if (tls.alpn != null && tls.alpn!.isNotEmpty) 'alpn': tls.alpn,
-    if (tls.minVersion != null) 'min_version': tls.minVersion,
-    if (tls.maxVersion != null) 'max_version': tls.maxVersion,
-    if (tls.utls != null)
-      'utls': <String, dynamic>{
-        'enabled': tls.utls!.enabled,
-        'fingerprint': tls.utls!.fingerprint,
+    return <String, dynamic>{
+      'tls': <String, dynamic>{
+        ..._tls(tls),
+        if (sanitizedExtras != null) ...sanitizedExtras,
       },
-    if (tls.reality != null)
-      'reality': <String, dynamic>{
-        'enabled': tls.reality!.enabled,
-        'public_key': tls.reality!.publicKey,
-        'short_id': tls.reality!.shortId,
-        if (tls.reality!.spiderX != null) 'spider_x': tls.reality!.spiderX,
-      },
-  };
+    };
+  }
+
+  Map<String, dynamic> _tls(TlsSettings tls) {
+    final serverName = tls.serverName;
+    final emitServerName =
+        serverName != null &&
+        serverName.isNotEmpty &&
+        !_isIpLiteral(serverName);
+
+    return <String, dynamic>{
+      'enabled': tls.enabled,
+      if (emitServerName) 'server_name': serverName,
+      if (tls.insecure) 'insecure': tls.insecure,
+      if (tls.alpn != null && tls.alpn!.isNotEmpty) 'alpn': tls.alpn,
+      if (tls.minVersion != null) 'min_version': tls.minVersion,
+      if (tls.maxVersion != null) 'max_version': tls.maxVersion,
+      if (tls.utls != null)
+        'utls': <String, dynamic>{
+          'enabled': tls.utls!.enabled,
+          'fingerprint': tls.utls!.fingerprint,
+        },
+      if (tls.reality != null)
+        'reality': <String, dynamic>{
+          'enabled': tls.reality!.enabled,
+          'public_key': tls.reality!.publicKey,
+          'short_id': tls.reality!.shortId,
+          if (tls.reality!.spiderX != null) 'spider_x': tls.reality!.spiderX,
+        },
+    };
+  }
 
   Map<String, dynamic> _transport(TransportSettings transport) =>
       switch (transport) {

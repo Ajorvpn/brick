@@ -4,6 +4,7 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.net.VpnService
@@ -18,6 +19,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import java.util.concurrent.atomic.AtomicReference
 
 /**
@@ -112,18 +114,44 @@ class BrickVpnService : VpnService() {
         //   did not then call Service.startForeground()
         startForegroundSafely()
 
-        when (intent?.action) {
+        return when (intent?.action) {
             ACTION_STOP -> {
                 Log.i(TAG, "onStartCommand: ACTION_STOP")
                 requestStop(StopReason.ACTION_STOP)
+                START_NOT_STICKY
+            }
+
+            ACTION_LOCKDOWN -> {
+                Log.i(TAG, "onStartCommand: ACTION_LOCKDOWN")
+                setLockdown(true)
+                START_STICKY
+            }
+
+            ACTION_START -> {
+                Log.i(TAG, "onStartCommand: start")
+                requestStart()
+                START_STICKY
+            }
+
+            null -> {
+                Log.i(TAG, "onStartCommand: null intent (system restart)")
+                if (isLockdownEnabled && stateMachine.currentState.isInactiveForLockdown()) {
+                    handleLockdownChange(true)
+                    START_STICKY
+                } else if (stateMachine.currentState is VpnState.Idle || stateMachine.currentState is VpnState.Stopped) {
+                    stopSelf()
+                    START_NOT_STICKY
+                } else {
+                    START_STICKY
+                }
             }
 
             else -> {
-                Log.i(TAG, "onStartCommand: start")
+                Log.i(TAG, "onStartCommand: unrecognized intent action: ${intent?.action}")
                 requestStart()
+                START_STICKY
             }
         }
-        return START_STICKY
     }
 
     /**
@@ -133,6 +161,7 @@ class BrickVpnService : VpnService() {
      */
     override fun onRevoke() {
         Log.w(TAG, "onRevoke: VPN permission withdrawn by the system")
+        setLockdown(false)
         val token = stateMachine.activeSession
         ioScope.launch {
             if (token != null) stateMachine.onRevoke()
@@ -162,7 +191,9 @@ class BrickVpnService : VpnService() {
             }
         }
         ioScope.cancel()
-        if (current === this) current = null
+        if (current === this) {
+            current = null
+        }
         super.onDestroy()
         ServiceLifecycleHub.destroyed()
     }
@@ -208,7 +239,10 @@ class BrickVpnService : VpnService() {
                 stateMachine.onFailure(token, "establish() returned null")
                 return
             }
-            tunPfd.set(pfd)
+            val old = tunPfd.getAndSet(pfd)
+            try {
+                old?.close()
+            } catch (_: Throwable) {}
             Log.i(TAG, "TUN descriptor acquired (fd=${pfd.fd})")
 
             if (!stateMachine.onPreparingComplete(token)) {
@@ -223,7 +257,9 @@ class BrickVpnService : VpnService() {
             Log.i(TAG, "state -> Starting")
 
             LibboxBootstrap.ensureSetup(this)
-            engine.start(pfd.fd, configJson) // real: Libbox.newService(...) + BoxService.start()
+            withTimeout(15_000L) {
+                engine.start(pfd.fd, configJson) // real: Libbox.newService(...) + BoxService.start()
+            }
 
             if (stateMachine.onRunning(token)) Log.i(TAG, "state -> Running")
         } catch (t: Throwable) {
@@ -236,6 +272,10 @@ class BrickVpnService : VpnService() {
             val reason = "start failed: ${t.javaClass.simpleName}: ${t.message}"
             Log.e(TAG, reason)
             stateMachine.onFailure(token, reason)
+            if (isLockdownEnabled) {
+                Log.i(TAG, "Start failed and lockdown enabled; establishing lockdown TUN")
+                establishLockdownTun()
+            }
         }
     }
 
@@ -250,8 +290,13 @@ class BrickVpnService : VpnService() {
                 closeTunOnce()
                 if (stateMachine.onStopped(token)) Log.i(TAG, "state -> Stopped")
             }
+            if (isLockdownEnabled) {
+                Log.i(TAG, "Lockdown active: establishing lockdown TUN and keeping service alive")
+                establishLockdownTun()
+            } else {
+                stopSelf()
+            }
         }
-        stopSelf()
     }
 
     /**
@@ -312,6 +357,7 @@ class BrickVpnService : VpnService() {
                 .setSession("Brick VPN")
                 .addAddress(TUN_ADDRESS, TUN_PREFIX)
                 .addRoute("0.0.0.0", 0)
+                .addRoute("::", 0)
                 .addDnsServer("1.1.1.1")
                 .addDnsServer("8.8.8.8")
                 .establish()
@@ -323,6 +369,51 @@ class BrickVpnService : VpnService() {
                 .addDnsServer(TUN_DNS)
                 .establish()
         }
+
+    private fun VpnState.isInactiveForLockdown(): Boolean =
+        this is VpnState.Idle || this is VpnState.Stopped || this is VpnState.Error || this is VpnState.Revoked
+
+    internal fun handleLockdownChange(active: Boolean) {
+        ioScope.launch {
+            if (active) {
+                if (stateMachine.currentState.isInactiveForLockdown()) {
+                    establishLockdownTun()
+                }
+            } else {
+                if (stateMachine.currentState.isInactiveForLockdown()) {
+                    closeTunOnce()
+                    stopSelf()
+                }
+            }
+        }
+    }
+
+    private fun establishLockdownTun() {
+        try {
+            val builder = Builder()
+                .setSession("Brick VPN Lockdown")
+                .addAddress(TUN_ADDRESS, TUN_PREFIX)
+                .addRoute("0.0.0.0", 0)
+                .addRoute("::", 0)
+                .addDnsServer(TUN_DNS)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                builder.setMetered(false)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                builder.setBlocking(true)
+            }
+            val pfd = builder.establish()
+            if (pfd != null) {
+                val old = tunPfd.getAndSet(pfd)
+                try {
+                    old?.close()
+                } catch (_: Throwable) {}
+                Log.i(TAG, "Lockdown TUN established (fd=${pfd.fd}) - blackholing traffic")
+            }
+        } catch (t: Throwable) {
+            Log.e(TAG, "Failed to establish lockdown TUN: ${t.message}")
+        }
+    }
 
     // ---------------------------------------------------- foreground / notification
 
@@ -396,10 +487,38 @@ class BrickVpnService : VpnService() {
 
         const val ACTION_START = "dev.brickvpn.harness.action.START"
         const val ACTION_STOP = "dev.brickvpn.harness.action.STOP"
+        const val ACTION_LOCKDOWN = "dev.brickvpn.harness.action.LOCKDOWN"
 
         /** The running instance, for instrumented tests. */
         @Volatile
         var current: BrickVpnService? = null
             private set
+
+        @Volatile
+        var isLockdownEnabled: Boolean = false
+            private set
+
+        fun setLockdown(active: Boolean, context: Context? = null) {
+            isLockdownEnabled = active
+            val svc = current
+            if (svc != null) {
+                svc.handleLockdownChange(active)
+            } else if (active && context != null) {
+                try {
+                    if (prepare(context) == null) {
+                        val intent = Intent(context, BrickVpnService::class.java).apply {
+                            action = ACTION_LOCKDOWN
+                        }
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            context.startForegroundService(intent)
+                        } else {
+                            context.startService(intent)
+                        }
+                    }
+                } catch (t: Throwable) {
+                    Log.e(TAG, "Failed to start BrickVpnService for lockdown: ${t.message}")
+                }
+            }
+        }
     }
 }

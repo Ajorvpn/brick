@@ -801,4 +801,429 @@ The P1-T3 design question is resolved in favor of the **fully-typed sealed class
 - `_SessionDurationText` watches `sessionDurationProvider.select(TrafficFormatter.formatDuration)`.
 - 1 Hz timer ticks trigger rebuilds *only* on `_SessionDurationText`. Parent `SessionInfoPanel`, `HomeScreen`, and sibling widgets (`_ActiveServerText`, `_SessionStatusText`, `ConnectionStateBadge`, `ThroughputReadout`) remain completely untouched.
 
+### 8.7 P6-T7 Phase 6 End-to-End User Journey & Two-Cycle Lifecycle Architecture
+
+#### Continuous End-to-End Integration Test (`phase6_e2e_journey_test.dart`)
+- **Real App Shell:** Tests the complete widget hierarchy (`MyApp` -> `AppShell` -> `HomeScreen` / `LogsScreen`) without mocking presentation-layer widgets or riverpod providers other than native engine platform channel interfaces (`FakeVpnEngine`).
+- **Two Full Connect/Disconnect Cycles:** Proves that state resets, stream subscriptions, timers, and ring buffers survive repeated connection transitions without memory leaks, stale accumulator leakage, or state pollution.
+
+#### Multi-Cycle Lifecycle & State Reset Guarantees
+1. **Resting Baseline (Disconnected):**
+   - `SessionInfoPanel` displays active server profile name/protocol, `Tunnel: Disconnected`, and `Duration: 00:00:00`.
+   - `ThroughputReadout` displays zero cumulative bytes (`0 B up / 0 B down`) and zero transfer rates (`Speed: ↑ 0 B/s · ↓ 0 B/s`).
+2. **First Connected Cycle (P6-T1 through P6-T6):**
+   - Connect intent dispatches through `ConnectionController` to native engine.
+   - Authoritative `Connected` event resets duration to `00:00:00` and starts 1 Hz periodic timer (advances cleanly to `00:00:04`).
+   - First `TrafficStats` snapshot clamps rate to 0 B/s to eliminate false initial delta spikes; subsequent snapshots compute exact delta transfer speeds and cumulative totals.
+   - Structured native logs arrive over `engine.logEvents` and stream into `LogManager`'s bounded ring buffer.
+   - Navigating to the `Logs` tab renders structured log items with level badges (`[INFO]`, `[WARN]`, `[ERROR]`).
+   - Copy action invokes non-dismissible privacy warning dialog (`barrierDismissible: false`); barrier taps are ignored; confirmation copies serialized logs to clipboard with user feedback; clear action resets buffer.
+   - Disconnect transitions through `Disconnecting` -> `Disconnected`, stopping the duration timer and resetting session duration and speed readouts to zero.
+3. **Second Connected Cycle (Baseline Invariant Verification):**
+   - Reconnect transitions cleanly to `Connecting` -> `Connected`.
+   - The first `TrafficStats` snapshot in Cycle 2 verifies the previous cycle's baseline is wiped: initial delta is clamped to 0 B/s, preventing false spikes across reconnect boundaries.
+   - Second snapshot computes accurate delta speed.
+   - Session duration timer starts fresh from `00:00:00` (advancing to `00:00:03`), proving no lingering timer tasks or stale offsets leak across sessions.
+   - Emitting a fresh log entry verifies that previously cleared Cycle 1 entries do not reappear.
+   - Final clean disconnect restores resting baseline.
+
+## 9. Phase 7 — Stability & Lifecycle Hardening Architecture
+
+### 9.1 P7-T1 Auto-Reconnect on Network Change & Drop Recovery Architecture
+
+#### State Machine & State Hierarchy (`AutoReconnectState`)
+The auto-reconnect coordinator (`AutoReconnectNotifier`, managed via `autoReconnectProvider`) enforces a deterministic state machine modeled with a sealed class hierarchy:
+1. **`AutoReconnectIdle`:** Resting state. Reconnection logic is inactive (either disconnected or successfully connected).
+2. **`AutoReconnectWaitingForNetwork`:** Device has completely lost physical network connectivity (`ConnectivityResult.none`). Reconnect backoff timer is paused until connectivity returns.
+3. **`AutoReconnectBackoff` (`attempt`, `delay`, `targetProfile`):** Scheduled backoff delay before triggering reconnect. Displays retry countdown and attempt badge in `SessionInfoPanel`.
+4. **`AutoReconnectInFlight` (`attempt`, `targetProfile`):** Active dispatch of tunnel teardown (`engine.stop()`) followed by connection initiation (`engine.start(profile)`).
+5. **`AutoReconnectExhausted` (`attemptsTaken`, `targetProfile`):** Maximum retry limit (5 attempts) reached without establishing connection. Aborts auto-reconnect sequence, logs diagnostic error, and prompts user intervention.
+
+#### User-Intent Invariant (`_userSessionActive`)
+- **Strict User-Intent Tracking:** Auto-reconnect operates strictly within user-intended active sessions. When a user explicitly taps "Connect", `onUserInitiatedConnect(profile)` marks `_userSessionActive = true`. When the user explicitly taps "Disconnect", `onUserInitiatedDisconnect()` sets `_userSessionActive = false`.
+- **Zero Spontaneous Connections:** Network transitions (Wi-Fi <-> Mobile, airplane mode toggle, interface up/down) occurring when `_userSessionActive == false` will **never** trigger tunnel initialization.
+- **Immediate Cancellation:** If a user taps "Disconnect" at any point during backoff delay, network waiting, or in-flight reconnect, the sequence is cancelled immediately, all timers are disposed, and state reverts to `AutoReconnectIdle`.
+
+#### Exponential Backoff Policy & Single-Flight Flap Debounce
+- **Exponential Backoff (`AutoReconnectPolicy`):**
+  - Base delay: `1.0s`
+  - Multiplier: `2.0` (delays: 1s, 2s, 4s, 8s, 16s)
+  - Maximum cap: `30.0s`
+  - Maximum attempts: `5`
+- **Flap Debounce (300ms):** Connectivity changes are guarded with a 300ms debounce timer. Rapid network flapping (e.g. Wi-Fi RSSI threshold bounces) does not trigger redundant reconnect cascades or concurrent dispatch storms.
+- **Offline Pause / Resume:** When transitioning to `ConnectivityResult.none`, any pending backoff timer is cancelled and the coordinator enters `AutoReconnectWaitingForNetwork`. As soon as physical network returns (`wifi`, `mobile`, `ethernet`, or `vpn`), the backoff attempt is resumed.
+
+#### Cross-Engine Invariants (Phase 1 & Phase 3 Integration)
+- **Authoritative Stream Driven Truth (VpnEngine Invariant 1):** `connectionStateProvider` remains the single source of truth for tunnel status. `AutoReconnectNotifier` listens to engine transitions (`Disconnected`, `Error`) to detect unexpected drops while `_userSessionActive` is true.
+- **Idempotent Teardown:** Prior to launching a new tunnel via `engine.start()`, `engine.stop()` is invoked and completed to ensure stale native socket resources, routing tables, and TUN file descriptors are completely released.
+- **Stream Fault Resilience:** `VpnEngine` stream errors or unexpected disconnects invoke recovery handling without crashing the reactive provider container.
+
+#### Diagnostic Logging & Metrics Synchronization
+- **Diagnostic Logging (`LogManager.recordDiagnostic`):** Auto-reconnect lifecycle transitions (drop detected, reconnect scheduled, in-flight dispatch, cancellation, retry exhaustion) are logged into the Phase 6 ring buffer as sanitized UTC-stamped INFO/WARN/ERROR entries containing zero sensitive tokens, keys, or credentials.
+- **Phase 6 Metrics Synchronization:** When a connection drops and enters auto-reconnect, `sessionDurationProvider` and `sessionTrafficMetricsProvider` reset to zero (`00:00:00` and `0 B/s`). When auto-reconnect successfully establishes the connection (`Connected`), duration and delta rate metrics begin anew, maintaining zero-accumulator leakage across reconnect cycles.
+
+#### Android Native Network Callback & Underlying Network Handoff
+- **Native Network Observation:** The Android platform monitors physical and virtual network availability via `ConnectivityManager.NetworkCallback` (`onAvailable`, `onLost`, `onCapabilitiesChanged`). On the Flutter side, this is consumed through `ConnectivitySource` (`connectivity_plus`), debounced at 300ms to eliminate transient flapping.
+- **Underlying Network Hand-off in `VpnService`:** On Android, `VpnService.setUnderlyingNetworks(Network[])` allows the operating system to bind the TUN tunnel to an active Wi-Fi or cellular network interface. When transitioning between Wi-Fi and Cellular (or vice versa), the physical network route drops. To ensure that sing-box/libbox internal socket state machines do not hang or retain stale routes, `AutoReconnectNotifier` performs an active teardown (`engine.stop()`) followed by a clean rebuild (`engine.start()`), guaranteeing clean socket re-binding.
+
+#### Re-Entrancy, Server Switching & Start Rejection Hardening (P7-T1 Remediation)
+- **Re-Entrancy Guard (`_isStoppingForReconnect`):** In `_executeReconnect()`, invoking `await engine.stop()` triggers an asynchronous `Disconnecting -> Disconnected` sequence from the native engine. Guarding this invocation with `_isStoppingForReconnect = true` and checking `if (_isExecuting || _isStoppingForReconnect) return;` in the `connectionStateProvider` listener prevents the engine teardown event from triggering `_handleUnexpectedDrop()`, completely eliminating double increment of `_currentAttempt` and duplicate overlapping timer cascades.
+- **Mid-Connection Server Switch (`D3`):** In `ConnectionController.connect(profile)`, when switching between servers while active, `onUserInitiatedDisconnect()` is dispatched to both `autoReconnectProvider` and `killSwitchProvider` *prior* to `await engine.stop()`. This ensures that tearing down the previous server is recognized as an intentional user action rather than an unexpected failure.
+- **Start Rejection Clean Disarming (`D4`):** If `engine.prepare()` or `engine.start(profile)` returns a rejected outcome (`VpnCommandRejectedInvalidConfig`, `VpnCommandRejectedPermissionDenied`, or `VpnCommandFailed`), `onUserInitiatedDisconnect()` is immediately invoked on both coordinators, ensuring that `_userSessionActive` is cleanly cleared and neither coordinator is left stranded in an armed or retrying state.
+
+#### State Machine Cross-Reference & Non-Recoverable Errors
+`AutoReconnectState` operates at the presentation and session-orchestration level, sitting above the core and native state machines:
+
+| `AutoReconnectState` | Phase 1 `core_domain.ConnectionState` | Phase 3 `VpnNativeState` | Behavior Description |
+| :--- | :--- | :--- | :--- |
+| `AutoReconnectIdle` | `Connected` / `Disconnected` | `running` / `idle` / `stopped` | Normal operating baseline; auto-reconnect is inactive. |
+| `AutoReconnectWaitingForNetwork` | `Disconnected` / `Error` | `stopped` / `idle` / `error` | Physical network is absent (`ConnectivityResult.none`); retries on hold. |
+| `AutoReconnectBackoff` | `Disconnected` / `Error` | `stopped` / `idle` / `error` | Backoff delay timer active (1s, 2s, 4s, 8s, 16s). |
+| `AutoReconnectInFlight` | `Connecting` / `Disconnecting` | `stopping` -> `preparing` -> `starting` | Actively stopping stale tunnel and starting fresh tunnel. |
+| `AutoReconnectExhausted` | `Disconnected` / `Error` | `stopped` / `error` | Retry budget (5 attempts) exhausted; surfaced clearly in UI. |
+
+- **Non-Recoverable Error Guard:** `Error(InvalidConfig)` and `Error(PermissionDenied)` (and corresponding engine command rejections `VpnCommandRejectedInvalidConfig`, `VpnCommandRejectedPermissionDenied`) represent deterministic user or system configuration errors that cannot be healed by retrying. When encountered, `AutoReconnectNotifier` immediately clears `_userSessionActive`, cancels pending timers, and transitions to `AutoReconnectIdle`, preventing futile infinite retry loops. Transient errors (`PlatformError`, `UnexpectedDisconnect`, unexpected `Disconnected`) trigger backoff recovery.
+
+### 9.2 P7-T2 Kill Switch Architecture & Leak-Protection Invariants
+
+#### State Hierarchy & Architecture (`KillSwitchState`)
+The application kill switch coordinator (`KillSwitchNotifier`, managed via `killSwitchProvider`) enforces a deterministic state machine modeled with a sealed class hierarchy:
+1. **`KillSwitchInactive`:** Kill switch is idle/disengaged. Occurs when disabled in preferences, on initial app launch before a tunnel is started, or after a clean user-initiated disconnect. Internet traffic outside the VPN is not blocked by the application.
+2. **`KillSwitchArmed`:** Kill switch is active and protecting traffic. Occurs when enabled in preferences AND the user-intended VPN tunnel is actively `Connected` (or establishing connection).
+3. **`KillSwitchBlocking(reason)`:** Kill switch is actively blocking unprotected internet traffic to prevent IP/DNS leaks. Engages whenever the tunnel is down while a user session was intended.
+
+#### Complete Risk Window Coverage
+The kill switch explicitly covers three critical leak-risk windows:
+1. **Unexpected Mid-Session Drops:** Engine emits `Error` (e.g. `PlatformError`, unexpected socket abort) or unexpected `Disconnected` while `_userSessionActive == true`.
+2. **Auto-Reconnect Windows:** Spans the entire `P7-T1` recovery cycle, including `AutoReconnectWaitingForNetwork` (offline/airplane mode), `AutoReconnectBackoff` (exponential retry countdown), and `AutoReconnectInFlight` (tunnel teardown and rebuild).
+3. **Post-Retry Exhaustion:** When auto-reconnect retry limits are reached (`AutoReconnectExhausted`), the kill switch remains in `KillSwitchBlocking` until the user takes explicit action (taps unblock/disconnect or disables the kill switch toggle), guaranteeing that traffic is never silently leaked after failed retries.
+
+#### Critical Safety Invariant: Zero False Blocks on User Disconnect
+- **Clean Disconnect Transitions:** When the user taps "Disconnect" (`ConnectionController.disconnect()`) or taps the banner unblock action (`kill_switch_unblock_button`), `KillSwitchNotifier.onUserInitiatedDisconnect()` is invoked *prior* to dispatching `engine.stop()`.
+- **Immediate Disengagement:** This marks `_userSessionActive = false` and transitions the kill switch directly from `KillSwitchArmed` to `KillSwitchInactive`. When the engine subsequently emits `Disconnecting` and `Disconnected`, the kill switch recognizes the intentional stop and never enters `KillSwitchBlocking`.
+
+#### UI Warning Banner & Unblock Affordance
+- **High-Visibility Banner (`kill_switch_blocking_banner`):** Displayed prominently on `SessionInfoPanel` / `HomeScreen` during `KillSwitchBlocking`, featuring `Icons.shield_outlined`, localized title `"Kill Switch Active — Traffic Blocked"`, and explanatory body text.
+- **Unblock Button (`kill_switch_unblock_button`):** Provides a direct affordance labelled `"Disconnect & Unblock"` that dispatches `ConnectionController.disconnect()`, immediately cancelling pending auto-reconnect timers, returning kill switch to `KillSwitchInactive`, and unblocking device traffic.
+
+#### Native Android `VpnService` Routes, Fail-Closed Lockdown & OS Precedence
+- **Native Fail-Closed OS Lockdown (`D1`):** In addition to the UI blocking banner, `kill_switch_provider.dart` integrates directly with the native layer via `KillSwitchPlatformBridge` invoking the `'dev.brickvpn.harness/kill_switch'` MethodChannel method `'setLockdownBlocking'`. When entering `KillSwitchBlocking` (during unexpected drops or auto-reconnect backoff), `BrickVpnService.setLockdown(true)` establishes a dedicated lockdown TUN descriptor with catch-all routes (`0.0.0.0/0` and `::/0`) and no forwarding loopback, completely blackholing non-VPN cleartext traffic at the OS kernel level. When the user disconnects or the tunnel recovers (`Connected`), `setLockdownBlocking(false)` releases the lockdown TUN descriptor.
+- **In-Session Settings Toggle Reactivity (`D5`):** Enabling the Kill Switch toggle in `SettingsScreen` while a VPN session is already active immediately inspects the current engine and auto-reconnect state. If `Connected`, it transitions directly to `KillSwitchArmed`; if currently dropped or reconnecting, it transitions directly to `KillSwitchBlocking` and engages native OS lockdown blocking.
+- **Android OS Always-On VPN Precedence:** Android OS provides an independent, kernel-enforced system setting: **"Always-on VPN"** with **"Block connections without VPN"** (Settings > Network & internet > VPN). When enabled at the OS level, the Linux kernel drops all non-TUN traffic globally, taking strict precedence over application-level states.
+
+#### Sanitized Diagnostic Logging
+All kill switch lifecycle transitions are stamped in UTC and recorded in `LogManager` using sanitized messages:
+- Armed: `"KillSwitch armed."`
+- Blocking: `"KillSwitch actively blocking unprotected traffic."`
+- Disengaged: `"KillSwitch disengaged."`
+Zero private keys, tokens, credentials, or raw platform exception traces are ever logged.
+
+### 9.3 P7-T3 — DNS Correctness, Bootstrap Deadlock & IP-SNI Hardening Architecture
+
+#### Zero Remote Rule-Set Downloads on Startup
+In legacy prototypes, referencing remote `rule_set` URLs (such as `raw.githubusercontent.com` or external geoip/geosite databases) during tunnel initialization caused tunnel startup to freeze indefinitely under unstable, throttled, or censored network conditions. In Brick VPN, the sing-box runtime configuration generated by `PigeonVpnApiImpl.kt` contains **zero** remote `rule_set` entries or blocking external asset fetches. Tunnel startup is completely local, hermetic, and deterministic.
+
+#### Circular DNS Bootstrap Deadlock Prevention
+When an outbound proxy configuration uses a domain hostname (e.g. `node.example.com`), sing-box must resolve the IP address of `node.example.com` before the proxy connection can be initiated. If the DNS resolver is set to detour through the proxy itself, a circular deadlock occurs: the proxy cannot connect until the domain is resolved, and the domain cannot be resolved until the proxy is connected.
+Brick VPN solves this with a dual-resolver architecture in sing-box:
+1. **`dns-direct` (Bootstrap Resolver):** Configured with `"tag": "dns-direct"`, `"address": "1.1.1.1"`, and `"detour": "direct-out"`. A dedicated DNS rule (`"outbound": ["any"] -> "server": "dns-direct"`) routes all outbound server endpoint resolutions directly through the underlying network interface.
+2. **`dns-remote` (Encrypted Tunnel Resolver):** Configured with `"tag": "dns-remote"`, `"address": "tcp://1.1.1.1"`, and `"detour": outboundTag` (with `"final": "dns-remote"`). All user and client DNS queries originating from the TUN interface are routed strictly through the encrypted proxy tunnel.
+
+#### Strict TUN DNS Hijack & Leak Prevention
+To eliminate DNS leakage across the device:
+1. **TUN Inbound Hardening:** The TUN inbound descriptor sets `"auto_route": true` and `"strict_route": true`. `strict_route` forces the Android kernel routing tables to drop any traffic attempting to bypass the virtual interface.
+2. **Port-53 Hijacking:** The route rules include `{"protocol": "dns", "action": "hijack-dns"}`. All UDP/TCP DNS queries on port 53 are captured into sing-box's internal DNS router, guaranteeing that third-party apps or hardcoded DNS addresses (e.g. `8.8.8.8`) cannot leak outside the encrypted VPN tunnel.
+
+#### Bounded Startup Timeout
+In `BrickVpnService.kt`, the tunnel initialization call `engine.start(pfd.fd, configJson)` is wrapped in a coroutine `withTimeout(15_000L)`. If a hostile network silently blackholes handshake packets without resetting the TCP connection, the startup sequence will abort after 15 seconds and transition cleanly to `VpnState.Error`, allowing `AutoReconnectNotifier` to initiate backoff rather than leaving the app hanging in `Starting` forever.
+
+#### RFC 6066 IP-Literal SNI Hardening (`SingBoxOutboundSerializer`)
+Per RFC 6066 Section 3, literal IPv4 and IPv6 addresses are not valid values for the TLS Server Name Indication (SNI) `HostName` extension. In legacy prototypes, setting `server_name` to a raw IP literal (e.g. `203.0.113.5` or `[2001:db8::1]`) caused libbox and the remote TLS server to reject the handshake.
+In `packages/config_parser/lib/src/serializers/singbox_serializer.dart`, `SingBoxOutboundSerializer` enforces RFC 6066 compliance:
+- Valid domain SNIs (e.g. `cdn.example.com`) are preserved in `tls.server_name`, even when the proxy server is an IP address.
+- If `tls.serverName` is empty, null, or a raw IPv4/IPv6 literal (including bracketed IPv6 literals like `[::1]`), `server_name` is omitted entirely from the serialized JSON.
+- Any IP-literal `server_name` values in `extraParams` are sanitized and omitted prior to emitting the `tls` block.
+
+### 9.4 P7-T4 — Foreground Service Resilience (Process Death, Doze, Battery Optimization)
+
+#### Manifest & Runtime Lifecycle Hardening
+Brick VPN implements foreground service resilience adhering to Android 14+ (API 34) platform requirements and Linux kernel process management:
+1. **Manifest Declarations:**
+   - Declares `android.permission.FOREGROUND_SERVICE` and `android.permission.FOREGROUND_SERVICE_SPECIAL_USE` with subtype property `android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE = "vpn"` in both `packages/vpn_engine_android` and `apps/mobile`.
+   - Declares `android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` for battery exemption prompting.
+   - `BrickVpnService` is declared with `android:foregroundServiceType="specialUse"` and `android:exported="false"`.
+2. **Service Restart Resilience (`START_STICKY`):**
+   - In `BrickVpnService.kt`, `onStartCommand` returns `START_STICKY` for `ACTION_START` and `ACTION_LOCKDOWN`, and `START_NOT_STICKY` for explicit user stop (`ACTION_STOP`).
+   - If the Android low-memory killer (LMK) terminates the service process under extreme system memory pressure, the OS automatically recreates the service via a null-intent `onStartCommand` invocation.
+   - Null-intent handling: If `isLockdownEnabled` is active, the service immediately re-establishes the fail-closed lockdown blackhole TUN (`0.0.0.0/0`, `::/0`) to guarantee zero leak gap. If the state machine is `Idle` or `Stopped`, the service invokes `stopSelf()` with `START_NOT_STICKY` to avoid leaked ghost processes.
+3. **OS-Initiated Permission Revocation (`onRevoke`):**
+   - When the user revokes VPN authorization in Android Settings or another VPN app is started, `onRevoke()` is triggered by the framework.
+   - `onRevoke()` resets `isLockdownEnabled = false`, transitions `VpnStateMachine` via `onRevoke()`, stops the engine, closes the TUN descriptor on `cleanupScope`, and calls `stopSelf()`.
+4. **Lockdown Survival Across Lifecycles (`P7-T1..P7-T3` Remediation D2):**
+   - `onDestroy()` no longer wipes `isLockdownEnabled`. If the tunnel drops or encounters an error while lockdown is active, `BrickVpnService` remains running and engages `establishLockdownTun()`.
+   - When Flutter dispatches `setLockdownBlocking(true)` while `current == null`, `BrickVpnService` is launched with `ACTION_LOCKDOWN` using `startForegroundService()`.
+
+#### Battery Optimization Exemption Flow (`BatteryOptimizationService`)
+Aggressive OEM battery managers frequently freeze or kill background network sockets during prolonged standby. Brick VPN provides guidance and direct OS integration:
+1. **Platform Channel (`dev.brickvpn.harness/battery_optimization`):**
+   - `isIgnoringBatteryOptimizations`: Queries `PowerManager.isIgnoringBatteryOptimizations(packageName)`.
+   - `requestIgnoreBatteryOptimizations`: Dispatches `Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` with intent data `package:$packageName`. If the system dialog is blocked or unsupported, gracefully falls back to `Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS`.
+2. **Reactive UI (`SettingsScreen`):**
+   - Integrates `settings_battery_optimization_tile` into `SettingsScreen`.
+   - When restricted (`isIgnoring == false`), displays subtitle `"Optimized — tap to exclude from battery limits"`.
+   - Tapping invokes `requestExemption()`, opening the system prompt; upon exemption, updates subtitle to `"Unrestricted (recommended for stable VPN)"`.
+
+#### State Reconciliation on Process Kill & App Resume (Zero Stale State)
+1. **Cold Boot Synchronization:**
+   - In `AppBootstrap.init()`, reading `connectionStateProvider` queries native `VpnEngine.getStatus()` truth before the UI mounts, ensuring cold starts never display a stale `"Connected"` state.
+2. **App Resume Probing (`AppLifecycleObserver`):**
+   - `connectionStateProvider` mounts an `AppLifecycleListener`.
+   - Whenever the Flutter app returns to the foreground (`AppLifecycleState.resumed`), `onResume()` queries `engine.getStatus()`.
+   - If the OS killed the native service while backgrounded, `engine.getStatus()` returns `Disconnected()`. `connectionStateProvider` immediately emits `Disconnected()`, resetting `sessionDurationProvider` to `00:00:00` and updating `HomeScreen` and `SessionInfoPanel` immediately.
+
+#### ADB Verification Methodology
+1. **Simulating Doze Mode:**
+   ```bash
+   # Unplug battery simulation and force deep Doze
+   adb shell dumpsys battery unplug
+   adb shell dumpsys deviceidle force-idle
+   # Verify device state is IDLE
+   adb shell dumpsys deviceidle get deep
+   # Step through maintenance windows
+   adb shell dumpsys deviceidle step
+   # Reset battery simulation
+   adb shell dumpsys battery reset
+   ```
+2. **Simulating Low-Memory Process Kill:**
+   ```bash
+   # Kill the app process while VPN is active in background
+   adb shell am kill dev.brickvpn.mobile
+   # Verify foreground service remains active in dumpsys
+   adb shell dumpsys activity services BrickVpnService
+   ```
+
+#### Documented Limitations & OEM Battery Manager Quirks
+1. **Accepted Limitation — Manual Force Stop:**
+   - If the user manually navigates to Android App Info and taps "Force Stop", the Linux kernel sends `SIGKILL` to all app processes and places the package into a stopped state (`FLAG_STOPPED`). The OS intentionally does not restart `START_STICKY` services until the user manually relaunches the app. This is an explicit, intentional OS security invariant that no app can or should circumvent.
+2. **Documented OEM Background Battery Manager Quirks:**
+   - **Xiaomi (MIUI / HyperOS):** Imposes an aggressive secondary process killer ("MIUI Battery Saver") and requires manual authorization in "Autostart" settings to permit background network operations. Documented for user manual adjustment.
+   - **Samsung (OneUI):** Places background apps into "Sleeping apps" or "Deep sleeping apps" if not exempted via "Never sleeping apps" in Device Care settings.
+   - **Huawei (EMUI / HarmonyOS):** Custom "App Launch" manager overrides standard Android battery settings; users must manually set App Launch to "Manage manually" (Auto-launch, Secondary launch, Run in background).
+   - **OnePlus / OPPO (ColorOS / OxygenOS):** Aggressive memory cleaner kills background services during screen-off sleep cycles unless "Allow background activity" and "Lock app in Recents" are enabled.
+
+### 9.5 P7-T5 — Chaos Test Suite & Legacy Failure Mode Matrix Architecture
+
+#### Purpose & Architectural Reckoning
+The legacy prototype failed in production due to unchecked concurrency races, optimistic UI assumptions, blocking calls on the main thread, fire-and-forget error swallowing, and uncoordinated OS lifecycle events. Phase 7 Task 5 establishes an automated regression test harness in `apps/mobile/test/legacy_chaos_regression_suite_test.dart` and a durable reference checklist in `AI_ROLES/LEGACY_CHAOS_REGRESSION_CHECKLIST.md` verifying the elimination of all twelve documented legacy collapse modes against the integrated Flutter application and native engine.
+
+#### Core Architectural Invariants Verified
+1. **Invariant 1 — Stream-Driven Truth (Failure Mode 2):** Command acceptance (`VpnCommandAccepted`) represents RPC acknowledgment only; the UI never infers connection state from command futures. State remains `Connecting` until native TUN events emit `Connected`.
+2. **Invariant 2 — Independent Failure Domains (Failure Mode 1):** Telemetry stream errors (`trafficStats`) never perturb or tear down the active VPN tunnel (`connectionStateProvider`). The UI presents `Traffic data unavailable` and resumes cleanly upon receipt of fresh metrics.
+3. **DNS Bootstrap Deadlock Prevention (Failure Mode 3):** Outbound serializers emit 0 remote `rule_set` dependencies; native routing delegates outbound endpoint resolution to `dns-direct` via `direct-out` while tunneling user traffic through `dns-remote`. Stalled startups abort with `PlatformError` within 15 seconds.
+4. **Non-Blocking Lifecycle & Stop Watchdogs (Failure Mode 4):** Disconnect intents dispatch asynchronously without blocking the UI thread. A 5000ms watchdog forces `stopSelf()` teardown if native core termination stalls.
+5. **Deterministic Error Propagation (Failure Mode 5):** Native daemon thread errors surface through `VpnStateMachine` to Pigeon as structured `Error(PlatformError(detail))` and are rendered to users via floating SnackBars.
+6. **Repeatable Session Initialization (Failure Mode 6):** All engine components, controllers, and singleton registries cleanly reset state upon `close()`, supporting unlimited back-to-back connection cycles.
+7. **IPC Resiliency & Controller Guard Recovery (Failure Mode 7):** IPC failures returning `VpnCommandFailed` or throwing `PlatformException` always unlock the in-flight command guard (`_busy = false` in `finally`), preventing permanent UI lockup.
+8. **Intent-Driven Teardown & Kill Switch Coordination (Failure Mode 8):** Service stop is coordinated via `ACTION_STOP` intent and `stopSelf()`. `KillSwitchNotifier` differentiates deliberate user stop (`KillSwitchInactive`) from unexpected tunnel drop (`KillSwitchBlocking`).
+9. **Monotonic Teardown Protection (Failure Mode 9):** Toggling into `Disconnecting` state disables connect buttons (`onPressed: null`), and late-arriving traffic packets are discarded without reverting state to `Connected`.
+10. **Session Boundary Isolation (Failure Mode 10):** Riverpod auto-dispose and explicit session cancellation guarantees that duration timers and background coroutines from prior sessions never leak into subsequent sessions.
+11. **Re-Entrancy Serialization & Busy Guard (Failure Mode 11):** Concurrent stop/start calls are serialized or safely rejected with `VpnCommandRejectedBusy`, eliminating thread deadlocks.
+12. **TUN Descriptor Lifecycle Safety (Failure Mode 12):** Cancellation during `Connecting` aborts cleanly without leaking native file descriptors or leaving orphaned active session tokens.
+
+### 9.6 P7-T6 — VPN State Persistence Across App Process Restart Architecture
+
+#### Purpose & Problem Statement
+When the Android OS evicts the Flutter UI process due to low memory (LMK / doze / user swipe in recents), the native foreground `BrickVpnService` continues running in its own lifecycle. Upon subsequent app launch, a naive architecture would default to `Disconnected`, flashing false disconnected states, resetting session stats, confusing the user, or even dispatching a duplicate `start()` command that tears down or restarts the live tunnel. P7-T6 establishes seamless state persistence and re-attachment across UI process death.
+
+#### Architectural Components & Re-Attachment Flow
+1. **Startup Pre-Warm & Probing Sequence:**
+   - In `AppBootstrap.init()`, before the UI widget hierarchy mounts, the native engine is probed via `engine.getStatus()` with a 500ms safety timeout fallback to `Disconnected()`.
+   - The probed status is provided to Riverpod's root container as `initialConnectionStateProvider.overrideWithValue(initialStatus)`.
+   - When `connectionStateProvider` initializes, it immediately adopts the pre-warmed snapshot, preventing visual flickers.
+2. **Neutral Loading State (Zero "Disconnected" Flash):**
+   - In `ConnectionStateBadge` and `SessionInfoPanel`, when `connectionStateProvider` is in `AsyncLoading` (and neither stream data nor pre-warmed state is resolved), the UI renders a neutral localized `'connection.state_checking'.tr()` ("Checking..."), explicitly avoiding any optimistic or false "Disconnected" badge.
+   - If pre-warmed state (`Connected`) is already present, the badge and panel render `Connected` on frame 0 with zero loading or disconnected flash.
+3. **Active Session Re-Attachment:**
+   - Upon observing `Connected`, `AutoReconnectNotifier` automatically re-arms by setting `_userSessionActive = true` and capturing `_activeProfile` from `activeServerProvider`.
+   - `KillSwitchNotifier` detects the active tunnel on `build()` or `ref.listen` and transitions immediately to `KillSwitchArmed()`.
+   - `ConnectionController` syncs `_activeConnectingServerId` with the active server.
+   - `sessionDurationProvider` automatically resumes duration tracking for the active session.
+   - `TrafficStats` and log events continue streaming into `LogManager` and telemetry providers.
+4. **Duplicate-Session Guard:**
+   - If user or UI triggers `controller.connect(profile)` for the already-connected server while in `Connected` or `Connecting`, `ConnectionController` returns `const VpnCommandRejectedBusy()` without dispatching redundant start or stop commands to native `VpnEngine`.
+   - If a different server is selected, `ConnectionController` cleanly tears down the active tunnel before starting the new profile.
+
+### 9.7 P7-T7 — Phase 7 End-to-End Combined Resilience Architecture & Phase 8 Handoff
+
+#### Purpose & Scope
+Phase 7 closeout reconciles all individual stability and lifecycle mechanisms into an unbroken, integrated real-world resilience architecture. Rather than asserting components in isolation, `P7-T7` verifies the synchronized interaction of auto-reconnect backoff, fail-closed kill switch lockdown, DNS bootstrap isolation, foreground service persistence, and UI process death re-attachment under continuous multi-stage stress (`apps/mobile/test/phase7_e2e_resilience_journey_test.dart`).
+
+```
+                    [ User Connect: Tokyo Node (Domain/SNI) ]
+                                      │
+                                      ▼
+                        [ STAGE A: Active Connected ]
+                     ├── KillSwitch: Armed (Native Open)
+                     ├── AutoReconnect: Idle (Session Active)
+                     ├── Live Duration Timer & Delta Throughput
+                     └── Structured Live Engine Logs Streaming
+                                      │
+                         (Wi-Fi -> Cellular Handoff)
+                                      ▼
+                      [ STAGE B: Network Flap Recovery ]
+                     ├── 350ms Flap Coalescing Debounce
+                     ├── Engine Stop Dispatched
+                     ├── KillSwitch: BLOCKING (Fail-Closed)
+                     ├── AutoReconnect: Backoff (Attempt 1, 1s)
+                     └── Reconnect Succeeded -> KillSwitch: Armed
+                                      │
+                      (Airplane Mode / Network Drop)
+                                      ▼
+                     [ STAGE C: Outage Hold & Recovery ]
+                     ├── ConnectivityResult.none
+                     ├── AutoReconnect: WaitingForNetwork
+                     ├── KillSwitch: BLOCKING (Fail-Closed)
+                     ├── Outage Hold: 0 Futile Connection Calls
+                     └── Network Restored -> 1s Backoff -> Reconnected
+                                      │
+                      (UI Process Killed by System LMK)
+                                      ▼
+                   [ STAGE D: UI Process Death & Relaunch ]
+                     ├── Native BrickVpnService Continues in Background
+                     ├── AppBootstrap Pre-Warm (Zero Disconnected Flash)
+                     ├── Active Session Re-Attached (Stats, Logs, Timer)
+                     ├── Duplicate Connect Rejected with VpnCommandRejectedBusy
+                     └── Clean Server Switch to Osaka Node (Stop -> Start)
+                                      │
+                         (Repeated Connection Failures)
+                                      ▼
+                    [ STAGE E: Retry Exhaustion & Unblock ]
+                     ├── Exponential Retries: 1s, 2s, 4s, 8s, 16s (Cap: 5)
+                     ├── AutoReconnect: Exhausted (TotalAttempts: 5)
+                     ├── KillSwitch: BLOCKING (Continuous Leak Protection)
+                     └── User Taps "Disconnect & Unblock" -> Clean Baseline
+```
+
+#### Multi-Stage Stress Flow Guarantee
+1. **Stage A (Tokyo Node Connect & Plumbing Verification):**
+   Initiates connection to a domain endpoint with TLS/SNI (`tokyo.example.com`). Asserts full activation: `Connected` state, `KillSwitchArmed`, duration timer ticking at 1 Hz, real-time byte counters and transfer speeds in `ThroughputReadout`, and structured log capture in `structuredLogEntriesProvider`.
+2. **Stage B (Interface Handoff & Auto-Reconnect Recovery):**
+   Simulates abrupt Wi-Fi to cellular transition. Network debounce (350ms) suppresses transient flapping, cleanly halts stale tunnel, and transitions `KillSwitch` into fail-closed `KillSwitchBlocking` (engaging OS/platform bridge lockdown) while `AutoReconnectNotifier` executes exponential backoff (attempt 1: 1s delay) before successfully re-establishing tunnel and disengaging lockdown.
+3. **Stage C (Airplane Mode Outage Hold & Restoration):**
+   Simulates complete network loss (`ConnectivityResult.none`) paired with engine drop. The system transitions into `AutoReconnectWaitingForNetwork` while holding `KillSwitchBlocking`. Bounded hold guarantees zero futile network calls during extended outages. Restoration of connectivity automatically resumes backoff and restores active tunnel and `KillSwitchArmed`.
+4. **Stage D (Process Death Re-Attachment & Server Switching):**
+   Simulates OS eviction of the Flutter engine (`pumpWidget(SizedBox.shrink())`) while native `BrickVpnService` remains connected in the background. On relaunch, `AppBootstrap.init()` pre-warms state from native engine status, eliminating visual flicker ("Checking...", never false "Disconnected"). Duplicate `connect()` for active server is safely rejected busy (`VpnCommandRejectedBusy`). Switching to Osaka Node cleanly executes monotonic teardown of Tokyo Node before initiating Osaka Node.
+5. **Stage E (5-Attempt Retry Exhaustion & Clean Recovery):**
+   Simulates unrecoverable remote server failure on Osaka Node. `AutoReconnectNotifier` attempts exponential retry ceiling (1s, 2s, 4s, 8s, 16s; max 5 attempts), transitioning to `AutoReconnectExhausted(totalAttempts: 5)`. The kill switch remains fail-closed in `KillSwitchBlocking` to prevent IP leakage. Tapping the warning banner's "Disconnect & Unblock" action cleanly disengages lockdown, resets auto-reconnect to `AutoReconnectIdle`, and restores clean `Disconnected` baseline.
+
+#### Phase 8 Handoff Contract
+Phase 7 completes the stabilization and hardening of the core client lifecycle, resolving all 12 historical prototype failure modes documented in `AI_ROLES/LEGACY_CHAOS_REGRESSION_CHECKLIST.md`.
+
+What Phase 8 (Security Hardening) inherits from Phase 7:
+- **Authoritative Lifecycle Truth (Invariant 1):** Phase 8 components (`P8-T1` secure storage, `P8-T2` log redaction) can rely unconditionally on `connectionStateProvider` and native engine status without building redundant lifecycle state trackers.
+- **Hermetic Stream Boundaries (Invariant 2):** Live logging streams and traffic stats streams are completely decoupled from tunnel control. `LogManager` and `P8-T2` log redaction transformers can process log lines without risk of impacting VPN connection stability.
+- **Stable Storage Contract:** `ServerProfileRepository` and `AppPreferencesRepository` provide unified interfaces for `P8-T1` to introduce AES-GCM / EncryptedSharedPreferences encryption for sensitive configuration fields (UUIDs, passwords, private keys, SNI headers) transparently.
+- **Carried-Forward Open Item — Log Redaction:** Throughout Phases 6 and 7, live engine logs contain unredacted diagnostic strings. Field-level redaction and regex scrubbing are strictly designated as the primary objective of **Phase 8 (P8-T2 — Log Redaction)**.
+
+---
+
+## 10. Phase 8 — Security Hardening Architecture
+
+### 10.1 P8-T1 — Secure Storage for Sensitive Server Fields Architecture
+
+#### Purpose & Threat Model
+In Phases 5–7, `FileServerProfileRepository` persisted `ServerProfile` and `SubscriptionMetadata` objects in plaintext JSON (`schema_version: 1`). While acceptable during early rapid prototyping, persisting raw credentials (UUIDs, private keys, passwords, obfuscation keys, subscription tokens) on non-volatile storage leaves sensitive material exposed to unprivileged file inspection, backup extraction, and forensic recovery.
+
+`P8-T1` closes this gap by implementing **field-level authenticated encryption at rest** backed by hardware-protected Android Keystore AES-256-GCM, while maintaining plaintext metadata for sub-millisecond query and UI list rendering without decryption overhead.
+
+#### Component Topology & Data Flow
+
+```
+[ UI / Presentation Layer ]
+       │
+       ▼
+[ FileServerProfileRepository ] ──(schema_version: 2)──► [ server_profiles.json ]
+       │                                                         │
+       ├── Plaintext Metadata (id, name, protocol, server, port) ├── Plaintext
+       │                                                         │
+       └── Sensitive Fields (uuid, password, privateKey, etc.)   └── "enc:v1:<base64(IV + Ciphertext + Tag)>"
+                   │
+                   ▼
+       [ SensitiveFieldCipher ]
+       ├── AndroidKeystoreSensitiveFieldCipher ──(MethodChannel)──► AndroidKeyStore (AES-256-GCM)
+       └── LocalAuthenticatedCipher / InMemory (HMAC-SHA256 Encrypt-then-MAC fallback)
+```
+
+#### Protocol Field Classification Matrix
+
+| Protocol | Non-Sensitive Plaintext Fields | Sensitive Encrypted Fields (`enc:v1:...`) |
+|---|---|---|
+| **VLESS** | `id`, `name`, `protocol`, `server`, `server_port`, `flow`, `transport` | `uuid`, `tls.reality.public_key`, `tls.reality.short_id` |
+| **VMess** | `id`, `name`, `protocol`, `server`, `server_port`, `alterId`, `security` | `uuid` |
+| **Trojan** | `id`, `name`, `protocol`, `server`, `server_port`, `tls` | `password` |
+| **Shadowsocks** | `id`, `name`, `protocol`, `server`, `server_port`, `method` | `password` |
+| **Hysteria2** | `id`, `name`, `protocol`, `server`, `server_port`, `up_mbps`, `down_mbps`, `ports` | `password`, `obfs.password` |
+| **TUIC** | `id`, `name`, `protocol`, `server`, `server_port`, `congestion_control` | `uuid`, `password` |
+| **WireGuard** | `id`, `name`, `protocol`, `server`, `server_port`, `local_address`, `peer_public_key` | `private_key`, `pre_shared_key` |
+| **AmneziaWG** | `id`, `name`, `protocol`, `server`, `server_port`, `jc`, `jmin`, `jmax`, `s1`, `s2`, `h1-h4` | `private_key`, `pre_shared_key` |
+| **Subscription** | `id`, `name`, `last_refreshed_at`, `associated_server_ids`, `user_info` | `url` (contains secret query tokens & UUIDs) |
+
+#### Integrity & Migration Guarantees
+1. **Zero Plaintext on Disk:** Every credential string across all 8 protocols and subscription URLs is encrypted before the atomic file rename.
+2. **Deterministic Tamper Rejection (Fail-Closed):** Any single-bit modification of an `enc:v1:...` payload causes GCM/HMAC authentication to fail. Decryption throws `FormatException`, which `FileServerProfileRepository` catches safely, surfacing the compromised entry as `SavedServerBroken` without crashing or leaking secrets.
+3. **Transparent v1 -> v2 Migration:** If `schema_version: 1` or plaintext records are loaded, the repository parses them, automatically writes back `schema_version: 2` with encrypted fields, and logs `"Migrated plaintext server profiles to encrypted storage v2"`.
+
+### 10.2 Systematic Log Redaction Architecture (P8-T2)
+
+#### Purpose & Threat Model
+In Phases 6 and 7, native engine log events and diagnostic traces were ingested and displayed directly. Under sing-box and native Android VPN operation, log messages can inadvertently echo raw credentials (passwords, UUIDs, private keys, subscription tokens, obfuscation passwords), full connection URIs (carrying embedded credentials and server endpoints), and external peer IP addresses. Sharing or exporting these logs (e.g. for user troubleshooting or diagnostic support) creates severe confidentiality risks and de-anonymization vulnerabilities.
+
+`P8-T2` establishes an **always-on, zero-bypass systematic redaction architecture** that sanitizes all incoming log lines at the earliest possible ingestion point before entries are stored in memory, rendered on screen, copied to the clipboard, or written to disk.
+
+#### Component Topology & Ingestion Chokepoint
+
+```
+[ Native VpnEngine (logEvents Stream) ] ──► [ LogManager._handleLogEvent ]
+                                                    │
+                                                    ▼
+                                      [ LogRedactor.redactRawLine ]
+                                      ├── Known Profile Secrets (>= 4 chars) ──► "[REDACTED]"
+                                      ├── Protocol & HTTP URIs (<scheme>://) ──► "<scheme>://[REDACTED]"
+                                      ├── JSON Sensitive Keys ("password", etc) ──► '"key":"[REDACTED]"'
+                                      ├── Free-Text Key-Value Patterns (key=val) ──► 'key=[REDACTED]'
+                                      ├── RFC 4122 UUID Patterns ──► "[REDACTED_UUID]"
+                                      └── External IPv4 / IPv6 Addresses ──► "[REDACTED_IP]"
+                                                    │
+                                                    ▼
+                                            [ LogEntry.fromRaw ]
+                                                    │
+                      ┌─────────────────────────────┼─────────────────────────────┐
+                      ▼                             ▼                             ▼
+           [ Surface 1: Viewer ]         [ Surface 2: Clipboard ]        [ Surface 3: Temp Disk ]
+       Bounded Ring Buffer (ListQueue)    Sanitized Copy Export          Single Rotating Log File
+       (structuredLogEntriesProvider)   (logs_privacy_warning_dialog)    (brick_vpn_live.log)
+```
+
+#### Multi-Tiered Redaction Rules
+1. **Dynamic Known Secrets:** Extracted at runtime from saved and active server profiles (`LogRedactor.extractSecretsFromProfile`) and subscriptions (`LogRedactor.extractSecretsFromSubscription`). Every secret string >= 4 characters (passwords, private keys, pre-shared keys, Reality public keys, short IDs, server hostnames/domains, subscription query tokens) is scrubbed to `[REDACTED]`.
+2. **Share URIs & URLs:** Matches known VPN protocols (`vless://`, `vmess://`, `trojan://`, `ss://`, `hysteria2://`, `hy2://`, `tuic://`, `wireguard://`, `wg://`) and web URIs (`http://`, `https://`). The entire sensitive authority and query string are replaced with `<scheme>://[REDACTED]`.
+3. **Structured JSON Sensitive Keys:** Scrubs keys matching `password`, `private_key`, `public_key`, `pre_shared_key`, `obfs_password`, `short_id`, `uuid`, `server`, `url`, `auth`, `token`, `secret`, `key`, `headers`, `authorization` to `"$key":"[REDACTED]"` (or `"[REDACTED_HOST]"` for `server`).
+4. **Free-Text Key-Value Patterns:** Matches common log assignment patterns (e.g. `password=...`, `token: ...`, `key = ...`) and scrubs values to `[REDACTED]`.
+5. **RFC 4122 UUID Patterns:** Matches 8-4-4-4-12 hex UUID formats and scrubs them to `[REDACTED_UUID]`.
+6. **External IP Sanitization with Diagnostic Address Preservation:** External IPv4 and IPv6 addresses are scrubbed to `[REDACTED_IP]`. However, essential local and diagnostic networking addresses are explicitly preserved intact:
+   - Loopback: `127.0.0.1`, `::1`, `localhost`
+   - Unspecified: `0.0.0.0`, `::`
+   - Standard Subnet Masks: `255.255.255.0`, `255.255.255.255`
+   - Brick VPN TUN Diagnostic Subnet: `10.111.222.0/24` (e.g. `10.111.222.1`)
+   - ISO 8601 Timestamps: Timestamps (e.g. `2026-11-07T00:00:00Z` or `12:00:00`) are protected from IPv6 false-positive matching.
+
+#### Invariant Guarantees
+1. **Chokepoint Ingestion Guarantee:** Redaction executes immediately in `LogManager._handleLogEvent` before any insertion into in-memory ring buffers or disk file sinks. By construction, raw unredacted text never exists in the Live Viewer ring buffer, the Clipboard Export buffer, or the temp log file.
+2. **Zero-Bypass / Always-On Design:** There is no configuration option, debug toggle, or user setting that disables log redaction. Security by default is absolute per `SECURITY.md`.
+3. **Privacy Warning Dialog Confirmation:** Exporting logs to the system clipboard prompts a modal confirmation dialog (`logs_privacy_warning_dialog`) that reiterates that while credentials, URLs, and external IPs are automatically stripped, users should still exercise discretion before sharing logs publicly.
+
+#### Architectural Limitations
+- **Regex & Heuristic Boundary:** Redaction relies on deterministic regex matching and registration of known profile secrets. Unstructured free text containing high-entropy tokens or unconventional credential delimiters not matching the standard key patterns and not present in active profiles could theoretically bypass heuristic scrubbing. Registering profile and subscription secrets into `LogManager._knownSecrets` provides deterministic defense-in-depth against this limitation.
+
+
 

@@ -55,6 +55,13 @@
     "lang_de": "Deutsch",
     "live_logs": "Live Logs",
     "live_logs_subtitle": "Real-time diagnostic logs",
+    "auto_reconnect": "Auto-Reconnect",
+    "auto_reconnect_subtitle": "Automatically reconnect on network changes",
+    "kill_switch": "Kill Switch",
+    "kill_switch_subtitle": "Block internet traffic if VPN drops unexpectedly",
+    "battery_optimization": "Battery Optimization",
+    "battery_optimization_optimized": "Optimized — tap to exclude from battery limits",
+    "battery_optimization_unrestricted": "Unrestricted (recommended for stable VPN)",
     "no_logs": "No log entries yet"
   },
   "logs": {
@@ -63,7 +70,8 @@
     "clear_tooltip": "Clear logs",
     "copy_tooltip": "Copy logs",
     "copy_warning_title": "Sensitive Information Warning",
-    "copy_warning_body": "Logs may contain server addresses, ports, or other connection details. Please review and remove any sensitive information before sharing publicly.",
+    "copy_warning_body": "Automated redaction removes known credentials, keys, and server addresses. However, free-text engine logs may still contain diagnostic network details. Please review before sharing publicly.",
+    "privacy_warning_body": "Automated redaction removes known credentials, keys, and server addresses. However, free-text engine logs may still contain diagnostic network details. Please review before sharing publicly.",
     "copy_cancel": "Cancel",
     "copy_confirm": "Copy Logs",
     "copied_to_clipboard": "Logs copied to clipboard"
@@ -86,6 +94,12 @@
     "state_connected": "Connected",
     "state_disconnecting": "Disconnecting",
     "state_error": "Connection error",
+    "state_checking": "Checking...",
+    "state_reconnecting": "Reconnecting",
+    "reconnecting_backoff": "Reconnecting in {seconds}s (attempt {attempt}/{max})...",
+    "reconnecting_waiting_network": "Waiting for network connectivity...",
+    "reconnecting_in_flight": "Reconnecting (attempt {attempt}/{max})...",
+    "reconnecting_exhausted": "Auto-reconnect failed after {max} attempts",
     "traffic": "{tx} up / {rx} down",
     "traffic_speed": "Speed: ↑ {tx_speed} · ↓ {rx_speed}",
     "traffic_none": "No traffic data",
@@ -93,7 +107,10 @@
     "session_duration": "Duration: {duration}",
     "session_server": "Server: {name} ({protocol})",
     "session_server_none": "Server: None selected",
-    "session_status": "Tunnel: {status}"
+    "session_status": "Tunnel: {status}",
+    "kill_switch_blocking_title": "Kill Switch Active — Traffic Blocked",
+    "kill_switch_blocking_body": "Internet traffic outside the VPN is blocked to prevent leaks while the tunnel is disconnected.",
+    "kill_switch_unblock": "Disconnect & Unblock"
   },
   "error": {
     "generic": "An unexpected error occurred",

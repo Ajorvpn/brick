@@ -6,7 +6,10 @@ import 'dart:io';
 
 import 'package:mobile/core/logging/log_buffer.dart';
 import 'package:mobile/core/logging/log_entry.dart';
+import 'package:mobile/core/logging/log_redactor.dart';
 import 'package:mobile/core/providers/vpn_engine_provider.dart';
+import 'package:mobile/features/connection/domain/entities/saved_server.dart';
+import 'package:mobile/features/connection/presentation/providers/saved_servers_provider.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
@@ -33,6 +36,7 @@ class LogManager extends _$LogManager {
 
   final ListQueue<String> _buffer = ListQueue<String>(maxBufferSize);
   final LogBuffer _structuredBuffer = LogBuffer();
+  final Set<String> _knownSecrets = <String>{};
   IOSink? _sink;
   StreamSubscription<String>? _subscription;
   bool _isBatchScheduled = false;
@@ -45,6 +49,11 @@ class LogManager extends _$LogManager {
 
   /// Direct queue of structured entries.
   ListQueue<LogEntry> get structuredQueue => _structuredBuffer.toQueue();
+
+  /// Registers additional secrets to scrub from all incoming logs.
+  void registerKnownSecrets(Iterable<String> secrets) {
+    _knownSecrets.addAll(secrets.where((s) => s.trim().length >= 4));
+  }
 
   @override
   ListQueue<String> build() {
@@ -59,6 +68,19 @@ class LogManager extends _$LogManager {
       },
       cancelOnError: false,
     );
+
+    ref.listen<AsyncValue<List<SavedServer>>>(savedServersProvider, (_, next) {
+      final servers = next.asData?.value;
+      if (servers != null) {
+        for (final server in servers) {
+          if (server is SavedServerProfile) {
+            registerKnownSecrets(
+              LogRedactor.extractSecretsFromProfile(server.profile),
+            );
+          }
+        }
+      }
+    }, fireImmediately: true);
 
     unawaited(_initSink());
 
@@ -110,19 +132,25 @@ class LogManager extends _$LogManager {
   }
 
   void _handleLogEvent(String log) {
+    // Immediate ingestion-level redaction across all surfaces
+    final safeLine = LogRedactor.redactRawLine(
+      log,
+      knownSecrets: _knownSecrets,
+    );
+    final entry = LogEntry.fromRaw(safeLine, knownSecrets: _knownSecrets);
+
     // 1. Structured parsing and insertion into bounded ring buffer
-    final entry = LogEntry.parseEngineLine(log);
     _structuredBuffer.add(entry);
 
     // 2. String buffer with FIFO eviction (O(1))
     if (_buffer.length >= maxBufferSize) {
       _buffer.removeFirst();
     }
-    _buffer.addLast(log);
+    _buffer.addLast(safeLine);
 
     // 3. Asynchronous file stream
     try {
-      _sink?.writeln(log);
+      _sink?.writeln(safeLine);
     } on Object catch (_) {}
 
     // 4. Burst coalescing via microtask
@@ -179,6 +207,36 @@ class LogManager extends _$LogManager {
     } finally {
       completer.complete();
     }
+  }
+
+  /// Ensures all pending sink initialization and writes have flushed to disk.
+  Future<void> flushFile() async {
+    final op = _pendingSinkOp;
+    if (op != null) {
+      await op;
+    }
+    try {
+      await _sink?.flush();
+    } on Object catch (_) {}
+  }
+
+  /// Records a non-sensitive diagnostic log line (e.g. lifecycle,
+  /// network change, or auto-reconnect events).
+  ///
+  /// Safe to call from controllers and providers; automatically stamped with
+  /// UTC timestamp and INFO level, adhering to SECURITY.md Section 4 (Zero
+  /// Secrets).
+  void recordDiagnostic(String message) {
+    if (_disposed) return;
+    final now = DateTime.now().toUtc();
+    final y = now.year.toString().padLeft(4, '0');
+    final m = now.month.toString().padLeft(2, '0');
+    final d = now.day.toString().padLeft(2, '0');
+    final hh = now.hour.toString().padLeft(2, '0');
+    final mm = now.minute.toString().padLeft(2, '0');
+    final ss = now.second.toString().padLeft(2, '0');
+    final timeStr = '$y-$m-$d $hh:$mm:$ss';
+    _handleLogEvent('$timeStr INFO $message');
   }
 }
 

@@ -6,6 +6,7 @@ import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:mobile/core/platform/battery_optimization_service.dart';
 import 'package:mobile/core/providers/app_preferences_provider.dart';
 
 /// Settings screen for configuring non-secret application preferences.
@@ -46,6 +47,54 @@ class SettingsScreen extends ConsumerWidget {
             title: Text('settings.theme'.tr()),
             subtitle: Text(themeSubtitle),
             onTap: () => _showThemeDialog(context, ref),
+          ),
+          const Divider(height: 1),
+          SwitchListTile(
+            secondary: const Icon(Icons.sync),
+            title: Text('settings.auto_reconnect'.tr()),
+            subtitle: Text('settings.auto_reconnect_subtitle'.tr()),
+            value: ref.watch(autoReconnectEnabledProvider),
+            onChanged: (value) {
+              unawaited(
+                ref
+                    .read(autoReconnectEnabledProvider.notifier)
+                    .setEnabled(enabled: value),
+              );
+            },
+          ),
+          const Divider(height: 1),
+          SwitchListTile(
+            key: const ValueKey<String>('settings_kill_switch_tile'),
+            secondary: const Icon(Icons.shield_outlined),
+            title: Text('settings.kill_switch'.tr()),
+            subtitle: Text('settings.kill_switch_subtitle'.tr()),
+            value: ref.watch(killSwitchEnabledProvider),
+            onChanged: (value) {
+              unawaited(
+                ref
+                    .read(killSwitchEnabledProvider.notifier)
+                    .setEnabled(enabled: value),
+              );
+            },
+          ),
+          const Divider(height: 1),
+          ListTile(
+            key: const ValueKey<String>('settings_battery_optimization_tile'),
+            leading: const Icon(Icons.battery_charging_full),
+            title: Text('settings.battery_optimization'.tr()),
+            subtitle: Text(
+              ref.watch(batteryOptimizationIgnoredProvider).value == true
+                  ? 'settings.battery_optimization_unrestricted'.tr()
+                  : 'settings.battery_optimization_optimized'.tr(),
+            ),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () {
+              unawaited(
+                ref
+                    .read(batteryOptimizationIgnoredProvider.notifier)
+                    .requestExemption(),
+              );
+            },
           ),
           const Divider(height: 1),
           ListTile(

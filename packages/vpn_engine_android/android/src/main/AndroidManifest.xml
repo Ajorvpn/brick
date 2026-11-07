@@ -25,6 +25,7 @@
     <!-- API 34+ only; harmless below that. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <!--
       LibboxBootstrap.ensureSetup initializes libbox idempotent process-wide

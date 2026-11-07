@@ -62,6 +62,34 @@ void main() {
       await repo.setActiveServerId('');
       expect(repo.getActiveServerId(), isNull);
     });
+
+    test(
+      'defaults autoReconnectEnabled to true and round-trips updates',
+      () async {
+        final repo = FakeAppPreferencesRepository();
+        expect(repo.isAutoReconnectEnabled(), isTrue);
+
+        await repo.setAutoReconnectEnabled(enabled: false);
+        expect(repo.isAutoReconnectEnabled(), isFalse);
+
+        await repo.setAutoReconnectEnabled(enabled: true);
+        expect(repo.isAutoReconnectEnabled(), isTrue);
+      },
+    );
+
+    test(
+      'defaults killSwitchEnabled to false and round-trips updates',
+      () async {
+        final repo = FakeAppPreferencesRepository();
+        expect(repo.isKillSwitchEnabled(), isFalse);
+
+        await repo.setKillSwitchEnabled(enabled: true);
+        expect(repo.isKillSwitchEnabled(), isTrue);
+
+        await repo.setKillSwitchEnabled(enabled: false);
+        expect(repo.isKillSwitchEnabled(), isFalse);
+      },
+    );
   });
 
   group('SharedPreferencesAppPreferencesRepository', () {
@@ -140,6 +168,52 @@ void main() {
         isFalse,
       );
     });
+
+    test(
+      'persists auto-reconnect preference and survives repository restart',
+      () async {
+        SharedPreferences.setMockInitialValues(<String, Object>{});
+        final prefs = await SharedPreferences.getInstance();
+        final repo1 = SharedPreferencesAppPreferencesRepository(prefs);
+
+        expect(repo1.isAutoReconnectEnabled(), isTrue);
+
+        await repo1.setAutoReconnectEnabled(enabled: false);
+        expect(repo1.isAutoReconnectEnabled(), isFalse);
+        expect(
+          prefs.getBool(
+            SharedPreferencesAppPreferencesRepository.keyAutoReconnectEnabled,
+          ),
+          isFalse,
+        );
+
+        final repo2 = SharedPreferencesAppPreferencesRepository(prefs);
+        expect(repo2.isAutoReconnectEnabled(), isFalse);
+      },
+    );
+
+    test(
+      'persists kill switch preference and survives repository restart',
+      () async {
+        SharedPreferences.setMockInitialValues(<String, Object>{});
+        final prefs = await SharedPreferences.getInstance();
+        final repo1 = SharedPreferencesAppPreferencesRepository(prefs);
+
+        expect(repo1.isKillSwitchEnabled(), isFalse);
+
+        await repo1.setKillSwitchEnabled(enabled: true);
+        expect(repo1.isKillSwitchEnabled(), isTrue);
+        expect(
+          prefs.getBool(
+            SharedPreferencesAppPreferencesRepository.keyKillSwitchEnabled,
+          ),
+          isTrue,
+        );
+
+        final repo2 = SharedPreferencesAppPreferencesRepository(prefs);
+        expect(repo2.isKillSwitchEnabled(), isTrue);
+      },
+    );
   });
 
   group('Riverpod Notifiers', () {
@@ -181,6 +255,48 @@ void main() {
       expect(container.read(localeProvider), equals(const Locale('de')));
       expect(fakeRepo.getLocale(), equals(const Locale('de')));
     });
+
+    test(
+      'autoReconnectEnabledProvider updates state and persists to repository',
+      () async {
+        final fakeRepo = FakeAppPreferencesRepository();
+        final container = ProviderContainer(
+          overrides: [
+            appPreferencesRepositoryProvider.overrideWithValue(fakeRepo),
+          ],
+        );
+        addTearDown(container.dispose);
+
+        expect(container.read(autoReconnectEnabledProvider), isTrue);
+
+        await container
+            .read(autoReconnectEnabledProvider.notifier)
+            .setEnabled(enabled: false);
+        expect(container.read(autoReconnectEnabledProvider), isFalse);
+        expect(fakeRepo.isAutoReconnectEnabled(), isFalse);
+      },
+    );
+
+    test(
+      'killSwitchEnabledProvider updates state and persists to repository',
+      () async {
+        final fakeRepo = FakeAppPreferencesRepository();
+        final container = ProviderContainer(
+          overrides: [
+            appPreferencesRepositoryProvider.overrideWithValue(fakeRepo),
+          ],
+        );
+        addTearDown(container.dispose);
+
+        expect(container.read(killSwitchEnabledProvider), isFalse);
+
+        await container
+            .read(killSwitchEnabledProvider.notifier)
+            .setEnabled(enabled: true);
+        expect(container.read(killSwitchEnabledProvider), isTrue);
+        expect(fakeRepo.isKillSwitchEnabled(), isTrue);
+      },
+    );
   });
 
   group('SettingsScreen preference toggles', () {
@@ -231,6 +347,66 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(fakeRepo.getLocale(), equals(const Locale('de')));
+    });
+
+    testWidgets('toggling Auto-Reconnect switch updates provider and repo', (
+      tester,
+    ) async {
+      final fakeRepo = FakeAppPreferencesRepository();
+      await pumpLocalizedApp(
+        tester,
+        localizedMaterialApp(home: const SettingsScreen()),
+        overrides: [
+          appPreferencesRepositoryProvider.overrideWithValue(fakeRepo),
+        ],
+      );
+
+      expect(find.text('Auto-Reconnect'), findsOneWidget);
+      final autoReconnectTile = find.widgetWithText(
+        SwitchListTile,
+        'Auto-Reconnect',
+      );
+      final switchFinder = find.descendant(
+        of: autoReconnectTile,
+        matching: find.byType(Switch),
+      );
+      expect(switchFinder, findsOneWidget);
+      expect(fakeRepo.isAutoReconnectEnabled(), isTrue);
+
+      await tester.tap(switchFinder);
+      await tester.pumpAndSettle();
+
+      expect(fakeRepo.isAutoReconnectEnabled(), isFalse);
+    });
+
+    testWidgets('toggling Kill Switch switch updates provider and repo', (
+      tester,
+    ) async {
+      final fakeRepo = FakeAppPreferencesRepository();
+      await pumpLocalizedApp(
+        tester,
+        localizedMaterialApp(home: const SettingsScreen()),
+        overrides: [
+          appPreferencesRepositoryProvider.overrideWithValue(fakeRepo),
+        ],
+      );
+
+      expect(find.text('Kill Switch'), findsOneWidget);
+      final killSwitchTile = find.byKey(
+        const ValueKey<String>('settings_kill_switch_tile'),
+      );
+      expect(killSwitchTile, findsOneWidget);
+      final switchFinder = find.descendant(
+        of: killSwitchTile,
+        matching: find.byType(Switch),
+      );
+      expect(switchFinder, findsOneWidget);
+      expect(fakeRepo.isKillSwitchEnabled(), isFalse);
+
+      await tester.tap(switchFinder);
+      await tester.pumpAndSettle();
+
+      expect(fakeRepo.isKillSwitchEnabled(), isTrue);
     });
   });
 }

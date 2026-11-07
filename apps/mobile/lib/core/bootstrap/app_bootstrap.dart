@@ -2,9 +2,11 @@
 
 import 'dart:io';
 
+import 'package:core_domain/core_domain.dart'
+    show ConnectionState, Disconnected;
 import 'package:core_vpn_engine/core_vpn_engine.dart';
 import 'package:easy_localization/easy_localization.dart';
-import 'package:flutter/widgets.dart';
+import 'package:flutter/widgets.dart' hide ConnectionState;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobile/core/data/repositories/app_preferences_repository.dart';
 import 'package:mobile/core/logging/app_logger.dart';
@@ -12,6 +14,7 @@ import 'package:mobile/core/providers/app_preferences_provider.dart';
 import 'package:mobile/core/providers/server_profile_repository_provider.dart';
 import 'package:mobile/core/providers/vpn_engine_provider.dart';
 import 'package:mobile/features/connection/domain/repositories/server_profile_repository.dart';
+import 'package:mobile/features/connection/presentation/providers/connection_controller_provider.dart';
 import 'package:mobile/features/connection/presentation/providers/connection_state_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vpn_engine_android/vpn_engine_android.dart';
@@ -107,29 +110,57 @@ class AppBootstrap {
     }
 
     // -------------------------------------------------------------------------
-    // Step 4: Assemble root Riverpod ProviderContainer.
+    // Step 4: Probe native engine status on startup to pre-warm initial state.
+    // -------------------------------------------------------------------------
+    final engine =
+        vpnEngineOverride ?? (Platform.isAndroid ? AndroidVpnEngine() : null);
+    ConnectionState initialStatus = const Disconnected();
+    if (engine != null) {
+      try {
+        initialStatus = await engine.getStatus().timeout(
+          const Duration(milliseconds: 500),
+          onTimeout: () => const Disconnected(),
+        );
+      } on Object {
+        initialStatus = const Disconnected();
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // Step 5: Assemble root Riverpod ProviderContainer.
     // Overrides default repository stubs with concrete implementations.
     //
-    // Step 5: Cold-boot VPN state resync and theme warm-up.
+    // Step 6: Cold-boot VPN state resync and theme warm-up.
     // Queries native engine status (P4-T1) and loads persisted theme mode
     // before the navigation shell mounts, preventing visual flickers or desync.
     //
-    // Step 6: Return container for UncontrolledProviderScope in main().
+    // Step 7: Return container for UncontrolledProviderScope in main().
     // -------------------------------------------------------------------------
-    return ProviderContainer(
-        overrides: [
-          appPreferencesRepositoryProvider.overrideWithValue(preferencesRepo),
-          if (serverProfileRepositoryOverride != null)
-            serverProfileRepositoryProvider.overrideWith(
-              (ref) => serverProfileRepositoryOverride,
-            ),
-          if (vpnEngineOverride != null)
-            vpnEngineProvider.overrideWithValue(vpnEngineOverride)
-          else if (Platform.isAndroid)
-            vpnEngineProvider.overrideWith((ref) => AndroidVpnEngine()),
-        ],
-      )
-      ..read(themeModeProvider)
-      ..read(connectionStateProvider);
+    final container =
+        ProviderContainer(
+            overrides: [
+              appPreferencesRepositoryProvider.overrideWithValue(
+                preferencesRepo,
+              ),
+              initialConnectionStateProvider.overrideWithValue(initialStatus),
+              if (serverProfileRepositoryOverride != null)
+                serverProfileRepositoryProvider.overrideWith(
+                  (ref) => serverProfileRepositoryOverride,
+                ),
+              if (engine != null) vpnEngineProvider.overrideWithValue(engine),
+            ],
+          )
+          ..read(themeModeProvider)
+          ..read(connectionControllerProvider);
+
+    try {
+      await container
+          .read(connectionStateProvider.future)
+          .timeout(const Duration(milliseconds: 500));
+    } on Object {
+      // Gracefully absorb warm-up timeout/error; initialStatus already injected.
+    }
+
+    return container;
   }
 }

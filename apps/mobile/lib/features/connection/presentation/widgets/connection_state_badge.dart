@@ -39,8 +39,15 @@ class ConnectionStateBadge extends ConsumerWidget {
     final state = ref.watch(connectionStateProvider);
 
     return state.when(
-      // Nothing emitted yet: no transition reported, so nothing is connected.
-      loading: () => _Badge(label: 'connection.state_disconnected'.tr()),
+      // Probing engine status on startup: render pre-warmed state if present,
+      // or neutral checking state if async probing is in flight.
+      loading: () {
+        final prewarmed = ref.watch(initialConnectionStateProvider);
+        if (prewarmed != null) {
+          return _Badge(label: _labelFor(prewarmed));
+        }
+        return _Badge(label: 'connection.state_checking'.tr());
+      },
       error: (error, stackTrace) =>
           _Badge(label: 'connection.state_error'.tr()),
       data: (value) => _Badge(label: _labelFor(value)),

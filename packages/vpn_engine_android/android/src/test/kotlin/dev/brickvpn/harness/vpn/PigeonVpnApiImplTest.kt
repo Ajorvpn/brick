@@ -476,4 +476,98 @@ class PigeonVpnApiImplTest {
         runCurrent()
         assertEquals(VpnConsentStatus.GRANTED, deferred.await())
     }
+
+    // ------------------------------------------------------------- P7-T3 DNS & Hardening
+
+    @Test
+    fun `buildConfigJson enforces DNS bootstrap, TUN hijack, strict_route and zero remote rule sets`() {
+        val impl = PigeonVpnApiImpl(
+            appContext = dummyContext,
+            coordinator = coordinator,
+        )
+        val outbound = mapOf(
+            "type" to "vless",
+            "tag" to "tokyo-proxy",
+            "server" to "node.example.com",
+            "server_port" to 443,
+        )
+        val jsonStr = impl.buildConfigJson(outbound, isBlock = false)
+        val root = org.json.JSONObject(jsonStr)
+
+        // 1. Zero remote rule_set URLs
+        assertFalse("Configuration must not contain remote rule_set", root.has("rule_set"))
+
+        // 2. Strict route on TUN inbound
+        val inbounds = root.getJSONArray("inbounds")
+        val tun = inbounds.getJSONObject(0)
+        assertEquals("tun", tun.getString("type"))
+        assertTrue("TUN inbound must set strict_route = true", tun.getBoolean("strict_route"))
+        assertTrue("TUN inbound must set auto_route = true", tun.getBoolean("auto_route"))
+
+        // 3. DNS configuration: bootstrap resolver & remote tunnel resolver
+        val dns = root.getJSONObject("dns")
+        val dnsServers = dns.getJSONArray("servers")
+        var hasDnsRemote = false
+        var hasDnsDirect = false
+        for (i in 0 until dnsServers.length()) {
+            val server = dnsServers.getJSONObject(i)
+            val tag = server.getString("tag")
+            if (tag == "dns-remote") {
+                hasDnsRemote = true
+                assertEquals("tokyo-proxy", server.getString("detour"))
+                assertEquals("tcp://1.1.1.1", server.getString("address"))
+            } else if (tag == "dns-direct") {
+                hasDnsDirect = true
+                assertEquals("direct-out", server.getString("detour"))
+                assertEquals("1.1.1.1", server.getString("address"))
+            }
+        }
+        assertTrue("Must include dns-remote server", hasDnsRemote)
+        assertTrue("Must include direct bootstrap dns-direct server", hasDnsDirect)
+        assertEquals("dns-remote", dns.getString("final"))
+
+        val dnsRules = dns.getJSONArray("rules")
+        val directRule = dnsRules.getJSONObject(0)
+        assertEquals("dns-direct", directRule.getString("server"))
+
+        // 4. Route: DNS hijack
+        val route = root.getJSONObject("route")
+        assertEquals("tokyo-proxy", route.getString("final"))
+        val routeRules = route.getJSONArray("rules")
+        val dnsHijack = routeRules.getJSONObject(0)
+        assertEquals("dns", dnsHijack.getString("protocol"))
+        assertEquals("hijack-dns", dnsHijack.getString("action"))
+    }
+
+    @Test
+    fun `BrickVpnService lockdown transitions maintain state across lifecycle`() {
+        assertFalse(BrickVpnService.isLockdownEnabled)
+        BrickVpnService.setLockdown(true)
+        assertTrue(BrickVpnService.isLockdownEnabled)
+        BrickVpnService.setLockdown(false)
+        assertFalse(BrickVpnService.isLockdownEnabled)
+    }
+
+    @Test
+    fun `SecureStorageHelper round-trip encrypts and decrypts with enc v1 envelope`() {
+        val secret = "super-sensitive-uuid-12345-secret"
+        val encrypted = dev.brickvpn.harness.SecureStorageHelper.encrypt(secret)
+        assertTrue(encrypted.startsWith("enc:v1:"))
+        assertFalse(encrypted.contains(secret))
+
+        val decrypted = dev.brickvpn.harness.SecureStorageHelper.decrypt(encrypted)
+        assertEquals(secret, decrypted)
+    }
+
+    @Test(expected = Exception::class)
+    fun `SecureStorageHelper rejects tampered ciphertext`() {
+        val secret = "another-secret"
+        val encrypted = dev.brickvpn.harness.SecureStorageHelper.encrypt(secret)
+        val prefix = "enc:v1:"
+        val payload = encrypted.substring(prefix.length)
+        // Flip one character in base64 payload
+        val tamperedChar = if (payload.last() == 'A') 'B' else 'A'
+        val tampered = prefix + payload.dropLast(1) + tamperedChar
+        dev.brickvpn.harness.SecureStorageHelper.decrypt(tampered)
+    }
 }

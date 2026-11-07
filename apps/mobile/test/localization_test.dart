@@ -294,6 +294,17 @@ void main() {
               'title': 'Einstellungen',
               'label': 'Einstellungen',
               'back_to_home': 'Zurück zur Startseite',
+              'auto_reconnect': 'Automatisch wiederverbinden',
+              'auto_reconnect_subtitle':
+                  'Verbindung nach Netzwerkunterbrechung wiederherstellen',
+              'kill_switch': 'Kill Switch',
+              'kill_switch_subtitle':
+                  'Internetverkehr blockieren, wenn VPN unerwartet abbricht',
+              'battery_optimization': 'Akku-Optimierung',
+              'battery_optimization_optimized':
+                  'Optimiert — tippen für uneingeschränkte Nutzung',
+              'battery_optimization_unrestricted':
+                  'Uneingeschränkt (empfohlen für stabiles VPN)',
             },
             'logs': {
               'title': 'Protokolle',
@@ -302,10 +313,15 @@ void main() {
               'copy_tooltip': 'Protokolle kopieren',
               'copy_warning_title': 'Warnung vor sensiblen Informationen',
               'copy_warning_body':
-                  'Protokolle können Serveradressen, Ports oder andere '
-                  'Verbindungsdetails enthalten. Bitte überprüfen und '
-                  'entfernen Sie sensible Informationen vor der '
-                  'Weitergabe.',
+                  'Automatische Schwärzung entfernt bekannte Zugangsdaten, '
+                  'Schlüssel und Serveradressen. Freitext-Protokolle '
+                  'können jedoch weiterhin Netzwerkdetails enthalten. '
+                  'Bitte vor dem Teilen prüfen.',
+              'privacy_warning_body':
+                  'Automatische Schwärzung entfernt bekannte Zugangsdaten, '
+                  'Schlüssel und Serveradressen. Freitext-Protokolle '
+                  'können jedoch weiterhin Netzwerkdetails enthalten. '
+                  'Bitte vor dem Teilen prüfen.',
               'copy_cancel': 'Abbrechen',
               'copy_confirm': 'Protokolle kopieren',
               'copied_to_clipboard': 'Protokolle in die Zwischenablage kopiert',
@@ -315,6 +331,15 @@ void main() {
               'add_subscription': 'Abonnement hinzufügen',
               'no_servers': 'Noch keine Server gespeichert',
               'state_disconnected': 'Getrennt',
+              'state_checking': 'Wird geprüft...',
+              'state_reconnecting': 'Verbindung wird wiederhergestellt...',
+              'reconnecting_backoff':
+                  'Wiederverbinden in {seconds}s (Versuch {attempt}/{max})',
+              'reconnecting_waiting_network': 'Warte auf Netzwerkverbindung...',
+              'reconnecting_in_flight': 'Verbindung wird wiederhergestellt (Versuch {attempt}/{max})...',
+              'reconnecting_exhausted':
+                  'Automatische Wiederverbindung nach {max} Versuchen '
+                  'fehlgeschlagen',
               'traffic': '{tx} hoch / {rx} runter',
               'traffic_speed': 'Geschwindigkeit: ↑ {tx_speed} · ↓ {rx_speed}',
               'traffic_none': 'Keine Verkehrsdaten',
@@ -322,6 +347,12 @@ void main() {
               'session_server': 'Server: {name} ({protocol})',
               'session_server_none': 'Server: Keiner ausgewählt',
               'session_status': 'Tunnel: {status}',
+              'kill_switch_blocking_title':
+                  'Kill Switch aktiv — Verkehr blockiert',
+              'kill_switch_blocking_body':
+                  'Internetverkehr außerhalb des VPN ist blockiert, um '
+                  'Lecks zu verhindern.',
+              'kill_switch_unblock': 'Trennen & Freigeben',
             },
             'add_server': {
               'title': 'Server hinzufügen',

@@ -224,7 +224,7 @@ void main() {
       }
     });
 
-    test('writes version 1 envelope to disk', () async {
+    test('writes version 2 envelope to disk', () async {
       await repository.save(vlessProfile);
       await repository.saveSubscription(testSub);
 
@@ -232,7 +232,7 @@ void main() {
       final dynamic decoded = jsonDecode(await storageFile.readAsString());
       expect(decoded, isA<Map<String, dynamic>>());
       final raw = decoded as Map<String, dynamic>;
-      expect(raw['schema_version'], equals(1));
+      expect(raw['schema_version'], equals(2));
       expect(raw['updated_at'], isA<String>());
       final profiles = raw['server_profiles'] as List<dynamic>;
       expect(profiles, hasLength(1));

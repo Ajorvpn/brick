@@ -13,7 +13,12 @@ import 'package:core_domain/core_domain.dart'
 import 'package:core_vpn_engine/core_vpn_engine.dart';
 import 'package:mobile/core/providers/server_profile_repository_provider.dart';
 import 'package:mobile/core/providers/vpn_engine_provider.dart';
+import 'package:mobile/features/connection/domain/entities/saved_server.dart'
+    show SavedServerProfile;
+import 'package:mobile/features/connection/presentation/providers/active_server_provider.dart';
+import 'package:mobile/features/connection/presentation/providers/auto_reconnect_provider.dart';
 import 'package:mobile/features/connection/presentation/providers/connection_state_provider.dart';
+import 'package:mobile/features/connection/presentation/providers/kill_switch_provider.dart';
 import 'package:mobile/features/connection/presentation/providers/saved_servers_provider.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
@@ -57,8 +62,26 @@ class ConnectionController extends _$ConnectionController {
       final state = next.value;
       if (state is Disconnected || state is Error) {
         _activeConnectingServerId = null;
+      } else if (state is Connected || state is Connecting) {
+        _activeConnectingServerId ??= ref.read(activeServerProvider)?.id;
       }
     });
+
+    ref.listen<SavedServerProfile?>(activeServerProvider, (previous, next) {
+      final conn =
+          ref.read(connectionStateProvider).value ??
+          ref.read(initialConnectionStateProvider);
+      if (conn is Connected || conn is Connecting) {
+        _activeConnectingServerId ??= next?.id;
+      }
+    });
+
+    final initialConn =
+        ref.read(connectionStateProvider).value ??
+        ref.read(initialConnectionStateProvider);
+    if (initialConn is Connected || initialConn is Connecting) {
+      _activeConnectingServerId ??= ref.read(activeServerProvider)?.id;
+    }
   }
 
   /// Whether a command is currently being dispatched.
@@ -86,26 +109,40 @@ class ConnectionController extends _$ConnectionController {
     try {
       final engine = ref.read(vpnEngineProvider);
       final repoFuture = ref.read(serverProfileRepositoryProvider.future);
-      final currentState = ref.read(connectionStateProvider).value;
+      final currentState =
+          ref.read(connectionStateProvider).value ??
+          ref.read(initialConnectionStateProvider);
       if (currentState is Connected || currentState is Connecting) {
-        if (_activeConnectingServerId != profile.id) {
+        final currentActiveId =
+            _activeConnectingServerId ?? ref.read(activeServerProvider)?.id;
+        if (currentActiveId != null && currentActiveId != profile.id) {
+          ref.read(autoReconnectProvider.notifier).onUserInitiatedDisconnect();
+          ref.read(killSwitchProvider.notifier).onUserInitiatedDisconnect();
           await engine.stop();
+        } else {
+          return const VpnCommandRejectedBusy();
         }
       }
 
       final prepareResult = await engine.prepare();
       if (prepareResult is! VpnCommandAccepted) {
         _activeConnectingServerId = null;
+        ref.read(autoReconnectProvider.notifier).onUserInitiatedDisconnect();
+        ref.read(killSwitchProvider.notifier).onUserInitiatedDisconnect();
         return prepareResult;
       }
 
       final startResult = await engine.start(profile);
       if (startResult is! VpnCommandAccepted) {
         _activeConnectingServerId = null;
+        ref.read(autoReconnectProvider.notifier).onUserInitiatedDisconnect();
+        ref.read(killSwitchProvider.notifier).onUserInitiatedDisconnect();
         return startResult;
       }
 
       _activeConnectingServerId = profile.id;
+      ref.read(autoReconnectProvider.notifier).onUserInitiatedConnect(profile);
+      ref.read(killSwitchProvider.notifier).onUserInitiatedConnect(profile);
 
       try {
         final repo = await repoFuture;
@@ -118,6 +155,11 @@ class ConnectionController extends _$ConnectionController {
       }
 
       return startResult;
+    } on Object {
+      _activeConnectingServerId = null;
+      ref.read(autoReconnectProvider.notifier).onUserInitiatedDisconnect();
+      ref.read(killSwitchProvider.notifier).onUserInitiatedDisconnect();
+      return const VpnCommandFailed();
     } finally {
       _busy = false;
     }
@@ -133,10 +175,15 @@ class ConnectionController extends _$ConnectionController {
     }
     _busy = true;
     try {
+      ref.read(autoReconnectProvider.notifier).onUserInitiatedDisconnect();
+      ref.read(killSwitchProvider.notifier).onUserInitiatedDisconnect();
       final engine = ref.read(vpnEngineProvider);
       final result = await engine.stop();
       _activeConnectingServerId = null;
       return result;
+    } on Object {
+      _activeConnectingServerId = null;
+      return const VpnCommandFailed();
     } finally {
       _busy = false;
     }

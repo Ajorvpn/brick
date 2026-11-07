@@ -43,6 +43,20 @@ abstract class AppPreferencesRepository {
 
   /// Persists [serverId], or clears it when `null` or empty.
   Future<void> setActiveServerId(String? serverId);
+
+  /// Reads whether auto-reconnect on network change is enabled.
+  /// Defaults to `true`.
+  bool isAutoReconnectEnabled();
+
+  /// Persists [enabled].
+  Future<void> setAutoReconnectEnabled({required bool enabled});
+
+  /// Reads whether kill switch protection is enabled.
+  /// Defaults to `false`.
+  bool isKillSwitchEnabled();
+
+  /// Persists [enabled].
+  Future<void> setKillSwitchEnabled({required bool enabled});
 }
 
 /// Concrete implementation of [AppPreferencesRepository] backed by
@@ -64,6 +78,14 @@ class SharedPreferencesAppPreferencesRepository
 
   /// Preference key for the selected active server ID.
   static const String keyActiveServerId = 'brick.preferences.active_server_id';
+
+  /// Preference key for whether auto-reconnect on network change is enabled.
+  static const String keyAutoReconnectEnabled =
+      'brick.preferences.auto_reconnect_enabled';
+
+  /// Preference key for whether kill switch protection is enabled.
+  static const String keyKillSwitchEnabled =
+      'brick.preferences.kill_switch_enabled';
 
   @override
   ThemeMode getThemeMode() {
@@ -120,24 +142,51 @@ class SharedPreferencesAppPreferencesRepository
       await _prefs.setString(keyActiveServerId, serverId);
     }
   }
+
+  @override
+  bool isAutoReconnectEnabled() {
+    return _prefs.getBool(keyAutoReconnectEnabled) ?? true;
+  }
+
+  @override
+  Future<void> setAutoReconnectEnabled({required bool enabled}) async {
+    await _prefs.setBool(keyAutoReconnectEnabled, enabled);
+  }
+
+  @override
+  bool isKillSwitchEnabled() {
+    return _prefs.getBool(keyKillSwitchEnabled) ?? false;
+  }
+
+  @override
+  Future<void> setKillSwitchEnabled({required bool enabled}) async {
+    await _prefs.setBool(keyKillSwitchEnabled, enabled);
+  }
 }
 
 /// In-memory fake implementation of [AppPreferencesRepository] for unit/widget
 /// tests.
 class FakeAppPreferencesRepository implements AppPreferencesRepository {
   /// Creates a fake repository with optional initial [initialThemeMode],
-  /// [initialLocale], and [initialActiveServerId].
+  /// [initialLocale], [initialActiveServerId],
+  /// [initialAutoReconnectEnabled], and [initialKillSwitchEnabled].
   FakeAppPreferencesRepository({
     ThemeMode initialThemeMode = ThemeMode.system,
     Locale? initialLocale,
     String? initialActiveServerId,
+    bool initialAutoReconnectEnabled = true,
+    bool initialKillSwitchEnabled = false,
   }) : _themeMode = initialThemeMode,
        _locale = initialLocale,
-       _activeServerId = initialActiveServerId;
+       _activeServerId = initialActiveServerId,
+       _autoReconnectEnabled = initialAutoReconnectEnabled,
+       _killSwitchEnabled = initialKillSwitchEnabled;
 
   ThemeMode _themeMode;
   Locale? _locale;
   String? _activeServerId;
+  bool _autoReconnectEnabled;
+  bool _killSwitchEnabled;
 
   @override
   ThemeMode getThemeMode() => _themeMode;
@@ -163,5 +212,21 @@ class FakeAppPreferencesRepository implements AppPreferencesRepository {
     _activeServerId = (serverId != null && serverId.isNotEmpty)
         ? serverId
         : null;
+  }
+
+  @override
+  bool isAutoReconnectEnabled() => _autoReconnectEnabled;
+
+  @override
+  Future<void> setAutoReconnectEnabled({required bool enabled}) async {
+    _autoReconnectEnabled = enabled;
+  }
+
+  @override
+  bool isKillSwitchEnabled() => _killSwitchEnabled;
+
+  @override
+  Future<void> setKillSwitchEnabled({required bool enabled}) async {
+    _killSwitchEnabled = enabled;
   }
 }

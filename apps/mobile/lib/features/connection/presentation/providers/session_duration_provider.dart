@@ -53,7 +53,9 @@ class SessionDurationNotifier extends Notifier<Duration> {
       }
     });
 
-    final initialConn = ref.read(connectionStateProvider).value;
+    final initialConn =
+        ref.read(connectionStateProvider).value ??
+        ref.read(initialConnectionStateProvider);
     if (initialConn is Connected) {
       _startTimer();
     }

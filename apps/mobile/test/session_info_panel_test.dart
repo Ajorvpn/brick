@@ -120,6 +120,30 @@ void main() {
       },
     );
 
+    testWidgets('starts duration timer when connectionStateProvider is already '
+        'Connected on initial build', (tester) async {
+      fakeEngine.emit(const Connected());
+
+      await pumpConnectionMaterialApp(
+        tester,
+        const Scaffold(body: SessionInfoPanel()),
+        engine: fakeEngine,
+      );
+
+      expect(find.text('Tunnel: Connected'), findsOneWidget);
+      expect(find.text('Duration: 00:00:00'), findsOneWidget);
+
+      // Advance 3 seconds
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.text('Duration: 00:00:01'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 2));
+      expect(find.text('Duration: 00:00:03'), findsOneWidget);
+
+      // Clean teardown
+      fakeEngine.emit(const Disconnected());
+      await tester.pumpAndSettle();
+    });
+
     testWidgets(
       'active server display: shows None selected when empty, updates when '
       'server is added or selected',

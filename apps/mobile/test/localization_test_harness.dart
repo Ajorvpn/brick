@@ -4,6 +4,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:config_parser/config_parser.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:core_domain/core_domain.dart'
     show ConnectionState, Disconnected, ServerProfile, TrafficStats;
 import 'package:core_vpn_engine/core_vpn_engine.dart';
@@ -12,9 +13,11 @@ import 'package:easy_localization/easy_localization.dart';
 // collides by name with `core_domain`'s; hide Flutter's so the domain type is
 // unambiguous throughout this harness.
 import 'package:flutter/material.dart' hide ConnectionState;
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/core/data/repositories/app_preferences_repository.dart';
+import 'package:mobile/core/network/network_status_provider.dart';
 import 'package:mobile/core/providers/app_preferences_provider.dart';
 import 'package:mobile/core/providers/server_profile_repository_provider.dart';
 import 'package:mobile/core/providers/subscription_fetcher_provider.dart';
@@ -37,6 +40,16 @@ import 'package:shared_utils/shared_utils.dart' show Err, Ok;
 /// `await EasyLocalization.ensureInitialized()` in `main()`.
 Future<void> initTestLocalization() async {
   TestWidgetsFlutterBinding.ensureInitialized();
+  TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+      .setMockMethodCallHandler(
+        const MethodChannel('dev.fluttercommunity.plus/connectivity'),
+        (MethodCall call) async => <String>['wifi'],
+      );
+  TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+      .setMockMethodCallHandler(
+        const MethodChannel('dev.fluttercommunity.plus/connectivity_status'),
+        (MethodCall call) async => null,
+      );
   // `ensureInitialized()` reads the persisted locale through
   // `shared_preferences`, whose platform channel has no implementation in
   // `flutter test`; without this mock it throws
@@ -384,6 +397,26 @@ ServerProfileRepository buildRepository(
   FakeServerProfileDataSource dataSource,
 ) => FakeServerProfileRepository(dataSource);
 
+/// Fake implementation of [ConnectivitySource] for hermetic testing.
+class FakeConnectivitySource implements ConnectivitySource {
+  FakeConnectivitySource({this.initial = const [ConnectivityResult.wifi]})
+    : _controller = StreamController<List<ConnectivityResult>>.broadcast();
+
+  final List<ConnectivityResult> initial;
+  final StreamController<List<ConnectivityResult>> _controller;
+
+  @override
+  Future<List<ConnectivityResult>> checkConnectivity() => Future.value(initial);
+
+  @override
+  Stream<List<ConnectivityResult>> get onConnectivityChanged =>
+      _controller.stream;
+
+  void emit(List<ConnectivityResult> results) => _controller.add(results);
+
+  Future<void> dispose() => _controller.close();
+}
+
 /// Riverpod overrides that resolve the saved-server list from [dataSource]
 /// and camera permission from [cameraPermissionService].
 ///
@@ -392,12 +425,16 @@ ServerProfileRepository buildRepository(
 List<Object> repositoryOverride([
   FakeServerProfileDataSource? dataSource,
   CameraPermissionService? cameraPermissionService,
+  ConnectivitySource? connectivitySource,
 ]) => [
   serverProfileRepositoryProvider.overrideWith(
     (ref) async => buildRepository(dataSource ?? FakeServerProfileDataSource()),
   ),
   cameraPermissionServiceProvider.overrideWithValue(
     cameraPermissionService ?? const FakeCameraPermissionService(),
+  ),
+  connectivitySourceProvider.overrideWithValue(
+    connectivitySource ?? FakeConnectivitySource(),
   ),
 ];
 
@@ -406,13 +443,14 @@ List<Object> repositoryOverride([
 Future<void> pumpConnectionApp(
   WidgetTester tester,
   Widget app, {
-  required FakeVpnEngine engine,
+  required VpnEngine engine,
   FakeServerProfileDataSource? dataSource,
   CameraPermissionService? cameraPermissionService,
   QrScannerBuilder? scannerBuilder,
   SubscriptionFetcher? subscriptionFetcher,
   ServerProfileRepository? repository,
   AppPreferencesRepository? preferencesRepository,
+  ConnectivitySource? connectivitySource,
 }) async {
   await tester.pumpWidget(
     localizedApp(
@@ -425,6 +463,9 @@ Future<void> pumpConnectionApp(
         ),
         cameraPermissionServiceProvider.overrideWithValue(
           cameraPermissionService ?? const FakeCameraPermissionService(),
+        ),
+        connectivitySourceProvider.overrideWithValue(
+          connectivitySource ?? FakeConnectivitySource(),
         ),
         qrScannerBuilderProvider.overrideWithValue(scannerBuilder),
         if (subscriptionFetcher != null)
@@ -445,11 +486,13 @@ Future<void> pumpConnectionApp(
 Future<void> pumpConnectionMaterialApp(
   WidgetTester tester,
   Widget app, {
-  required FakeVpnEngine engine,
+  required VpnEngine engine,
   FakeServerProfileDataSource? dataSource,
   CameraPermissionService? cameraPermissionService,
   QrScannerBuilder? scannerBuilder,
   SubscriptionFetcher? subscriptionFetcher,
+  ConnectivitySource? connectivitySource,
+  AppPreferencesRepository? preferencesRepository,
 }) async {
   await pumpConnectionApp(
     tester,
@@ -459,6 +502,8 @@ Future<void> pumpConnectionMaterialApp(
     cameraPermissionService: cameraPermissionService,
     scannerBuilder: scannerBuilder,
     subscriptionFetcher: subscriptionFetcher,
+    connectivitySource: connectivitySource,
+    preferencesRepository: preferencesRepository,
   );
 }
 
@@ -525,6 +570,15 @@ Map<String, dynamic> testEnglishTranslations() => const {
     'lang_de': 'Deutsch',
     'live_logs': 'Live Logs',
     'live_logs_subtitle': 'Real-time diagnostic logs',
+    'auto_reconnect': 'Auto-Reconnect',
+    'auto_reconnect_subtitle': 'Automatically reconnect on network changes',
+    'kill_switch': 'Kill Switch',
+    'kill_switch_subtitle': 'Block internet traffic if VPN drops unexpectedly',
+    'battery_optimization': 'Battery Optimization',
+    'battery_optimization_optimized':
+        'Optimized — tap to exclude from battery limits',
+    'battery_optimization_unrestricted':
+        'Unrestricted (recommended for stable VPN)',
     'no_logs': 'No log entries yet',
   },
   'logs': {
@@ -534,9 +588,13 @@ Map<String, dynamic> testEnglishTranslations() => const {
     'copy_tooltip': 'Copy logs',
     'copy_warning_title': 'Sensitive Information Warning',
     'copy_warning_body':
-        'Logs may contain server addresses, ports, or other connection '
-        'details. Please review and remove any sensitive information '
-        'before sharing publicly.',
+        'Automated redaction removes known credentials, keys, and server '
+        'addresses. However, free-text engine logs may still contain '
+        'diagnostic network details. Please review before sharing publicly.',
+    'privacy_warning_body':
+        'Automated redaction removes known credentials, keys, and server '
+        'addresses. However, free-text engine logs may still contain '
+        'diagnostic network details. Please review before sharing publicly.',
     'copy_cancel': 'Cancel',
     'copy_confirm': 'Copy Logs',
     'copied_to_clipboard': 'Logs copied to clipboard',
@@ -559,6 +617,13 @@ Map<String, dynamic> testEnglishTranslations() => const {
     'state_connected': 'Connected',
     'state_disconnecting': 'Disconnecting',
     'state_error': 'Connection error',
+    'state_checking': 'Checking...',
+    'state_reconnecting': 'Reconnecting',
+    'reconnecting_backoff':
+        'Reconnecting in {seconds}s (attempt {attempt}/{max})...',
+    'reconnecting_waiting_network': 'Waiting for network connectivity...',
+    'reconnecting_in_flight': 'Reconnecting (attempt {attempt}/{max})...',
+    'reconnecting_exhausted': 'Auto-reconnect failed after {max} attempts',
     'traffic': '{tx} up / {rx} down',
     'traffic_speed': 'Speed: ↑ {tx_speed} · ↓ {rx_speed}',
     'traffic_none': 'No traffic data',
@@ -567,6 +632,11 @@ Map<String, dynamic> testEnglishTranslations() => const {
     'session_server': 'Server: {name} ({protocol})',
     'session_server_none': 'Server: None selected',
     'session_status': 'Tunnel: {status}',
+    'kill_switch_blocking_title': 'Kill Switch Active — Traffic Blocked',
+    'kill_switch_blocking_body':
+        'Internet traffic outside the VPN is blocked to prevent leaks '
+        'while the tunnel is disconnected.',
+    'kill_switch_unblock': 'Disconnect & Unblock',
   },
   'error': {
     'generic': 'An unexpected error occurred',
