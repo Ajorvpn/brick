@@ -31,8 +31,19 @@ if [ $# -eq 0 ]; then
 elif [ -d "$1" ]; then
     TARGET_DIR="$1"
 elif [ -f "$1" ]; then
-    TARGET_DIR="$(dirname "$1")"
-    FILES=("$@")
+    TARGET_DIR="$(cd "$(dirname "$1")" && pwd)"
+    for f in "$@"; do
+        if [ ! -f "$f" ]; then
+            echo "Error: Artifact file does not exist: $f" >&2
+            exit 1
+        fi
+        f_dir="$(cd "$(dirname "$f")" && pwd)"
+        if [ "$f_dir" != "$TARGET_DIR" ]; then
+            echo "Error: All explicit files must reside in the same directory ($TARGET_DIR), but '$f' is in '$f_dir'" >&2
+            exit 1
+        fi
+        FILES+=("$(basename "$f")")
+    done
 else
     echo "Error: Target directory or file does not exist: $1" >&2
     exit 1
@@ -52,19 +63,12 @@ cd "$TARGET_DIR"
 
 if [ ${#FILES[@]} -eq 0 ]; then
     # Discover relevant release artifact files (*.apk, *.aab, *.tar.gz, *.zip)
-    # Exclude intermediate build files or existing checksum files
+    # Exclude intermediate build files, debug builds (*-debug.apk, *-debug.aab), or existing checksum files
     while IFS= read -r file; do
         if [ -n "$file" ] && [ "$file" != "$OUTPUT_FILE" ]; then
             FILES+=("$file")
         fi
-    done < <(find . -maxdepth 1 -type f \( -name "*.apk" -o -name "*.aab" -o -name "*.tar.gz" -o -name "*.zip" \) -exec basename {} \; | sort)
-else
-    # Normalize explicit files to basenames
-    NORMALIZED_FILES=()
-    for f in "${FILES[@]}"; do
-        NORMALIZED_FILES+=("$(basename "$f")")
-    done
-    FILES=("${NORMALIZED_FILES[@]}")
+    done < <(find . -maxdepth 1 -type f \( -name "*.apk" -o -name "*.aab" -o -name "*.tar.gz" -o -name "*.zip" \) ! -name "*-debug.apk" ! -name "*-debug.aab" -exec basename {} \; | sort)
 fi
 
 if [ ${#FILES[@]} -eq 0 ]; then
@@ -83,7 +87,7 @@ for file in "${FILES[@]}"; do
         rm -f "$TMP_SUMS"
         exit 1
     fi
-    $SHA256_CMD "$file" >> "$TMP_SUMS"
+    $SHA256_CMD -- "$file" >> "$TMP_SUMS"
 done
 
 sort -k2,2 "$TMP_SUMS" > "$OUTPUT_FILE"
@@ -95,11 +99,10 @@ echo ""
 
 echo "Verifying $OUTPUT_FILE with $SHA256_CMD -c..."
 if command -v sha256sum >/dev/null 2>&1; then
-    sha256sum -c "$OUTPUT_FILE"
+    sha256sum -c -- "$OUTPUT_FILE"
 else
-    shasum -a 256 -c "$OUTPUT_FILE"
+    shasum -a 256 -c -- "$OUTPUT_FILE"
 fi
 
 echo ""
 echo "Integrity verification SUCCESSFUL: all checksums match."
-

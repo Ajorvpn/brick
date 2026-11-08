@@ -94,6 +94,10 @@ The presentation and coordinator layers were audited to guarantee that UI compon
    - Strips ASCII control characters (`[\x00-\x1F\x7F]`) and CRLF newlines (`\r`, `\n`) to prevent line-break spoofing in UI list views.
    - Strips Unicode bidirectional override characters (`[\u202A-\u202E\u2066-\u2069]`) to eliminate RTL text spoofing attacks against server labels.
    - Collapses consecutive whitespace and clamps display names to a maximum of 128 characters, protecting `ServerTile` and `SessionInfoPanel` against layout disruption and UI overflow.
+5. **UI-Layer Denial-of-Service Defense (`LengthLimitingTextInputFormatter`):**
+   - The URI input `TextField` in `AddServerScreen` and the URL input `TextField` in `AddSubscriptionScreen` enforce `inputFormatters: [LengthLimitingTextInputFormatter(8256)]` (`maxUriLength + 64`).
+   - Caps oversized clipboard paste attacks (e.g., 100 KB - 10 MB payload pastes) in $O(1)$ time at the platform input channel boundary, preventing Flutter's `TextPainter` and text shaping engine from executing CPU-intensive paragraph layout passes on continuous glyph strings (which previously froze the UI thread for up to 60 seconds).
+   - The 8,256-character cap exceeds `config_parser`'s `maxUriLength` (8,192 characters) by 64 characters, ensuring payloads slightly exceeding valid boundaries cleanly reach `config_parser` to trigger typed `InputTooLargeError` without UI stutter.
 
 ---
 

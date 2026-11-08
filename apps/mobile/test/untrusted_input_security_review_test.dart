@@ -8,6 +8,7 @@ import 'package:config_parser/config_parser.dart';
 import 'package:core_domain/core_domain.dart'
     show OutboundConfig, ServerProfile;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/core/security/sensitive_field_cipher.dart';
 import 'package:mobile/features/connection/domain/usecases/build_server_profile.dart';
@@ -343,7 +344,7 @@ void main() {
         const ValueKey<String>('add_server_save_button'),
       );
 
-      // 1. Adversarial input: 100 KB oversized string
+      // 1. Adversarial input: 100 KB oversized string (manual enterText)
       final hugePayload = 'vless://${'x' * 100000}@example.com:443';
       await tester.enterText(uriField, hugePayload);
       await tester.tap(saveBtn);
@@ -352,6 +353,49 @@ void main() {
       // UI presents safe localized error, zero crash, screen remains active
       expect(find.byType(AddServerScreen), findsOneWidget);
       expect(dataSource.records, isEmpty);
+
+      // Clean field and test in-app paste button with mocked 100 KB clipboard
+      await tester.enterText(uriField, '');
+      await tester.pumpAndSettle();
+
+      final pasteBtn = find.byKey(
+        const ValueKey<String>('add_server_paste_button'),
+      );
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        (MethodCall methodCall) async {
+          if (methodCall.method == 'Clipboard.getData') {
+            return <String, dynamic>{'text': hugePayload};
+          }
+          return null;
+        },
+      );
+      addTearDown(() {
+        tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          SystemChannels.platform,
+          null,
+        );
+      });
+
+      await tester.tap(pasteBtn);
+      await tester.pumpAndSettle();
+
+      final controllerText = tester
+          .widget<TextField>(uriField)
+          .controller!
+          .text;
+      expect(controllerText.length, equals(AddServerScreen.maxUriInputLength));
+      expect(controllerText.length, equals(8256));
+
+      await tester.tap(saveBtn);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AddServerScreen), findsOneWidget);
+      expect(dataSource.records, isEmpty);
+
+      // Clean field
+      await tester.enterText(uriField, '');
+      await tester.pumpAndSettle();
 
       // 2. Adversarial input: invalid port with sensitive password
       const pastedSecret = 'mySuperSecretPastedPassword999';

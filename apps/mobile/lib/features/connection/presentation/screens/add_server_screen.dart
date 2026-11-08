@@ -22,6 +22,9 @@ class AddServerScreen extends ConsumerStatefulWidget {
   /// Creates the add-server screen.
   const AddServerScreen({super.key});
 
+  /// Maximum allowed characters for the URI input field (maxUriLength + 64).
+  static const int maxUriInputLength = 8256;
+
   @override
   ConsumerState<AddServerScreen> createState() => _AddServerScreenState();
 }
@@ -41,8 +44,12 @@ class _AddServerScreenState extends ConsumerState<AddServerScreen> {
     final data = await Clipboard.getData(Clipboard.kTextPlain);
     final text = data?.text;
     if (text != null && text.isNotEmpty) {
+      final trimmed = text.trim();
+      final bounded = trimmed.length > AddServerScreen.maxUriInputLength
+          ? trimmed.substring(0, AddServerScreen.maxUriInputLength)
+          : trimmed;
       setState(() {
-        _controller.text = text.trim();
+        _controller.text = bounded;
         _inlineError = null;
       });
     }
@@ -93,6 +100,11 @@ class _AddServerScreenState extends ConsumerState<AddServerScreen> {
                 enabled: !isLoading,
                 maxLines: 3,
                 minLines: 1,
+                inputFormatters: [
+                  LengthLimitingTextInputFormatter(
+                    AddServerScreen.maxUriInputLength,
+                  ),
+                ],
                 decoration: InputDecoration(
                   labelText: 'add_server.uri_label'.tr(),
                   hintText: 'add_server.paste_hint'.tr(),

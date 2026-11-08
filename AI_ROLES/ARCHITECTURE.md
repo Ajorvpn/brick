@@ -1164,8 +1164,8 @@ In Phases 5–7, `FileServerProfileRepository` persisted `ServerProfile` and `Su
 | **Shadowsocks** | `id`, `name`, `protocol`, `server`, `server_port`, `method` | `password` |
 | **Hysteria2** | `id`, `name`, `protocol`, `server`, `server_port`, `up_mbps`, `down_mbps`, `ports` | `password`, `obfs.password` |
 | **TUIC** | `id`, `name`, `protocol`, `server`, `server_port`, `congestion_control` | `uuid`, `password` |
-| **WireGuard** | `id`, `name`, `protocol`, `server`, `server_port`, `local_address`, `peer_public_key` | `private_key`, `pre_shared_key` |
-| **AmneziaWG** | `id`, `name`, `protocol`, `server`, `server_port`, `jc`, `jmin`, `jmax`, `s1`, `s2`, `h1-h4` | `private_key`, `pre_shared_key` |
+| **WireGuard** | `id`, `name`, `protocol`, `server`, `server_port`, `local_address` | `private_key`, `pre_shared_key`, `peer_public_key` |
+| **AmneziaWG** | `id`, `name`, `protocol`, `server`, `server_port`, `jc`, `jmin`, `jmax`, `s1`, `s2`, `h1-h4` | `private_key`, `pre_shared_key`, `peer_public_key` |
 | **Subscription** | `id`, `name`, `last_refreshed_at`, `associated_server_ids`, `user_info` | `url` (contains secret query tokens & UUIDs) |
 
 #### Integrity & Migration Guarantees
@@ -1343,6 +1343,73 @@ An honest evaluation of byte-for-byte reproducible builds was conducted across B
 - A hermetic, pinned Docker build container (`ubuntu:24.04` with pinned Flutter 3.47.4, Dart 3.13.3, Go 1.23, and Android NDK r27b).
 - Git-commit-derived `SOURCE_DATE_EPOCH` and Go `-trimpath` compilation flags.
 - Deterministic APK ZIP archive re-packing and timestamp zeroing prior to APK Signature Scheme v2/v3 signing.
+
+### 10.5 Dependency & Supply-Chain Security Architecture (P8-T5)
+
+#### Purpose & Threat Model
+In privacy and anti-censorship software, third-party dependencies represent an existential supply-chain threat vector. Malicious upstream updates, compromised developer accounts, abandoned packages, or excessive permissions can lead to:
+1. **Malicious Code Injection / Backdoors:** Compromising the cryptographic tunnel or exfiltrating user credentials.
+2. **Permission Creep & Data Exfiltration:** Background location tracking, storage harvesting, or device identifier fingerprinting.
+3. **Denial of Service:** Latent vulnerabilities or memory leaks in native engine components.
+
+`P8-T5` establishes a hardened, multi-tier supply chain validation architecture:
+1. **Zero-Advisory Dependency Baseline:** Continuous vulnerability scanning ensuring 0 critical/high CVEs across Dart, Gradle, and Go stacks.
+2. **Strict Manifest Least-Privilege Enforcement:** Codified allowlist restricting Android permissions to strictly required features, with zero invasive permissions and non-exported service boundaries (`android:exported="false"`).
+3. **Automated Dependabot Security Monitoring:** Weekly automated vulnerability and version PR updates across `pub`, `gradle`, and `github-actions` via `.github/dependabot.yml`.
+
+#### Multi-Stack Inventory & Security Topology
+
+```
+[ Brick VPN Application Codebase ]
+        │
+        ├── 1. Dart/Flutter Stack ──► pub.dev (SHA-256 Verified, Zero Unpinned Git)
+        │                             ├── Core Logic (flutter_riverpod, go_router)
+        │                             └── Input Parsing (petitparser, yaml, crypto)
+        │
+        ├── 2. Native Android Stack ──► Google / Maven Central (AGP 9.1.0, JVM 17)
+        │                               ├── AndroidManifest Least Privilege (8 permissions)
+        │                               └── Non-Exported Service (BrickVpnService)
+        │
+        └── 3. Go Core Stack ────────► Hermetic libbox.aar (sing-box v1.10.7 with uTLS)
+                                      └── 16 KiB Page-Aligned ELF Binaries (arm64, v7a, x86_64)
+```
+
+#### Automated Supply-Chain Verification
+Automated test suite `apps/mobile/test/supply_chain_and_manifest_security_test.dart` enforces:
+1. Strict AndroidManifest permission allowlist and invasive permission absence.
+2. Dependabot version 2 weekly schedule across all three package ecosystems.
+3. `pubspec.lock` registry provenance (`https://pub.dev`, local `path`, `sdk`) with zero unpinned git dependencies.
+4. Deterministic checksum generator execution and tamper detection.
+
+#### Formal Reference
+The comprehensive dependency audit, vulnerability scan results, and permission justifications are documented in `AI_ROLES/DEPENDENCY_SUPPLY_CHAIN_AUDIT.md`.
+
+### 10.6 Honest Security Posture Classification & Residual Risk Assessment
+
+#### Security Posture Classification
+In accordance with Brick VPN's core governance principles (no security theater, rigorous transparency, and honest threat modeling), the table below classifies the security controls implemented across Phase 8 into three explicit categories:
+
+| Category | Security Control / Component | Implementation & Enforcement | Security Boundary & Assurance |
+| :--- | :--- | :--- | :--- |
+| **Category 1: Verified Secure** | **Storage Encryption at Rest (P8-T1)** | Field-level AES-256-GCM authenticated encryption schema v2 in `FileServerProfileRepository` backed by `SensitiveFieldCipher` abstraction (`AndroidKeystoreSensitiveFieldCipher` on Android via `SecureStorageHelper` in `VpnEngineAndroidPlugin.kt`, and `LocalAuthenticatedCipher` fallback for pure-Dart/unit tests). | Plaintext credentials (`uuid`, `password`, `private_key`, `pre_shared_key`, `peer_public_key`, `transport.headers`, `extra_params`, and subscription URLs) never hit persistent storage. Tampering triggers authentication tag failure (`AEADBadTagException`) and fails closed (`SavedServerBroken`). |
+| | **Bounded Input Parsing (P8-T3)** | 8 URI protocol parsers with strict bounds (`maxUriInputLength = 8256`, `maxNameInputLength = 128`), regex/character set validation, and non-printable control/RTL Bidi character stripping (`BuildServerProfile.sanitizeRemark`). | O(1) input bounds prevent RegEx DoS and memory exhaustion. Clipboard pastes and keyboard entries strictly clamped. Malformed inputs fail safely with typed errors (`InputTooLargeError`, `InvalidUriFormatError`). |
+| | **Systematic 3-Surface Log Scrubbing (P8-T2)** | Centralized redaction engine via `redact()` in `packages/shared_utils/lib/src/redaction.dart`, `LogRedactor` in `apps/mobile/lib/core/logging/log_redactor.dart`, `LogEntry.fromRaw`, and `LogManager._handleLogEvent`. | Guaranteed consistent redaction across all 3 user-facing and diagnostic surfaces: (1) Live Log Viewer UI, (2) Clipboard export dialog with privacy warning, and (3) persistent log files (`brick_vpn_live.log`). |
+| | **Release Integrity & Checksum Verification (P8-T4)** | Android APK Signature Scheme v2/v3 signing, SHA-256 checksum generation (`SHA256SUMS.txt`), and automated tamper verification script (`scripts/generate_and_verify_checksums.sh`). | Cryptographic signature prevents APK modification or repacking. Debug artifacts (`*-debug.apk`, `*-debug.aab`) excluded from checksum baseline. Public fingerprint documented in `docs/verifying-releases.md`. |
+| | **Supply Chain & Manifest Least Privilege (P8-T5)** | Hermetic native binaries, zero unpinned git dependencies, automated Dependabot weekly scanning, and minimal Android permission allowlist (8 justified permissions, zero invasive permissions). | Background services non-exported (`android:exported="false"`). Zero critical/high CVEs across Dart, Gradle, and Go stacks. |
+| **Category 2: Best-Effort with Known Limitations** | **In-Memory Secret Retention** | Native engine `sing-box` (Go `libbox.aar`) requires decrypted credentials in memory to establish cryptographic tunnels. | An adversary with physical root/debugger access (`frida`, kernel memory dump) can inspect volatile RAM. Minimized by wiping strings where feasible, but runtime memory zeroing cannot be cryptographically guaranteed in managed runtimes (Go GC / Dart VM). |
+| | **Host Test Mock Ciphers** | In JVM/desktop unit tests without Android Keystore, an in-memory/fallback AES-GCM cipher (`LocalAuthenticatedCipher` / `InMemorySensitiveFieldCipher`) is utilized. | Provides functional cryptographic parity in unit tests; hardware Keystore / StrongBox backed keys operate exclusively on real Android devices. |
+| | **Free-Text Native Engine Log Redaction** | Sing-box core logs free-text strings that pass through regex pattern scrubbers. | Regex pattern matching handles common credential and address shapes, but cannot guarantee 100% detection of novel, non-standard, or obfuscated formats in free-text debug output. Advanced users warned via modal. |
+| | **Subscription Server Integrity** | HTTPS TLS certificate validation, size bounds (`maxSubscriptionLength = 5 MiB`), redirect limit (`maxRedirects = 5`), and timeout (`defaultFetchTimeout = 10s`). | If an upstream subscription provider is compromised or issues malicious configuration payloads, the app safely parses or rejects them, but cannot verify if the remote server itself is trustworthy or logging user connections. |
+| **Category 3: Deferred to Phase 10 / Production** | **Production Release Signing Key & Hardware/Offline Custody (P8-T4)** | Phase 8 builds use Android debug signing (`signingConfigs.getByName("debug")`) for reproducible development. | Generating the production release keystore, establishing secure offline/hardware key custody, configuring CI signing secrets, and replacing `[PENDING_PHASE10_PRODUCTION_KEY_FINGERPRINT]` in `docs/verifying-releases.md` are deferred to Phase 10. |
+| | **Bit-for-Bit Reproducible Builds (P8-T4)** | Not yet bit-for-bit reproducible at Phase 8 due to `gomobile` AAR ZIP timestamps and host build paths. | Containerized hermetic build environment with `SOURCE_DATE_EPOCH`, `-trimpath`, deterministic APK ZIP timestamp normalization, and toolchain locking scoped to Phase 10+. |
+| | **Transitive Cosmetic Dependency Lockfile Bump (P8-T5)** | `cupertino_ui` and `material_ui` transitive lockfile notices have 0 CVEs (`isCurrentAffectedByAdvisory: false`). | Cosmetic lockfile upgrades scheduled for Phase 10 release preparation to avoid mid-hardening dependency churn. |
+
+#### Residual Risk & Threat Model Summary
+1. **Device Compromise:** Physical compromise of an unencrypted, rooted device exposes runtime secrets in RAM. Users in extreme-threat environments should enable device full-disk encryption and avoid rooting.
+2. **Censorship & Deep Packet Inspection (DPI):** Transport encryption protects payload content; however, metadata (IP endpoints, packet timing) remains subject to ISP/state censorship. Phase 12+ transport plugins (Shadowsocks, Reality) mitigate DPI detection.
+3. **Malicious Upstream Subscriptions:** Input bounding and sanitization prevent client crashes and code execution from untrusted subscription feeds, but do not replace provider trust.
+
+
 
 
 

@@ -286,6 +286,10 @@ void main() {
               (config['pre_shared_key'] as String).startsWith('enc:v1:'),
               isTrue,
             );
+            expect(
+              (config['peer_public_key'] as String).startsWith('enc:v1:'),
+              isTrue,
+            );
           } else {
             fail('Unexpected unverified protocol type: $type');
           }
@@ -661,6 +665,7 @@ void main() {
         await reloadRepoWs.init();
         final loadedWs = await reloadRepoWs.getById('vless-ws-1');
         expect(loadedWs, isNotNull);
+        expect(loadedWs, equals(vlessWsProfile));
         final ws =
             (loadedWs!.config as VlessOutbound).transport!
                 as WebSocketTransport;
@@ -671,6 +676,41 @@ void main() {
         expect(
           ws.headers?['X-Custom-Secret'],
           equals('custom-secret-header-val'),
+        );
+
+        // Test HttpTransport with null path (verifies null is preserved, not mutated to '/')
+        final vlessHttpNullPathProfile = ServerProfile(
+          id: 'vless-http-null-path',
+          name: 'VLESS HTTP Null Path Node',
+          config: VlessOutbound(
+            server: 'vless-null.example.com',
+            serverPort: 443,
+            uuid: '55555555-6666-7777-8888-999999999999',
+            transport: HttpTransport(
+              headers: {'X-Null-Path-Secret': 'secret-headers-without-path'},
+            ),
+          ),
+          addedAt: DateTime.utc(2026, 11, 7, 3),
+        );
+
+        await repository.save(vlessHttpNullPathProfile);
+        final reloadRepoNullPath = FileServerProfileRepository(
+          storageFile: storageFile,
+          cipher: cipher,
+        );
+        await reloadRepoNullPath.init();
+        final loadedHttpNull = await reloadRepoNullPath.getById(
+          'vless-http-null-path',
+        );
+        expect(loadedHttpNull, isNotNull);
+        expect(loadedHttpNull, equals(vlessHttpNullPathProfile));
+        final httpNull =
+            (loadedHttpNull!.config as VlessOutbound).transport!
+                as HttpTransport;
+        expect(httpNull.path, isNull);
+        expect(
+          httpNull.headers?['X-Null-Path-Secret'],
+          equals('secret-headers-without-path'),
         );
       },
     );

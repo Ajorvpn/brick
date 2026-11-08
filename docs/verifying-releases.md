@@ -40,7 +40,7 @@ app-arm64-v8a-release.apk: OK
 Using macOS built-in `shasum`:
 
 ```bash
-shasum -a 256 -c SHA256SUMS.txt
+shasum -a 256 -c --ignore-missing SHA256SUMS.txt
 ```
 
 Alternatively, compute the hash manually and compare:
@@ -70,21 +70,51 @@ Compare the resulting 64-character hexadecimal output against the hash listed in
 
 Checksum verification proves the downloaded file matches the published artifact, but does not prove who built the artifact. Android APK signatures ensure that the binary was signed by the legitimate project release key and has not been repackaged.
 
-### Method A: Using Android SDK `apksigner` (Recommended)
+### Method A: Using Android SDK `apksigner` (Primary & Required for APK Signature Scheme v2/v3)
 
-If you have the Android SDK Build-Tools installed:
+`apksigner` is the official Android SDK tool for verifying APK integrity and certificate fingerprints. It inspects modern APK Signature Schemes (v2 and v3) embedded in the APK Signing Block.
+
+Run `apksigner verify` with verbose and certificate printing flags:
 
 ```bash
-apksigner verify --print-certs app-release.apk
+apksigner verify --print-certs -v app-release.apk
 ```
 
-### Method B: Using JDK `keytool`
+Expected output for Brick VPN release APKs:
 
-If you have the Java Development Kit (JDK) installed:
+```text
+Verifies
+Verified using v1 scheme (JAR signing): false
+Verified using v2 scheme (APK Signature Scheme v2): true
+Verified using v3 scheme (APK Signature Scheme v3): true
+Verified using v4 scheme (APK Signature Scheme v4): false
+Verified for SourceStamp: false
+Number of signers: 1
+Signer #1 certificate DN: CN=Android Debug, O=Android, C=US
+Signer #1 certificate SHA-256 digest: dac4433e48f6ca383f7d8958589d9a944c76e01ea813d4e83cf0d43d3d65f934
+Signer #1 key algorithm: RSA
+Signer #1 key size (bits): 2048
+```
+
+Verify that:
+1. `Verified using v2 scheme (APK Signature Scheme v2)` is `true`.
+2. The `Signer #1 certificate SHA-256 digest` matches the expected signing certificate fingerprint.
+
+### Method B: Using JDK `keytool` (Limitation Note on APK Signature Scheme v2/v3)
+
+The JDK `keytool` utility inspects legacy JAR v1 signatures located inside the `META-INF/` directory:
 
 ```bash
 keytool -printcert -jarfile app-release.apk
 ```
+
+> [!NOTE]
+> **APK Signature Scheme v2/v3 vs. Legacy JAR v1 Signatures:**
+> Because Brick VPN targets `minSdk = 24` (Android 7.0+), modern Android Gradle Plugin releases sign APKs exclusively using APK Signature Scheme v2/v3 and omit legacy v1 JAR signing signatures from `META-INF/`. As a result, running `keytool -printcert -jarfile` on modern release APKs will report:
+> ```text
+> Not a signed jar file
+> ```
+> This is expected behavior for modern Android APKs. Use **Method A (`apksigner`)** above to verify the APK Signature Scheme v2/v3 cryptographic signatures and certificate fingerprints.
 
 ---
 

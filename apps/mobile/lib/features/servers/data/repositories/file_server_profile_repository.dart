@@ -211,6 +211,14 @@ final class FileServerProfileRepository implements ServerProfileRepository {
           onPlaintextEncountered();
         }
       }
+      if (configMap['peer_public_key'] is String) {
+        final val = configMap['peer_public_key'] as String;
+        if (_cipher.isEncrypted(val)) {
+          configMap['peer_public_key'] = await _cipher.decrypt(val);
+        } else {
+          onPlaintextEncountered();
+        }
+      }
       if (configMap['tls'] is Map) {
         final tlsMap = Map<String, dynamic>.from(configMap['tls'] as Map);
         if (tlsMap['reality'] is Map) {
@@ -325,8 +333,6 @@ final class FileServerProfileRepository implements ServerProfileRepository {
         final cleanName =
             BuildServerProfile.sanitizeRemark(name) ??
             '${enrichedConfig.server}:${enrichedConfig.serverPort}';
-        final cleanName = BuildServerProfile.sanitizeRemark(name) ??
-            '${enrichedConfig.server}:${enrichedConfig.serverPort}';
         _profiles[id] = ServerProfile(
           id: id,
           name: cleanName,
@@ -346,26 +352,36 @@ final class FileServerProfileRepository implements ServerProfileRepository {
     return next;
   }
 
+  Future<String> _encryptIfPlaintext(String value) async =>
+      _cipher.isEncrypted(value) ? value : await _cipher.encrypt(value);
+
   Future<void> _performPersist() async {
     final serializedProfiles = <Map<String, dynamic>>[];
     for (final profile in _profiles.values) {
       final configMap = Map<String, dynamic>.from(profile.config.toJson());
       if (configMap['uuid'] is String) {
-        configMap['uuid'] = await _cipher.encrypt(configMap['uuid'] as String);
+        configMap['uuid'] = await _encryptIfPlaintext(
+          configMap['uuid'] as String,
+        );
       }
       if (configMap['password'] is String) {
-        configMap['password'] = await _cipher.encrypt(
+        configMap['password'] = await _encryptIfPlaintext(
           configMap['password'] as String,
         );
       }
       if (configMap['private_key'] is String) {
-        configMap['private_key'] = await _cipher.encrypt(
+        configMap['private_key'] = await _encryptIfPlaintext(
           configMap['private_key'] as String,
         );
       }
       if (configMap['pre_shared_key'] is String) {
-        configMap['pre_shared_key'] = await _cipher.encrypt(
+        configMap['pre_shared_key'] = await _encryptIfPlaintext(
           configMap['pre_shared_key'] as String,
+        );
+      }
+      if (configMap['peer_public_key'] is String) {
+        configMap['peer_public_key'] = await _encryptIfPlaintext(
+          configMap['peer_public_key'] as String,
         );
       }
       if (configMap['tls'] is Map) {
@@ -375,12 +391,12 @@ final class FileServerProfileRepository implements ServerProfileRepository {
             tlsMap['reality'] as Map,
           );
           if (realityMap['public_key'] is String) {
-            realityMap['public_key'] = await _cipher.encrypt(
+            realityMap['public_key'] = await _encryptIfPlaintext(
               realityMap['public_key'] as String,
             );
           }
           if (realityMap['short_id'] is String) {
-            realityMap['short_id'] = await _cipher.encrypt(
+            realityMap['short_id'] = await _encryptIfPlaintext(
               realityMap['short_id'] as String,
             );
           }
@@ -391,7 +407,7 @@ final class FileServerProfileRepository implements ServerProfileRepository {
       if (configMap['obfs'] is Map) {
         final obfsMap = Map<String, dynamic>.from(configMap['obfs'] as Map);
         if (obfsMap['password'] is String) {
-          obfsMap['password'] = await _cipher.encrypt(
+          obfsMap['password'] = await _encryptIfPlaintext(
             obfsMap['password'] as String,
           );
         }
@@ -400,7 +416,7 @@ final class FileServerProfileRepository implements ServerProfileRepository {
       if (configMap['plugin_opts'] is String) {
         final val = configMap['plugin_opts'] as String;
         if (val.isNotEmpty) {
-          configMap['plugin_opts'] = await _cipher.encrypt(val);
+          configMap['plugin_opts'] = await _encryptIfPlaintext(val);
         }
       }
       if (configMap['transport'] is Map) {
@@ -413,7 +429,7 @@ final class FileServerProfileRepository implements ServerProfileRepository {
           );
           for (final entry in headersMap.entries) {
             if (entry.value is String) {
-              headersMap[entry.key] = await _cipher.encrypt(
+              headersMap[entry.key] = await _encryptIfPlaintext(
                 entry.value as String,
               );
             }
@@ -427,7 +443,9 @@ final class FileServerProfileRepository implements ServerProfileRepository {
         final extraMap = Map<String, dynamic>.from(profile.config.extraParams!);
         for (final entry in extraMap.entries) {
           if (entry.value is String) {
-            extraMap[entry.key] = await _cipher.encrypt(entry.value as String);
+            extraMap[entry.key] = await _encryptIfPlaintext(
+              entry.value as String,
+            );
           }
         }
         profile.config.extraParams!.keys.forEach(configMap.remove);
@@ -438,7 +456,9 @@ final class FileServerProfileRepository implements ServerProfileRepository {
         );
         for (final entry in extraMap.entries) {
           if (entry.value is String) {
-            extraMap[entry.key] = await _cipher.encrypt(entry.value as String);
+            extraMap[entry.key] = await _encryptIfPlaintext(
+              entry.value as String,
+            );
           }
         }
         configMap['extra_params'] = extraMap;
@@ -463,7 +483,7 @@ final class FileServerProfileRepository implements ServerProfileRepository {
     final serializedSubscriptions = <Map<String, dynamic>>[];
     for (final sub in _subscriptions.values) {
       final subMap = sub.toJson();
-      subMap['url'] = await _cipher.encrypt(sub.url);
+      subMap['url'] = await _encryptIfPlaintext(sub.url);
       serializedSubscriptions.add(subMap);
     }
 
@@ -847,20 +867,6 @@ ServerProfile _sanitizeServerProfile(ServerProfile profile) {
 SubscriptionMetadata _sanitizeSubscription(SubscriptionMetadata subscription) {
   final cleanName =
       BuildServerProfile.sanitizeRemark(subscription.name) ?? 'Subscription';
-  if (cleanName == subscription.name) return subscription;
-  return subscription.copyWith(name: cleanName);
-}
-
-ServerProfile _sanitizeServerProfile(ServerProfile profile) {
-  final cleanName = BuildServerProfile.sanitizeRemark(profile.name) ??
-      '${profile.config.server}:${profile.config.serverPort}';
-  if (cleanName == profile.name) return profile;
-  return profile.copyWith(name: cleanName);
-}
-
-SubscriptionMetadata _sanitizeSubscription(SubscriptionMetadata subscription) {
-  final cleanName = BuildServerProfile.sanitizeRemark(subscription.name) ??
-      'Subscription';
   if (cleanName == subscription.name) return subscription;
   return subscription.copyWith(name: cleanName);
 }

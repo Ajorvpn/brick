@@ -24,6 +24,12 @@ class AddSubscriptionScreen extends ConsumerStatefulWidget {
   /// Creates the add subscription screen.
   const AddSubscriptionScreen({super.key});
 
+  /// Maximum allowed characters for the subscription URL field.
+  static const int maxUrlInputLength = 8256;
+
+  /// Maximum allowed characters for the subscription display name field.
+  static const int maxNameInputLength = 128;
+
   @override
   ConsumerState<AddSubscriptionScreen> createState() =>
       _AddSubscriptionScreenState();
@@ -45,8 +51,12 @@ class _AddSubscriptionScreenState extends ConsumerState<AddSubscriptionScreen> {
     final data = await Clipboard.getData(Clipboard.kTextPlain);
     final text = data?.text;
     if (text != null && text.isNotEmpty) {
+      final trimmed = text.trim();
+      final bounded = trimmed.length > AddSubscriptionScreen.maxUrlInputLength
+          ? trimmed.substring(0, AddSubscriptionScreen.maxUrlInputLength)
+          : trimmed;
       setState(() {
-        _urlController.text = text.trim();
+        _urlController.text = bounded;
         _inlineError = null;
       });
     }
@@ -110,6 +120,11 @@ class _AddSubscriptionScreenState extends ConsumerState<AddSubscriptionScreen> {
                 ),
               ),
               enabled: !isLoading,
+              inputFormatters: [
+                LengthLimitingTextInputFormatter(
+                  AddSubscriptionScreen.maxUrlInputLength,
+                ),
+              ],
               keyboardType: TextInputType.url,
               autocorrect: false,
               enableSuggestions: false,
@@ -122,6 +137,11 @@ class _AddSubscriptionScreenState extends ConsumerState<AddSubscriptionScreen> {
                 labelText: 'add_subscription.name_label'.tr(),
                 hintText: 'add_subscription.name_hint'.tr(),
               ),
+              inputFormatters: [
+                LengthLimitingTextInputFormatter(
+                  AddSubscriptionScreen.maxNameInputLength,
+                ),
+              ],
               enabled: !isLoading,
               autocorrect: false,
             ),
