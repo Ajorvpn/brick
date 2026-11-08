@@ -90,7 +90,7 @@ kotlin {
 dependencies {
     // Same dependency set as the former Gate A application module, minus what
     // only an application needs.
-    implementation("androidx.core:core-ktx:1.13.1")
+    implementation("androidx.core:core-ktx:1.19.1")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1")
 
