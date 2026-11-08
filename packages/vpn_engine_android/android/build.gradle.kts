@@ -92,7 +92,7 @@ dependencies {
     // only an application needs.
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.appcompat:appcompat:1.7.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
 
     // P3-T3 / P3-T7 Part 2: the sing-box v1.10.7 libbox AAR (built with
     // `-tags with_utls`). Gitignored; a fresh clone MUST run
