@@ -404,4 +404,405 @@ void main() {
       expect(source, contains('sealed class QuicBasedOutbound'));
     });
   });
+
+  group(
+    'P9-T1 gap filling: equality, hashCode, toJson and composition coverage',
+    () {
+      test(
+        'VmessOutbound equality, hashCode, and optional fields in toJson',
+        () {
+          const vmess1 = VmessOutbound(
+            server: 'vmess.example',
+            serverPort: 443,
+            uuid: 'uuid-vmess',
+            security: 'aes-128-gcm',
+            alterId: 1,
+            globalPadding: true,
+            authenticatedLength: true,
+            packetEncoding: 'packetaddr',
+            network: 'tcp',
+            multiplex: MultiplexSettings(enabled: true),
+            extraParams: {'k1': 'v1'},
+          );
+          const vmess2 = VmessOutbound(
+            server: 'vmess.example',
+            serverPort: 443,
+            uuid: 'uuid-vmess',
+            security: 'aes-128-gcm',
+            alterId: 1,
+            globalPadding: true,
+            authenticatedLength: true,
+            packetEncoding: 'packetaddr',
+            network: 'tcp',
+            multiplex: MultiplexSettings(enabled: true),
+            extraParams: {'k1': 'v1'},
+          );
+          const vmessDifferent = VmessOutbound(
+            server: 'vmess.diff',
+            serverPort: 443,
+            uuid: 'uuid-vmess',
+          );
+
+          expect(vmess1, equals(vmess2));
+          expect(vmess1.hashCode, equals(vmess2.hashCode));
+          expect(vmess1, isNot(equals(vmessDifferent)));
+
+          final json = vmess1.toJson();
+          expect(json['network'], 'tcp');
+          expect(json['packet_encoding'], 'packetaddr');
+          expect(json['multiplex'], isA<Map<String, dynamic>>());
+          expect(json['k1'], 'v1');
+        },
+      );
+
+      test(
+        'TrojanOutbound equality, hashCode, and optional fields in toJson',
+        () {
+          const trojan1 = TrojanOutbound(
+            server: 'trojan.example',
+            serverPort: 443,
+            password: 'pass',
+            network: 'tcp',
+            multiplex: MultiplexSettings(enabled: false),
+            extraParams: {'custom_tag': 'tr1'},
+          );
+          const trojan2 = TrojanOutbound(
+            server: 'trojan.example',
+            serverPort: 443,
+            password: 'pass',
+            network: 'tcp',
+            multiplex: MultiplexSettings(enabled: false),
+            extraParams: {'custom_tag': 'tr1'},
+          );
+          const trojanDiff = TrojanOutbound(
+            server: 'trojan.example',
+            serverPort: 8443,
+            password: 'pass',
+          );
+
+          expect(trojan1, equals(trojan2));
+          expect(trojan1.hashCode, equals(trojan2.hashCode));
+          expect(trojan1, isNot(equals(trojanDiff)));
+
+          final json = trojan1.toJson();
+          expect(json['network'], 'tcp');
+          expect(json['multiplex'], isA<Map<String, dynamic>>());
+          expect(json['custom_tag'], 'tr1');
+        },
+      );
+
+      test(
+        'ShadowsocksOutbound equality, hashCode, and optional fields in toJson',
+        () {
+          const ss1 = ShadowsocksOutbound(
+            server: 'ss.example',
+            serverPort: 8388,
+            method: '2022-blake3-aes-128-gcm',
+            password: 'secret',
+            network: 'tcp',
+            plugin: 'obfs-local',
+            pluginOpts: 'obfs=http',
+            udpOverTcp: true,
+            multiplex: MultiplexSettings(enabled: true),
+            extraParams: {'extra': 123},
+          );
+          const ss2 = ShadowsocksOutbound(
+            server: 'ss.example',
+            serverPort: 8388,
+            method: '2022-blake3-aes-128-gcm',
+            password: 'secret',
+            network: 'tcp',
+            plugin: 'obfs-local',
+            pluginOpts: 'obfs=http',
+            udpOverTcp: true,
+            multiplex: MultiplexSettings(enabled: true),
+            extraParams: {'extra': 123},
+          );
+          const ssDiff = ShadowsocksOutbound(
+            server: 'ss.example',
+            serverPort: 8388,
+            method: 'aes-256-gcm',
+            password: 'secret',
+          );
+
+          expect(ss1, equals(ss2));
+          expect(ss1.hashCode, equals(ss2.hashCode));
+          expect(ss1, isNot(equals(ssDiff)));
+
+          final json = ss1.toJson();
+          expect(json['network'], 'tcp');
+          expect(json['multiplex'], isA<Map<String, dynamic>>());
+          expect(json['extra'], 123);
+        },
+      );
+
+      test(
+        'Hysteria2Outbound equality, hashCode, and optional fields in toJson',
+        () {
+          final hy1 = Hysteria2Outbound(
+            server: 'hy.example',
+            serverPort: 443,
+            tls: _quicTls,
+            password: 'pass',
+            upMbps: 100,
+            downMbps: 500,
+            serverPorts: ['443', '10000-20000'],
+            obfsType: 'salamander',
+            obfsPassword: 'obfs-secret',
+            bbrProfile: 'balanced',
+            quic: const QuicSettings(disablePathMtuDiscovery: true),
+            extraParams: {'tag': 'hy-node'},
+          );
+          final hy2 = Hysteria2Outbound(
+            server: 'hy.example',
+            serverPort: 443,
+            tls: _quicTls,
+            password: 'pass',
+            upMbps: 100,
+            downMbps: 500,
+            serverPorts: ['443', '10000-20000'],
+            obfsType: 'salamander',
+            obfsPassword: 'obfs-secret',
+            bbrProfile: 'balanced',
+            quic: const QuicSettings(disablePathMtuDiscovery: true),
+            extraParams: {'tag': 'hy-node'},
+          );
+          final hyDiff = Hysteria2Outbound(
+            server: 'hy.other',
+            serverPort: 443,
+            tls: _quicTls,
+            password: 'pass',
+          );
+
+          expect(hy1, equals(hy2));
+          expect(hy1.hashCode, equals(hy2.hashCode));
+          expect(hy1, isNot(equals(hyDiff)));
+
+          final json = hy1.toJson();
+          expect(json['server_ports'], ['443', '10000-20000']);
+          expect(json['bbr_profile'], 'balanced');
+          expect(json['quic'], isA<Map<String, dynamic>>());
+          expect(json['tag'], 'hy-node');
+        },
+      );
+
+      test(
+        'TuicOutbound equality, hashCode, and optional fields in toJson',
+        () {
+          final tuic1 = TuicOutbound(
+            server: 'tuic.example',
+            serverPort: 443,
+            tls: _quicTls,
+            uuid: 'uuid-tuic',
+            password: 'pass',
+            congestionControl: 'bbr',
+            udpRelayMode: 'quic',
+            udpOverStream: true,
+            zeroRttHandshake: true,
+            heartbeat: const Duration(seconds: 20),
+            quic: const QuicSettings(disablePathMtuDiscovery: false),
+            extraParams: {'custom': 'field'},
+          );
+          final tuic2 = TuicOutbound(
+            server: 'tuic.example',
+            serverPort: 443,
+            tls: _quicTls,
+            uuid: 'uuid-tuic',
+            password: 'pass',
+            congestionControl: 'bbr',
+            udpRelayMode: 'quic',
+            udpOverStream: true,
+            zeroRttHandshake: true,
+            heartbeat: const Duration(seconds: 20),
+            quic: const QuicSettings(disablePathMtuDiscovery: false),
+            extraParams: {'custom': 'field'},
+          );
+          final tuicDiff = TuicOutbound(
+            server: 'tuic.example',
+            serverPort: 443,
+            tls: _quicTls,
+            uuid: 'different-uuid',
+            password: 'pass',
+          );
+
+          expect(tuic1, equals(tuic2));
+          expect(tuic1.hashCode, equals(tuic2.hashCode));
+          expect(tuic1, isNot(equals(tuicDiff)));
+
+          final json = tuic1.toJson();
+          expect(json['udp_relay_mode'], 'quic');
+          expect(json['quic'], isA<Map<String, dynamic>>());
+          expect(json['custom'], 'field');
+        },
+      );
+
+      test('WireGuardOutbound optional fields serialization in toJson', () {
+        final wg = WireGuardOutbound(
+          server: 'wg.example',
+          serverPort: 51820,
+          localAddresses: ['10.0.0.2/32'],
+          privateKey: 'privkey',
+          peerPublicKey: 'pubkey',
+          presharedKey: 'psk',
+          reserved: [1, 2, 3],
+          mtu: 1360,
+          workers: 2,
+          dnsServers: ['1.1.1.1'],
+        );
+
+        final json = wg.toJson();
+        expect(json['pre_shared_key'], 'psk');
+        expect(json['reserved'], [1, 2, 3]);
+        expect(json['mtu'], 1360);
+        expect(json['workers'], 2);
+        expect(json['dns_servers'], ['1.1.1.1']);
+      });
+
+      test('extraParams map equality and hashCode branches', () {
+        const out1 = VmessOutbound(
+          server: 's.com',
+          serverPort: 443,
+          uuid: 'u',
+          extraParams: {'a': '1', 'b': '2'},
+        );
+        const out2 = VmessOutbound(
+          server: 's.com',
+          serverPort: 443,
+          uuid: 'u',
+          extraParams: {'a': '1'},
+        );
+        const out3 = VmessOutbound(
+          server: 's.com',
+          serverPort: 443,
+          uuid: 'u',
+          extraParams: {'a': '1', 'b': '3'},
+        );
+        const out4 = VmessOutbound(
+          server: 's.com',
+          serverPort: 443,
+          uuid: 'u',
+          extraParams: {'a': '1', 'c': '2'},
+        );
+
+        expect(out1 == out2, isFalse);
+        expect(out1 == out3, isFalse);
+        expect(out1 == out4, isFalse);
+      });
+
+      test('Composition types equality and hashCode coverage', () {
+        const reality1 = RealitySettings(
+          enabled: true,
+          publicKey: 'pk',
+          shortId: 's1',
+          spiderX: 'sp',
+        );
+        const reality2 = RealitySettings(
+          enabled: true,
+          publicKey: 'pk',
+          shortId: 's1',
+          spiderX: 'sp',
+        );
+        const realityDiff = RealitySettings(
+          enabled: true,
+          publicKey: 'pk',
+          shortId: 's2',
+          spiderX: 'sp',
+        );
+        expect(reality1, equals(reality2));
+        expect(reality1.hashCode, equals(reality2.hashCode));
+        expect(reality1, isNot(equals(realityDiff)));
+
+        const fragment1 = TlsFragmentSettings(
+          enabled: true,
+          size: '10-20',
+          sleep: '2-4',
+        );
+        const fragment2 = TlsFragmentSettings(
+          enabled: true,
+          size: '10-20',
+          sleep: '2-4',
+        );
+        const fragmentDiff = TlsFragmentSettings(
+          enabled: false,
+          size: '10-20',
+          sleep: '2-4',
+        );
+        expect(fragment1, equals(fragment2));
+        expect(fragment1.hashCode, equals(fragment2.hashCode));
+        expect(fragment1, isNot(equals(fragmentDiff)));
+
+        const grpc1 = GrpcTransport(
+          serviceName: 'svc',
+          idleTimeout: Duration(seconds: 10),
+          pingTimeout: Duration(seconds: 5),
+          permitWithoutStream: true,
+        );
+        const grpc2 = GrpcTransport(
+          serviceName: 'svc',
+          idleTimeout: Duration(seconds: 10),
+          pingTimeout: Duration(seconds: 5),
+          permitWithoutStream: true,
+        );
+        const grpcDiff = GrpcTransport(serviceName: 'svc_other');
+        expect(grpc1, equals(grpc2));
+        expect(grpc1.hashCode, equals(grpc2.hashCode));
+        expect(grpc1, isNot(equals(grpcDiff)));
+
+        const quic1 = QuicSettings(
+          disablePathMtuDiscovery: true,
+          idleTimeout: Duration(seconds: 40),
+          keepAlivePeriod: Duration(seconds: 20),
+        );
+        const quic2 = QuicSettings(
+          disablePathMtuDiscovery: true,
+          idleTimeout: Duration(seconds: 40),
+          keepAlivePeriod: Duration(seconds: 20),
+        );
+        const quicDiff = QuicSettings(disablePathMtuDiscovery: false);
+        expect(quic1, equals(quic2));
+        expect(quic1.hashCode, equals(quic2.hashCode));
+        expect(quic1, isNot(equals(quicDiff)));
+
+        const mux1 = MultiplexSettings(
+          enabled: true,
+          protocol: 'smux',
+          maxConnections: 8,
+          minStreams: 2,
+          maxStreams: 10,
+          padding: true,
+        );
+        const mux2 = MultiplexSettings(
+          enabled: true,
+          protocol: 'smux',
+          maxConnections: 8,
+          minStreams: 2,
+          maxStreams: 10,
+          padding: true,
+        );
+        const muxDiff = MultiplexSettings(enabled: false, maxConnections: 4);
+        expect(mux1, equals(mux2));
+        expect(mux1.hashCode, equals(mux2.hashCode));
+        expect(mux1, isNot(equals(muxDiff)));
+      });
+
+      test('ConnectionState hashCode and identity equality branches', () {
+        const disconnected = Disconnected();
+        const connecting = Connecting();
+        const connected = Connected();
+        const disconnecting = Disconnecting();
+        const err1 = Error(InvalidConfig());
+        const err2 = Error(InvalidConfig());
+
+        expect(disconnected.hashCode, isA<int>());
+        expect(connecting.hashCode, isA<int>());
+        expect(connected.hashCode, isA<int>());
+        expect(disconnecting.hashCode, isA<int>());
+        expect(err1.hashCode, equals(err2.hashCode));
+        expect(disconnected == disconnected, isTrue);
+        expect(connecting == connecting, isTrue);
+        expect(connected == connected, isTrue);
+        expect(disconnecting == disconnecting, isTrue);
+      });
+    },
+  );
 }

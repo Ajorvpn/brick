@@ -63,6 +63,7 @@ android {
         // to `dev.brickvpn.harness.test`.
         testApplicationId = "dev.brickvpn.native.harness"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        consumerProguardFiles("proguard-rules.pro")
     }
 
     compileOptions {

@@ -149,5 +149,34 @@ void main() {
         '2026-11-05 14:30:00 INFO Connection established',
       );
     });
+
+    test('preserves safe diagnostic IPv6 with unbracketed port and bracketed forms', () {
+      // Exercises _isSafeDiagnosticIpv6 lines 165-170
+      expect(
+        redact('Proxy loopback ::1:8080 and [::1]:9090 active'),
+        'Proxy loopback ::1:8080 and [::1]:9090 active',
+      );
+      expect(
+        redact('Non-loopback 2001:db8::1:8080 active'),
+        'Non-loopback [REDACTED_IP] active',
+      );
+    });
+
+    test('Result Ok and Err equality and hashCode contracts', () {
+      const ok1 = Ok<int, String>(42);
+      const ok2 = Ok<int, String>(42);
+      const okDiff = Ok<int, String>(100);
+      expect(ok1, equals(ok2));
+      expect(ok1.hashCode, equals(ok2.hashCode));
+      expect(ok1, isNot(equals(okDiff)));
+
+      const err1 = Err<int, String>('fail');
+      const err2 = Err<int, String>('fail');
+      const errDiff = Err<int, String>('other');
+      expect(err1, equals(err2));
+      expect(err1.hashCode, equals(err2.hashCode));
+      expect(err1, isNot(equals(errDiff)));
+      expect(ok1, isNot(equals(err1)));
+    });
   });
 }

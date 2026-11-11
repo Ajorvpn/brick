@@ -62,16 +62,60 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Build release APK
+      - name: Provision release keystore from secrets
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ] || [ -z "$ANDROID_KEYSTORE_PASSWORD" ] || [ -z "$ANDROID_KEY_ALIAS" ] || [ -z "$ANDROID_KEY_PASSWORD" ]; then
+            echo "Error: Release signing secrets are not configured in GitHub Actions." >&2
+            exit 1
+          fi
+          KEYSTORE_PATH="$RUNNER_TEMP/brickvpn-release.jks"
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"
+          test -s "$KEYSTORE_PATH"
+          chmod 600 "$KEYSTORE_PATH"
+          echo "BRICK_KEYSTORE_PATH=$KEYSTORE_PATH" >> "$GITHUB_ENV"
+          echo "BRICK_KEYSTORE_PASSWORD=$ANDROID_KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "BRICK_KEY_ALIAS=$ANDROID_KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "BRICK_KEY_PASSWORD=$ANDROID_KEY_PASSWORD" >> "$GITHUB_ENV"
+
+      - name: Build release Split-ABI APKs, Universal APK, and App Bundle
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
           cd apps/mobile
+          flutter build apk --release --split-per-abi
           flutter build apk --release
+          flutter build appbundle --release
+          cp build/app/outputs/bundle/release/app-release.aab build/app/outputs/flutter-apk/app-release.aab
+
+      - name: Verify release APK signature
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          APKSIGNER_BIN=$(find "${ANDROID_HOME:-${ANDROID_SDK_ROOT}}/build-tools" -name "apksigner" 2>/dev/null | sort -V | tail -n 1)
+          for apk in apps/mobile/build/app/outputs/flutter-apk/*.apk; do
+            echo "Verifying signature for $apk"
+            SIGNATURE_OUTPUT=$("$APKSIGNER_BIN" verify --print-certs -v "$apk")
+            echo "$SIGNATURE_OUTPUT"
+            echo "$SIGNATURE_OUTPUT" | grep -q "563daf7196c565ad432bf5800e2a9eaae0a10918b0489e7965e63d973827303b"
+          done
+          echo "Verifying signature for app-release.aab"
+          AAB_CERT=$(keytool -printcert -jarfile apps/mobile/build/app/outputs/bundle/release/app-release.aab)
+          echo "$AAB_CERT"
+          echo "$AAB_CERT" | grep -q "56:3D:AF:71:96:C5:65:AD:43:2B:F5:80:0E:2A:9E:AA:E0:A1:09:18:B0:48:9E:79:65:E6:3D:97:38:27:30:3B"
 
       - name: Generate and verify release checksums
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
           ./scripts/generate_and_verify_checksums.sh apps/mobile/build/app/outputs/flutter-apk
+
+      - name: Wipe ephemeral release keystore
+        if: always() && startsWith(github.ref, 'refs/tags/v')
+        run: |
+          rm -f "$RUNNER_TEMP/brickvpn-release.jks"
 
       - name: Upload release artifacts and checksums
         if: startsWith(github.ref, 'refs/tags/v')
@@ -80,4 +124,5 @@ jobs:
           name: release-apks-and-checksums
           path: |
             apps/mobile/build/app/outputs/flutter-apk/*.apk
+            apps/mobile/build/app/outputs/bundle/release/*.aab
             apps/mobile/build/app/outputs/flutter-apk/SHA256SUMS.txt

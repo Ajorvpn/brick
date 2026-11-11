@@ -154,5 +154,37 @@ void main() {
       expect(stats, isEmpty);
       await sub.cancel();
     });
+
+    test('MockVpnEngine emitLog and logEvents stream coverage', () async {
+      final engine = MockVpnEngine();
+      addTearDown(engine.dispose);
+
+      final logs = <String>[];
+      final sub = engine.logEvents.listen(logs.add);
+      engine.emitLog('test log line 1');
+      engine.emitLog('test log line 2');
+      await Future<void>.delayed(Duration.zero);
+      expect(logs, containsAll(['test log line 1', 'test log line 2']));
+      await sub.cancel();
+    });
+
+    test('VpnCommandResult operator == and hashCode coverage', () {
+      const a1 = VpnCommandAccepted();
+      const a2 = VpnCommandAccepted();
+      expect(a1, equals(a2));
+      expect(a1.hashCode, equals(a2.hashCode));
+
+      const b1 = VpnCommandRejectedBusy();
+      const b2 = VpnCommandRejectedBusy();
+      expect(b1, equals(b2));
+      expect(b1.hashCode, equals(b2.hashCode));
+      expect(a1, isNot(equals(b1)));
+
+      const i1 = VpnCommandRejectedInvalidConfig();
+      const i2 = VpnCommandRejectedInvalidConfig();
+      expect(i1, equals(i2));
+      expect(i1.hashCode, equals(i2.hashCode));
+      expect(i1, isNot(equals(a1)));
+    });
   });
 }

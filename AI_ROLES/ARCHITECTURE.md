@@ -1409,6 +1409,471 @@ In accordance with Brick VPN's core governance principles (no security theater, 
 2. **Censorship & Deep Packet Inspection (DPI):** Transport encryption protects payload content; however, metadata (IP endpoints, packet timing) remains subject to ISP/state censorship. Phase 12+ transport plugins (Shadowsocks, Reality) mitigate DPI detection.
 3. **Malicious Upstream Subscriptions:** Input bounding and sanitization prevent client crashes and code execution from untrusted subscription feeds, but do not replace provider trust.
 
+## 11. Phase 9 — Testing & QA Architecture
+
+### 11.1 P9-T1 — Unit Test Coverage Audit & High-Value Gap-Filling Architecture
+
+Phase 9 establishes systematic quality assurance across the Brick VPN monorepo. Task `P9-T1` conducts an automated coverage audit and fills high-value unit test gaps without chasing 100% vanity metrics.
+
+#### Core Testing Principles
+1. **Critical Path Prioritization:** Parsing edge cases, state machine transitions, encrypted storage cascade/CRUD operations, and redaction logic take priority over trivial getters, generated code, or UI layout boilerplate.
+2. **Deterministic Fast Execution:** Pure-Dart and Flutter unit test suites execute in memory without emulator spin-up, completing under 1 second.
+3. **Exclusion of Generated Code:** Metrics strictly omit compiler-generated files (`*.g.dart`, `*.freezed.dart`, `*.pigeon.dart`) to ensure honest measurement of authored logic.
+
+#### Subsystem Invariants Covered in `P9-T1`
+- **Subscription Cascade & Storage Deserialization (`FileServerProfileRepository`):**
+  - Replacing subscription profiles updates metadata and purges stale associated profiles and broken entries while strictly preserving user-added standalone servers.
+  - Deleting a subscription cascades to remove all associated child profiles and broken records, verified across cold reloads from disk.
+  - Round-trip deserialization reconstructs custom transports (`GrpcTransport`, `HttpTransport`, `HttpUpgradeTransport`) and encrypted `extraParams` across `VmessOutbound`, `TrojanOutbound`, `ShadowsocksOutbound`, `Hysteria2Outbound`, `TuicOutbound`, `WireGuardOutbound`, and `AmneziaWgOutbound`.
+  - Corrupt or invalid JSON outbound configurations fail closed gracefully to `SavedServerBroken` without crashing.
+- **Engine Log Parsing & Severity Aliasing (`LogEntry` & `LogRedactor`):**
+  - `LogEntry.parseEngineLine` resolves severity aliases (`TRC`/`TRACE`, `DBG`/`DEBUG`, `WRN`/`WARNING`, `ERR`/`ERROR`, `PANIC`/`CRIT`/`CRITICAL`/`FATAL`, `INF`/`INFO`), handles structured JSON fallback keys (`severity`, `lvl`, `@timestamp`, `caller`, `component`), and parses integer epoch timestamps (seconds vs milliseconds).
+  - `LogRedactor.redactJsonMap` recursively scrubs nested collections of maps and strings while preserving safe diagnostic addresses (`localhost`, `127.0.0.1`, `::1`, loopback TUN).
+- **Cryptographic & Backoff Edge Cases:**
+  - `SensitiveFieldCipher.decrypt` throws `FormatException` on missing `ENC:` prefixes.
+  - `HmacSha256` keys longer than 64 bytes are pre-hashed via SHA-256 in compliance with RFC 2104 / RFC 4231.
+  - `AutoReconnectPolicy.backoffForAttempt` calculates exponential delays and strictly clamps to `maxBackoff`.
+  - State machine models (`AutoReconnectState`, `KillSwitchState`) maintain value equality contracts and absorb platform exceptions safely.
+
+Detailed per-package metrics, gap analysis, and justifications are permanently recorded in `AI_ROLES/UNIT_TEST_COVERAGE_REPORT.md`.
+
+### 11.2 P9-T2 — Cross-Feature Integration Test Suite Architecture
+
+Task `P9-T2` establishes the automated cross-feature integration test suite in `apps/mobile/test/cross_feature_integration_suite_test.dart`, validating end-to-end user journeys that cross multiple subsystem boundaries implemented across Phases 1 through 8.
+
+```mermaid
+flowchart TD
+    subgraph J1["Journey 1: Subscription Lifecycle & Tunnel Sync"]
+        J1_Import["AddSubscriptionScreen (URL Import)"] --> J1_Store["FileServerProfileRepository (Profiles & SubMetadata)"]
+        J1_Store --> J1_UI["HomeScreen & ServersScreen (Node Selection)"]
+        J1_UI --> J1_Connect["VpnEngine (Connect to Sub Node)"]
+        J1_Connect --> J1_Telemetry["SessionInfoPanel & ThroughputReadout"]
+        J1_Telemetry --> J1_Refresh["Subscription Refresh (Node Replacement)"]
+        J1_Refresh --> J1_TunnelPreserve["Live Tunnel Continuity Verified"]
+        J1_TunnelPreserve --> J1_Cascade["Delete Subscription -> Cascade Delete Children"]
+        J1_Cascade --> J1_Fallback["Fallback to Standalone Node & Clean Disconnect"]
+        J1_Fallback --> J1_Redact["LogManager (Token & Host Redaction Verified)"]
+    end
+
+    subgraph J2["Journey 2: Mid-Session Settings & Fail-Closed KillSwitch"]
+        J2_Connect["Connected Tunnel with Live Traffic Stats"] --> J2_Mutate["Mutate ThemeMode & Locale Mid-Session"]
+        J2_Mutate --> J2_VerifyTunnel["Verify Zero Tunnel Disruption & Metric Continuity"]
+        J2_VerifyTunnel --> J2_Toggle["Toggle Auto-Reconnect OFF & KillSwitch ON"]
+        J2_Toggle --> J2_Drop["Induce Unexpected Tunnel Drop (Disconnected)"]
+        J2_Drop --> J2_FailClosed["KillSwitchPlatformBridge Triggers Fail-Closed Blocking"]
+        J2_FailClosed --> J2_Suppress["Auto-Reconnect Loop Suppressed"]
+        J2_Suppress --> J2_ManualReconnect["Manual User Reconnect -> Bridge Unblocks & Tunnel Restores"]
+    end
+
+    subgraph J3["Journey 3: Server Management & Multi-Profile Redaction"]
+        J3_Paste["AddServerScreen (Manual URI Paste)"] --> J3_Connect["Connect to Server Original"]
+        J3_Connect --> J3_Rename["Live Remark Rename -> UI Sync Without Disconnect"]
+        J3_Rename --> J3_Duplicate["Duplicate Profile -> Server Original (Copy)"]
+        J3_Duplicate --> J3_Handoff["Seamless Server Switch Across Navigation Tabs"]
+        J3_Handoff --> J3_Redact["Log Ingestion -> 3-Surface Secret Stripping"]
+    end
+
+    subgraph J4["Journey 4: Encrypted Schema Migration & Process-Restart Resilience"]
+        J4_Disk["Disk Schema v1 Plaintext Storage"] --> J4_Migrate["FileServerProfileRepository Migration -> enc:v1:"]
+        J4_Migrate --> J4_Connect["Active Session Connection (Session 1)"]
+        J4_Connect --> J4_Kill["Simulate UI Process Kill (Unmount Container)"]
+        J4_Kill --> J4_Relaunch["UI Relaunch (Session 2) -> Instant Re-Attachment"]
+        J4_Relaunch --> J4_Outage["Network Outage (Airplane Mode) -> Offline Hold"]
+        J4_Outage --> J4_Restore["Wi-Fi Restored -> Auto-Reconnect Re-Establishment"]
+        J4_Restore --> J4_Disconnect["Clean User Disconnect Verified"]
+    end
+```
+
+#### Cross-Feature Journey Invariants
+
+1. **Journey 1: Subscription Lifecycle <-> Active Server & Redaction Sync:**
+   - **Full Ingestion to Cascade Deletion:** Validates subscription addition via `AddSubscriptionScreen`, parsing and saving multi-node profiles (`SubscriptionMetadata`), selecting a subscription node from `ServersScreen`, establishing connection on `HomeScreen`, observing active throughput in `SessionInfoPanel` and `ThroughputReadout`, triggering live background subscription refresh (replacing stale nodes while preserving the active tunnel), and deleting the parent subscription to verify atomic cascade deletion of all associated child profiles with safe fallback to standalone server profiles.
+   - **Credential Redaction Sync:** Validates that private subscription URLs containing access tokens are stripped across `LogManager` structured entries.
+
+2. **Journey 2: Mid-Session Settings Mutations <-> Live Tunnel Continuity & Fail-Closed Drop:**
+   - **Live Session Mutation Resilience:** Verifies that changing application theme (`ThemeMode.dark`) and locale (`Locale('de')`) during an active connection does not drop the tunnel (`fakeEngine.lastState == Connected()`) and preserves accumulated session metrics.
+   - **Fail-Closed Security Boundary:** Verifies that reconfiguring resilience settings mid-session (disabling auto-reconnect and enabling the kill switch) followed by an induced connection drop immediately engages the platform firewall bridge (`isCurrentlyBlocking == true`), displays `kill_switch_blocking_banner`, blocks reconnect backoff, and safely unblocks via `kill_switch_unblock_button`.
+
+3. **Journey 3: Server Management & Mid-Session Handoff <-> Multi-Profile 3-Surface Redaction:**
+   - **Live Profile CRUD & Seamless Switch:** Exercises manual URI paste import on `AddServerScreen`, live connection, server renaming mid-session with immediate reactive UI reflection on `HomeScreen`, profile duplication (`(Copy)` remark derivation), and seamless profile handoff between tabs.
+   - **Multi-Surface Credential Redaction:** Ensures credentials (UUIDs, server endpoints, and secrets) emitted in diagnostic logs are stripped across all 3 surfaces: live structured entries, in-memory raw buffer, and on-disk `brick_vpn_live.log` file.
+
+4. **Journey 4: Encrypted Schema v1 -> v2 Migration <-> Process-Restart Re-Attachment <-> Offline Outage Hold & Auto-Reconnect Recovery:**
+   - **At-Rest Migration & Cryptographic Encryption:** Validates that legacy Schema v1 JSON profiles containing plaintext secrets and subscriptions are automatically upgraded at rest upon initialization to Schema v2 with `enc:v1:` AES-GCM cipher prefixes.
+   - **UI Process Death & Session Recovery:** Simulates low-memory process reclamation where the UI container unmounts while the background engine remains connected; on UI relaunch, the application re-attaches to the active session immediately without `"Disconnected"` flash.
+   - **Network Outage Resilience:** Induces complete physical network disconnection (`ConnectivityResult.none`) to confirm auto-reconnect enters offline hold without futile connection loops, and upon Wi-Fi recovery cleanly triggers reconnect and restabilizes the tunnel.
+
+#### Hermetic Execution & Test Reliability
+- **Zero Real-Clock Deadlocks:** Avoids `pumpAndSettle()` during active connection states where 1 Hz `SessionDurationNotifier` periodic timers run; coordinates clean disconnect signaling via `autoReconnectProvider.notifier.onUserInitiatedDisconnect()`.
+- **Responsive Layout Isolation:** Explicit viewport dimensioning (`Size(1200, 2400)`) eliminates bottom and right `RenderFlex` overflows during tab transitions.
+- **Fast Deterministic Execution:** The complete 4-journey cross-feature suite executes hermetically in memory in under 5 seconds without external process or Android emulator dependencies, running with zero flakiness across repeated executions (`RUN_1_EXIT=0`, `RUN_2_EXIT=0`, `RUN_3_EXIT=0`).
+
+---
+
+### 11.3 P9-T3 — Manual QA Protocol & Pre-Release Verification Architecture
+
+Task `P9-T3` establishes the project's durable manual quality assurance framework, codifying system boundary verification procedures that require physical hardware execution or human visual assessment across Android versions and OEM skins.
+
+```mermaid
+flowchart LR
+    subgraph PreFlight["Pre-Flight & Integrity"]
+        P_Clean["Clean App State (adb shell pm clear)"] --> P_Sig["APK Checksum & apksigner Signature Audit"]
+    end
+
+    subgraph Boundaries["System Boundaries (Semi-Manual Scripts)"]
+        B_Consent["Script 1: OS VPN Consent (VpnService.prepare)"]
+        B_FGS["Script 2: Android 14+ FGS Notification & Doze Idle"]
+        B_AlwaysOn["Script 3: System Always-on VPN & Lockdown"]
+        B_Proc["Script 4: LMK am kill & Process Re-Attachment"]
+    end
+
+    subgraph Features["Feature Verification Matrix"]
+        F_Ingest["Section 2: URI Paste, QR Scan & Subscription Cascades"]
+        F_Tunnel["Section 3: Routing, IPv4/IPv6 & Zero-DNS-Leak Verification"]
+        F_Telemetry["Section 4: 1 Hz Session Speeds & 3-Surface Redaction"]
+        F_Resilience["Section 5: Interface Handoff, Offline Hold & Kill Switch"]
+    end
+
+    subgraph Hardware["Physical Device Smoke Pass"]
+        D_ADB["ADB Inspection on Samsung SM-A205F (Android 10)"]
+        D_Log["Section 6 Execution Log & Governance Sign-off"]
+    end
+
+    PreFlight --> Boundaries
+    Boundaries --> Features
+    Features --> Hardware
+```
+
+#### Manual QA Architectural Principles
+
+1. **Separation of Concerns: Automated vs. System-Boundary Verification:**
+   - Automated widget/unit suites (`P9-T1`, `P9-T2`) verify internal state machines, reactive Riverpod dependency graphs, and in-memory cryptography.
+   - The manual QA protocol (`docs/testing/manual-qa-protocol.md`) and companion integration scripts (`docs/testing/manual-integration-scripts.md`) focus strictly on behaviors crossing the Android system boundary: external modal dialogs (`VpnService.prepare`), Linux process lifecycle transitions (`am kill`), kernel routing tables (`ip route show table all`), Doze power saving (`deviceidle force-idle`), and Android OS settings toggles ("Always-on VPN").
+
+2. **Durable, Step-by-Step Release Checklist:**
+   - Structured into 6 distinct sections providing clear setup pre-conditions, step-by-step actions, and explicit pass/fail criteria for future contributors and release managers.
+   - Cross-references originating engineering tasks across Phases 1–8 to ensure traceability.
+
+3. **Physical Device Hardening & Verification Log:**
+   - Concrete on-device smoke verification executed against an attached physical device (`Samsung Galaxy A20`, Android 10, API 29, `arm64-v8a`), confirming package registration, service declarations (`BIND_VPN_SERVICE`), runtime permissions, cold launch timing, and LMK kill survival.
+
+### 11.4 P9-T4 — Phase 9 Testing & QA Closeout & Phase 10 Handoff
+
+Phase 9 establishes the comprehensive, multi-layer quality assurance foundation for the Brick VPN Android application. With the closeout of Phase 9, the project transitions from feature implementation and security hardening into Phase 10 (Android MVP Release Prep).
+
+#### Multi-Layer QA Posture
+
+```mermaid
+flowchart TD
+    subgraph L1["Layer 1: Unit & Domain Logic (P9-T1)"]
+        L1_Coverage["81.12% Monorepo Line Coverage (+410 LH gained)"]
+        L1_Pkgs["Pure-Dart: shared_utils (100%), core_domain (94.6%), core_vpn_engine (97.7%), config_parser (92.1%)"]
+        L1_Mobile["apps/mobile (72.23% excl. generated, +175 LH)"]
+        L1_JVM["93 Kotlin JVM Unit Tests across 6 suites (vpn_engine_android)"]
+    end
+
+    subgraph L2["Layer 2: Cross-Feature Integration Suite (P9-T2)"]
+        L2_Automated["4 Automated Cross-Feature Journeys (< 5s execution, 0 flakiness)"]
+        L2_J1["Journey 1: Subscription Lifecycle <-> Active Server & Encrypted Persistence (enc:v1:)"]
+        L2_J2["Journey 2: Mid-Session Settings (Theme/Locale) <-> Live Tunnel & Fail-Closed KillSwitch"]
+        L2_J3["Journey 3: Server CRUD & Profile Handoff <-> 3-Surface Log Redaction"]
+        L2_J4["Journey 4: Encrypted Schema v1->v2 Migration <-> UI Re-Attachment <-> Offline Outage Hold"]
+        L2_Scripts["4 Semi-Manual OS Boundary Scripts (docs/testing/manual-integration-scripts.md)"]
+    end
+
+    subgraph L3["Layer 3: Pre-Release Manual QA Protocol (P9-T3)"]
+        L3_Protocol["6-Section Step-by-Step Pre-Release Checklist (docs/testing/manual-qa-protocol.md)"]
+        L3_Device["Physical Device Smoke Pass on Samsung SM-A205F (Android 10, API 29)"]
+        L3_Checklist["Interactive Sign-Off Checklist for Release Managers"]
+    end
+
+    L1 --> L2
+    L2 --> L3
+```
+
+1. **Layer 1: Unit & Domain Coverage (`P9-T1` — `AI_ROLES/UNIT_TEST_COVERAGE_REPORT.md`):**
+   - Monorepo-wide Dart line coverage stands at **81.12%** (5,000 / 6,164 lines across authored files, excluding generated `*.g.dart`, `*.freezed.dart`, and `*.pigeon.dart`).
+   - Core domain and parsing foundations achieve near-complete verification: `packages/shared_utils` (100.00%), `packages/core_domain` (94.60%), `packages/core_vpn_engine` (97.74%), `packages/config_parser` (92.10%), and `packages/vpn_engine_android` (95.83%).
+   - Critical data persistence, security sanitization, and state machine transitions in `apps/mobile` were elevated from **67.36% to 72.23%** (+175 lines hit), with `file_server_profile_repository.dart` reaching **91.9%** and `log_entry.dart` reaching **99.1%**.
+   - 24 targeted unit tests in `apps/mobile/test/unit_coverage_gap_fill_test.dart` pass deterministically in CI in **< 1s** with zero analyzer warnings and zero `FakeAsync` deadlocks.
+   - 93 Kotlin JVM unit tests pass cleanly across 6 test suites in `packages/vpn_engine_android/android`.
+
+2. **Layer 2: Cross-Feature Integration Suite (`P9-T2` — `apps/mobile/test/cross_feature_integration_suite_test.dart` & `docs/testing/manual-integration-scripts.md`):**
+   - 4 multi-phase automated cross-feature journeys executed hermetically in memory in under 5 seconds with zero flakiness across repeated runs:
+     - *Journey 1:* Subscription URL ingestion, parsing, active node selection, live background refresh (node replacement while maintaining tunnel continuity), cascade deletion of child nodes with standalone profile fallback, and verification of at-rest encryption (`enc:v1:`) in `server_profiles.json`.
+     - *Journey 2:* Mid-session mutations (dark/light theme, locale change) during active connection without tunnel disruption, mid-session kill switch engagement, induced connection drop fail-closed platform blocking with `kill_switch_blocking_banner`, and manual unblock recovery.
+     - *Journey 3:* Manual server URI paste import, connection, mid-session remark renaming with reactive UI sync, profile duplication (`(Copy)` remark derivation), seamless profile handoff between navigation tabs, and automatic 3-surface credential redaction across live structured viewer, in-memory raw buffer, and the real on-disk `brick_vpn_live.log` file written by `LogManager`'s asynchronous sink.
+     - *Journey 4:* Automatic on-disk Schema v1 plaintext to Schema v2 authenticated AES-GCM ciphertext migration upon repository initialization, UI process death re-attachment without transient `"Disconnected"` flash, physical network outage (airplane mode) offline hold, Wi-Fi recovery auto-reconnection, and clean user disconnect.
+   - Paired with 4 companion semi-manual integration scripts in `docs/testing/manual-integration-scripts.md` for Android system boundaries: OS VPN Consent (`VpnService.prepare`), Android 14+ FGS notification & Doze power states, System Always-on VPN / lockdown mode, and LMK `am kill` process re-attachment.
+
+3. **Layer 3: Pre-Release Manual QA Protocol (`P9-T3` — `docs/testing/manual-qa-protocol.md`):**
+   - Durable 6-section human-executable release verification protocol covering environment pre-flight, server onboarding/ingestion, core VPN routing/DNS leak prevention, telemetry speedometers and 3-surface log redaction, resilience/kill switch/Doze states, and physical device test execution.
+   - Test-driven and validated on connected hardware (`Samsung Galaxy A20`, `SM-A205F`, Android 10, API 29, `arm64-v8a`), confirming clean package registration, `dev.brickvpn.harness.vpn.BrickVpnService` with `BIND_VPN_SERVICE`, runtime permissions (`INTERNET`, `ACCESS_NETWORK_STATE`, `FOREGROUND_SERVICE`, `CAMERA`, `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`), cold launch timing (`COLD_START_PID=10561`), and process kill survival.
+   - Provides an interactive sign-off checklist template for release managers prior to tagging production releases.
+
+#### Phase 10 (Android MVP Release Prep) Handoff Contract
+
+Phase 10 inherits a mature, feature-complete, security-hardened, and systematically tested application:
+- **Inherited Assets:**
+  1. Complete VPN protocol support (VLESS, VMess, Trojan, Shadowsocks, WireGuard, AmneziaWG, Hysteria2, TUIC) with Sing-box core routing.
+  2. Authenticated AES-256-GCM hardware-backed storage encryption at rest (`enc:v1:`).
+  3. Automatic 3-surface log redaction (live UI viewer, clipboard export dialog, on-disk log file).
+  4. Fail-closed kill switch and debounced auto-reconnection with offline hold.
+  5. 81.12% monorepo line coverage and 4 fast (< 5s) hermetic cross-feature integration test journeys.
+  6. Tested pre-release manual QA protocol with hardware validation on Android 10.
+- **Phase 10 Immediate Responsibilities:**
+  1. *P10-T1 (Release Signing Key Setup & CI Signing Pipeline):* Generate official release signing keystore, configure CI secrets, publish certificate SHA-256 fingerprint, and document key backup/recovery procedures.
+  2. *P10-T2 (ProGuard/R8 Release Hardening & Gomobile Keep Rules):* Optimize and shrink release builds while strictly preserving Go runtime, JNI entry points, and Flutter platform channels.
+  3. *P10-T3 & Beyond:* Split-ABI packaging (arm64-v8a, armeabi-v7a, x86_64), Google Play VPN policy declaration compliance, metadata, and production release publication.
+
+## 12. Phase 10 — Android MVP Release Preparation Architecture
+
+### 12.1 P10-T1 — Release Signing Key Setup & CI Signing Pipeline Architecture
+
+Phase 10 transitions Brick VPN from an internal development build to a verified, tamper-evident, production-signed Android MVP. Task `P10-T1` establishes the official release signing key infrastructure and automated, ephemeral CI signing pipeline.
+
+```mermaid
+flowchart TD
+    subgraph Host["Secure Host / Operator Storage (Strictly Outside Git)"]
+        K_Disk["Keystore File: /home/bellard/.brickvpn-keystore/brickvpn-release.jks (chmod 600)"]
+        K_Env["Credentials: /home/bellard/.brickvpn-keystore/keystore.env (chmod 600)"]
+        K_Vault["Dual-Media Cold Offline Custody: Encrypted USB + Password Manager"]
+        K_Disk --- K_Env
+        K_Disk --- K_Vault
+    end
+
+    subgraph CI["GitHub Actions Tagged Release Runner (refs/tags/v*)"]
+        CI_Secret["GitHub Encrypted Secrets (ANDROID_KEYSTORE_BASE64, Passwords, Alias)"]
+        CI_Decode["Decode to Ephemeral $RUNNER_TEMP/brickvpn-release.jks (chmod 600)"]
+        CI_Build["Flutter Build: apk --release & appbundle --release"]
+        CI_Verify["apksigner verify --print-certs -v (V2/V3 Signature Scheme)"]
+        CI_Checksum["generate_and_verify_checksums.sh (SHA256SUMS.txt)"]
+        CI_Wipe["Wipe Ephemeral Keystore (always() post-step)"]
+
+        CI_Secret --> CI_Decode
+        CI_Decode --> CI_Build
+        CI_Build --> CI_Verify
+        CI_Verify --> CI_Checksum
+        CI_Checksum --> CI_Wipe
+    end
+
+    subgraph Verify["Public Artifact Verification"]
+        User_APK["Release APK / AAB Downloads"]
+        User_Cert["Signer #1 SHA-256 Digest: 563daf7196c565ad..."]
+        User_Docs["docs/verifying-releases.md & docs/release-signing-and-key-recovery.md"]
+        User_APK --- User_Cert
+        User_Cert --- User_Docs
+    end
+
+    Host -.->|"Base64 Secret Provisioning"| CI
+    CI -->|"Upload Artifacts"| Verify
+```
+
+#### Core Architectural Principles
+
+1. **Strict Cryptographic Isolation of Private Key Material:**
+   - The release keystore (`brickvpn-release.jks`, PKCS12 format, 4096-bit RSA key, `SHA256withRSA`, 10,000-day validity through 2054) is stored exclusively outside the repository (`/home/bellard/.brickvpn-keystore/`).
+   - Root and Android `.gitignore` policies explicitly ignore all keystore and credential extensions (`*.jks`, `*.keystore`, `*.p12`, `*.pem`, `*.der`, `key.properties`, `keystore.env`).
+   - An automated regression test (`apps/mobile/test/release_signing_security_test.dart`) enforces in CI that zero key files ever enter the git tree or working directories.
+
+2. **Dual-Path Gradle Configuration (Developer Fallback vs. Authenticated Release):**
+   - In `apps/mobile/android/app/build.gradle.kts`, `signingConfigs` dynamically evaluates `BRICK_KEYSTORE_PATH` and fallback `key.properties`.
+   - If release signing variables are present and point to an existing keystore file, Gradle enables APK Signature Scheme v2 and v3 (`enableV1Signing = false`, `enableV2Signing = true`, `enableV3Signing = true`).
+   - If release signing credentials are not present, Gradle falls back to `signingConfigs.getByName("debug")` so local open-source developer workflows remain friction-free.
+
+3. **Ephemeral In-Memory / Temporary CI Lifecycle:**
+   - In `.github/workflows/ci.yml`, release signing executes strictly on tagged commits (`refs/tags/v*`).
+   - The keystore is provisioned from repository secret `ANDROID_KEYSTORE_BASE64` to `$RUNNER_TEMP/brickvpn-release.jks`, protected with `chmod 600`, utilized to build signed APK and AAB artifacts, verified with `apksigner`, and immediately wiped in an `always()` post-build hook.
+
+4. **Public Verification & Operational Continuity:**
+   - Official public certificate fingerprints (SHA-256: `56:3D:AF:71:96:C5:65:AD:43:2B:F5:80:0E:2A:9E:AA:E0:A1:09:18:B0:48:9E:79:65:E6:3D:97:38:27:30:3B` / `563daf7196c565ad432bf5800e2a9eaae0a10918b0489e7965e63d973827303b`, SHA-1: `86:4A:75:50:9E:29:87:09:BD:8A:E8:A5:26:6C:71:EC:2A:4D:7B:B1`) are durably published in `docs/verifying-releases.md`.
+   - Disaster recovery, backup protocols (primary secure vault and cold offline storage), and the fatal consequences of key loss (`INSTALL_PARSE_FAILED_INCONSISTENT_CERTIFICATES`) are documented for the human maintainer in `docs/release-signing-and-key-recovery.md`.
+
+### 12.2 P10-T2 — ProGuard/R8 Release Hardening & Gomobile Bridge Preservation Architecture
+
+#### The Gomobile/JNI Minification Hazard
+Android release builds optimize application bytecodes via R8 minification, dead code elimination, and resource shrinking (`isMinifyEnabled = true`, `isShrinkResources = true`). R8 identifies referenced classes by inspecting Java/Kotlin bytecode call graphs. 
+
+However, cross-language Go/Java bridges generated by **gomobile** (the underlying bridge in `libbox.aar`) execute across the JNI boundary:
+1. Native Go routines running inside `libgojni.so` resolve Java classes dynamically by string lookup (`(*JNIEnv)->FindClass(env, "go/Seq")`, `FindClass("io/nekohasekai/libbox/BoxService")`).
+2. Go runtime proxies invoke Java methods by string lookup (`GetMethodID`, `GetFieldID`).
+3. If R8 renames, obfuscates, or tree-shakes `go.**` or `io.nekohasekai.libbox.**`, bytecode call-graph analysis assumes they are unused. At runtime, the JNI lookup fails immediately, crashing the application with catastrophic `java.lang.NoClassDefFoundError: go.Seq`, `java.lang.ClassNotFoundException`, or `java.lang.NoSuchMethodError`.
+
+```mermaid
+flowchart TD
+    subgraph R8["R8 Compiler (Release Build)"]
+        DEX["Optimized & Obfuscated Classes (DEX)"]
+        Mapping["Mapping File (mapping.txt)"]
+    end
+
+    subgraph KeepRules["Two-Layer ProGuard Keep Rules"]
+        L1["Layer 1 (Plugin Consumer Rules):<br/>consumerProguardFiles in vpn_engine_android<br/>-keep class go.**<br/>-keep class io.nekohasekai.libbox.**<br/>-keep class dev.brickvpn.harness.**"]
+        L2["Layer 2 (Application Rules):<br/>proguard-rules.pro in apps/mobile<br/>-keep class io.flutter.**<br/>-keepclasseswithmembernames native methods<br/>-keepattributes LineNumberTable"]
+    end
+
+    subgraph Bridge["Preserved Gomobile & Pigeon JNI Bridge"]
+        GoJni["libgojni.so (Native Go Runtime)"]
+        Seq["go.Seq & go.Universe (JNI Bridge)"]
+        Box["io.nekohasekai.libbox.libbox.BoxService"]
+        Pigeon["dev.brickvpn.harness.PigeonVpnApiImpl"]
+        Service["dev.brickvpn.harness.vpn.BrickVpnService"]
+    end
+
+
+    KeepRules -->|"Protects symbols from stripping"| R8
+    R8 --> DEX
+    GoJni <-->|"Dynamic JNI FindClass / CallMethod"| Seq
+    Seq <-->|"Lifecycle & Config Dispatch"| Box
+    Box <-->|"Platform IPC & State Notifications"| Pigeon
+    Pigeon <--> Service
+```
+
+#### Two-Layer Keep Rule Specification
+
+1. **Layer 1: Plugin Consumer Rules (`packages/vpn_engine_android/android/proguard-rules.pro`):**
+   Declared via `consumerProguardFiles("proguard-rules.pro")` in `build.gradle.kts`. Guarantees that any consuming application automatically inherits essential bridge preservation rules without requiring manual configuration:
+   - `-keep class go.** { *; }` & `-dontwarn go.**`: Preserves all gomobile runtime machinery (`go.Seq`, `go.Seq$GoObject`, `go.Seq$Proxy`, `go.Universe`, `go.error`).
+   - `-keep class io.nekohasekai.libbox.** { *; }` & `-keep interface io.nekohasekai.libbox.** { *; }`: Preserves all Sing-box / Libbox generated interfaces (`io.nekohasekai.libbox.libbox.BoxService`, `CommandClient`, `PlatformInterface`, `CommandClientHandler`, `SystemProxy`).
+   - `-keep class libbox.** { *; }` & `-keep interface libbox.** { *; }`: Preserves package-level Gomobile aliases.
+   - `-keep class dev.brickvpn.harness.** { *; }`: Preserves the native Android platform plugin (`VpnEngineAndroidPlugin`), `CommandCoordinator`, and Pigeon-generated channel bindings.
+   - `-keepclassmembers enum *`: Preserves enum static methods (`values()`, `valueOf(String)`) required by Pigeon IPC codecs and Kotlin reflection under R8 full optimize mode.
+   - `-keepattributes *Annotation*,Signature,InnerClasses,EnclosingMethod,Exceptions,SourceFile,LineNumberTable`: Preserves reflection attributes and debugging metadata across inner Gomobile classes.
+
+2. **Layer 2: Application Hardening Rules (`apps/mobile/android/app/proguard-rules.pro`):**
+   - `-keep class io.flutter.** { *; }`: Preserves Flutter engine embedding, platform channels, and plugin registries.
+   - `-keepclasseswithmembernames class * { native <methods>; }`: Preserves all JNI entry points across all classes so C/C++ symbols match Java method names.
+   - `-dontwarn com.google.android.play.core.**`: Suppresses non-fatal warnings for deferred Play Core dynamic component references.
+   - `-dontwarn kotlinx.coroutines.**`: Suppresses non-fatal warnings for optional coroutine reflection metadata.
+   - `-keepclassmembers enum *`: Guarantees Pigeon codec enum values are never inlined or stripped by application-level R8 optimizations.
+   - `-keepattributes SourceFile,LineNumberTable` & `-renamesourcefileattribute SourceFile`: Preserves line numbers in crash stack traces so production crashes can be de-obfuscated with `mapping.txt`.
+
+#### Architectural Invariants
+
+- **Invariant 25 (Gomobile Bridge Obfuscation Invariant):** All Gomobile runtime classes (`go.**`), generated bindings (`io.nekohasekai.libbox.libbox.**`, `libbox.**`), and Pigeon channel entry points must never be renamed or stripped by R8/ProGuard.
+- **Invariant 26 (Release Parity Invariant):** Every pre-release verification cycle must validate a genuine minified, resource-shrunk release artifact on physical Android hardware before deployment to prevent release-only runtime regression bugs.
+
+### 12.3 P10-T3 — Dual-Distribution Packaging: AAB & Per-ABI Split APK Architecture
+
+#### Dual Distribution Channels and Trade-offs
+Brick VPN targets two distinct distribution channels with fundamentally different architectural and bandwidth constraints:
+1. **Google Play Store (App Bundle / AAB):**
+   - Play Store requires an Android App Bundle (`app-release.aab`) rather than monolithic APKs.
+   - Google Play dynamic feature and asset delivery automatically assembles optimized split APKs containing only the device's specific CPU architecture (ABI), display density, and language resources at download time.
+   - The multi-ABI bundle is ~103 MB on disk, but Google Play dynamic split delivery delivers an optimized ~40–45 MB installation to user devices.
+2. **Direct Distribution (GitHub Releases / F-Droid / Website Downloads):**
+   - For users bypassing Google Play in censorship-heavy or de-Googled environments, direct APK installation is required.
+   - Shipping only a universal "fat" APK (`app-release.apk`, ~126 MB) forces users to download native shared libraries for all 3 supported architectures (`arm64-v8a`, `armeabi-v7a`, `x86_64`), wasting over 81 MB of mobile bandwidth per download.
+   - Consequently, Brick VPN builds **ABI-split release APKs** (`flutter build apk --release --split-per-abi`) providing lightweight architecture-specific binaries (`arm64-v8a`: ~45 MB, `armeabi-v7a`: ~40 MB, `x86_64`: ~48 MB) saving ~81 MB download size, alongside a universal fallback APK (`app-release.apk`, ~126 MB) for non-technical users.
+
+```mermaid
+flowchart TD
+    subgraph Build["Flutter & Gradle Build Pipeline"]
+        Source["Source Code & ProGuard Rules"]
+        BuildAAB["flutter build appbundle --release"]
+        BuildSplit["flutter build apk --release --split-per-abi"]
+        BuildFat["flutter build apk --release"]
+    end
+
+    subgraph Store["Google Play Store Channel"]
+        AAB["app-release.aab (~103 MB)"]
+        PlayDynamic["Google Play Feature & ABI Delivery"]
+        UserPlay["End-User Device (~40-45 MB download)"]
+        AAB --> PlayDynamic --> UserPlay
+    end
+
+    subgraph Direct["Direct / GitHub Releases Channel"]
+        ARM64["app-arm64-v8a-release.apk (~45 MB, 64-bit ARM)"]
+        ARM32["app-armeabi-v7a-release.apk (~40 MB, 32-bit ARM)"]
+        X86_64["app-x86_64-release.apk (~48 MB, 64-bit x86)"]
+        FAT["app-release.apk (~126 MB, Universal Fallback)"]
+        Checksums["SHA256SUMS.txt & Signatures"]
+    end
+
+    Source --> BuildAAB --> AAB
+    Source --> BuildSplit --> ARM64 & ARM32 & X86_64
+    Source --> BuildFat --> FAT
+    ARM64 & ARM32 & X86_64 & FAT --> Checksums
+```
+
+#### Native Shared Library (.so) Inventory Across Architectures
+Every release package contains native shared libraries compiled for target ABIs (`arm64-v8a`, `armeabi-v7a`, `x86_64`). In `app-release.aab`, libraries reside under `base/lib/<abi>/`; in release APKs, they reside under `lib/<abi>/`.
+
+The exact native `.so` library inventory across each architecture comprises:
+1. `libgojni.so`: Gomobile runtime and compiled Sing-box core routing engine (originating from `packages/vpn_engine_android/android/libs/libbox.aar`).
+2. `libflutter.so`: Flutter framework C++ runtime and Skia/Impeller graphics engine.
+3. `libapp.so`: Ahead-Of-Time (AOT) compiled Dart application snapshot.
+4. `libbarhopper_v3.so`: Google ML Kit / Mobile Scanner QR code detection engine.
+5. `libimage_processing_util_jni.so`: Mobile scanner camera frame and image analysis utility.
+6. `libdartjni.so`: JNI binding bridge for Dart FFI invocation.
+7. `libdatastore_shared_counter.so`: Jetpack Datastore atomic shared counter support.
+8. `libsurface_util_jni.so`: Android Surface rendering native acceleration.
+
+Each ABI-split APK contains strictly only its designated architecture's libraries (e.g. `app-arm64-v8a-release.apk` contains zero `armeabi-v7a` or `x86_64` `.so` files), guaranteeing minimal package footprint.
+
+#### ABI Version Code Offset Scheme
+To prevent version collisions and guarantee proper upgrade precedence across architectures on direct install, Flutter automatically applies an architecture multiplier offset:
+- `armeabi-v7a`: `1000 * 1 + versionCode = 1001`
+- `arm64-v8a`: `1000 * 2 + versionCode = 2001`
+- `x86_64`: `1000 * 4 + versionCode = 4001`
+- `universal`: `versionCode = 1`
+
+#### Architectural Invariants
+- **Invariant 27 (Dual Distribution Artifact Invariant):** Official tagged release pipelines must produce and verify both the Android App Bundle (`app-release.aab`) for Google Play and the complete set of signed ABI-split APKs plus universal fallback for direct distribution.
+- **Invariant 28 (Split-ABI Signing Uniformity Invariant):** All ABI-split APKs and the universal APK must be signed with identical APK Signature Scheme v2/v3 signatures matching the official production certificate fingerprint (`563daf7196c565ad432bf5800e2a9eaae0a10918b0489e7965e63d973827303b`).
+
+### 12.4 P10-T4 — Google Play VPN Policy & Data Safety Compliance Architecture
+
+```mermaid
+flowchart TD
+    subgraph App["Brick VPN Application (GPL-3.0)"]
+        UI["Flutter UI (No Ads / No Analytics)"]
+        Store["Encrypted Profile Storage (AES-256-GCM / enc:v1:)"]
+        Redactor["LogRedactor (Scans Memory / live log)"]
+    end
+
+    subgraph Platform["Android OS & Platform Harness"]
+        VpnService["BrickVpnService (BIND_VPN_SERVICE)"]
+        FGS["specialUse Foreground Service (subtype: vpn)"]
+        TUN["Virtual TUN Interface (fd)"]
+    end
+
+    subgraph CryptoEngine["Sing-box / Gomobile Core Routing"]
+        EncTunnels["Mandatory Encrypted Outbounds:<br/>- VLESS / VMess / Trojan (TLS 1.3 / Reality)<br/>- WireGuard / AmneziaWG (Noise / ChaCha20)<br/>- Hysteria2 / TUIC (QUIC / TLS 1.3)<br/>- Shadowsocks (AEAD 2022)"]
+    end
+
+    UI --> Store
+    UI --> VpnService
+    VpnService --> FGS
+    VpnService --> TUN
+    TUN --> CryptoEngine
+    CryptoEngine --> EncTunnels
+    UI --> Redactor
+```
+
+#### Policy Compliance Architecture Pillars
+1. **Core Functionality & Foreground Service:**
+   - Declares `android.permission.BIND_VPN_SERVICE` with `android:exported="false"` in `BrickVpnService`.
+   - Adheres to Android 14+ (API 34+) requirements by declaring `android:foregroundServiceType="specialUse"` with `<property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="vpn" />`.
+2. **Mandatory Device-to-Endpoint Cryptographic Tunneling:**
+   - Every network outbound configured in `packages/config_parser` enforces end-to-end encryption. Unencrypted proxy modes (such as cleartext HTTP or unauthenticated SOCKS) are strictly prohibited.
+3. **Zero Monetization, Zero Trackers, Zero Ad Manipulation:**
+   - Neither `AndroidManifest.xml` nor any build configuration requests `AD_ID` permissions or packages advertising/analytics libraries.
+   - VpnService network traffic is passed transparently to user-defined endpoints without payload injection or traffic rewriting.
+4. **Local Data Processing:**
+   - Sensitive configurations are protected with hardware-backed encryption at rest (`enc:v1:`). Diagnostic logs reside in local memory scrubbed by `LogRedactor`.
+
+#### Architectural Invariants
+- **Invariant 29 (VpnService Traffic Encryption Invariant):** All traffic routed through the Android VpnService interface must be encapsulated in cryptographically authenticated encrypted tunnels (TLS 1.3, AEAD, Noise, or QUIC). Cleartext unencrypted transport is architecturally prohibited.
+- **Invariant 30 (Zero-Telemetry & Ad-Free Invariant):** The application and all contained packages must never include advertising SDKs, Advertising ID permissions (`AD_ID`), third-party analytics trackers, or user traffic modification mechanisms.
+
+
+
+
+
+
+
+
+
 
 
 

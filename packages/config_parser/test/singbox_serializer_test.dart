@@ -2,7 +2,7 @@
 
 import 'package:config_parser/config_parser.dart';
 import 'package:core_domain/core_domain.dart';
-import 'package:shared_utils/shared_utils.dart' show Ok;
+import 'package:shared_utils/shared_utils.dart' show Err, Ok;
 import 'package:test/test.dart';
 
 const _uuid = 'b831381d-6324-4d53-ad4f-8cda48b30811';
@@ -511,6 +511,334 @@ void main() {
       final tls = out['tls'] as Map<String, dynamic>;
       expect(tls.containsKey('server_name'), isFalse);
       expect(tls['insecure'], isTrue);
+    });
+  });
+
+  group(
+    'P9-T1 gap filling: transports and extra options in buildSingBoxOutbound',
+    () {
+      test(
+        'serializes GrpcTransport, HttpTransport, and HttpUpgradeTransport',
+        () {
+          final grpcOut = buildSingBoxOutbound(
+            const VlessOutbound(
+              server: 'grpc.example.com',
+              serverPort: 443,
+              uuid: _uuid,
+              transport: GrpcTransport(serviceName: 'grpc-service'),
+            ),
+          );
+          final grpcTransport = grpcOut['transport'] as Map<String, dynamic>;
+          expect(grpcTransport['type'], 'grpc');
+          expect(grpcTransport['service_name'], 'grpc-service');
+
+          final httpOut = buildSingBoxOutbound(
+            VmessOutbound(
+              server: 'http.example.com',
+              serverPort: 443,
+              uuid: _uuid,
+              transport: HttpTransport(
+                host: ['cdn.example.com'],
+                path: '/stream',
+                method: 'POST',
+                headers: {'User-Agent': 'brick/1.0'},
+              ),
+            ),
+          );
+          final httpTransport = httpOut['transport'] as Map<String, dynamic>;
+          expect(httpTransport['type'], 'http');
+          expect(httpTransport['host'], ['cdn.example.com']);
+          expect(httpTransport['path'], '/stream');
+          expect(httpTransport['method'], 'POST');
+          expect(httpTransport['headers'], {'User-Agent': 'brick/1.0'});
+
+          final upgradeOut = buildSingBoxOutbound(
+            TrojanOutbound(
+              server: 'upgrade.example.com',
+              serverPort: 443,
+              password: 'pass',
+              transport: HttpUpgradeTransport(
+                host: 'ws.example.com',
+                path: '/upgrade',
+              ),
+            ),
+          );
+          final upgradeTransport =
+              upgradeOut['transport'] as Map<String, dynamic>;
+          expect(upgradeTransport['type'], 'httpupgrade');
+          expect(upgradeTransport['host'], 'ws.example.com');
+          expect(upgradeTransport['path'], '/upgrade');
+        },
+      );
+    },
+  );
+
+  group('P9-T1 gap filling: readSingBoxOutboundJson exhaustive coverage', () {
+    test('validates type and server/port syntax', () {
+      final noType = readSingBoxOutboundJson({});
+      expect(noType.isErr, isTrue);
+      expect((noType as Err).error, isA<InvalidSyntaxError>());
+
+      final badType = readSingBoxOutboundJson({'type': 'invalid_vpn_proto'});
+      expect(badType.isErr, isTrue);
+      expect((badType as Err).error, isA<UnsupportedProtocolError>());
+
+      final noServer = readSingBoxOutboundJson({'type': 'shadowsocks'});
+      expect(noServer.isErr, isTrue);
+      expect((noServer as Err).error, isA<MissingRequiredFieldError>());
+
+      final noPort = readSingBoxOutboundJson({
+        'type': 'shadowsocks',
+        'server': 'ss.example.com',
+      });
+      expect(noPort.isErr, isTrue);
+      expect((noPort as Err).error, isA<MissingRequiredFieldError>());
+    });
+
+    test('reads shadowsocks outbound and validates mandatory fields', () {
+      final missingMethod = readSingBoxOutboundJson({
+        'type': 'shadowsocks',
+        'server': 'ss.example.com',
+        'server_port': 8388,
+      });
+      expect(missingMethod.isErr, isTrue);
+
+      final missingPass = readSingBoxOutboundJson({
+        'type': 'shadowsocks',
+        'server': 'ss.example.com',
+        'server_port': 8388,
+        'method': '2022-blake3-aes-128-gcm',
+      });
+      expect(missingPass.isErr, isTrue);
+
+      final valid = readSingBoxOutboundJson({
+        'type': 'shadowsocks',
+        'server': 'ss.example.com',
+        'server_port': 8388,
+        'method': '2022-blake3-aes-128-gcm',
+        'password': 'sec',
+        'plugin': 'obfs-local',
+        'plugin_opts': 'obfs=http',
+        'udp_over_tcp': true,
+      });
+      expect(valid.isOk, isTrue);
+      final ss = (valid as Ok).value as ShadowsocksOutbound;
+      expect(ss.server, 'ss.example.com');
+      expect(ss.plugin, 'obfs-local');
+      expect(ss.udpOverTcp, isTrue);
+    });
+
+    test('reads trojan outbound and validates mandatory fields', () {
+      final missingPass = readSingBoxOutboundJson({
+        'type': 'trojan',
+        'server': 'tr.example.com',
+        'server_port': 443,
+      });
+      expect(missingPass.isErr, isTrue);
+
+      final valid = readSingBoxOutboundJson({
+        'type': 'trojan',
+        'server': 'tr.example.com',
+        'server_port': 443,
+        'password': 'sec',
+        'tls': {
+          'enabled': true,
+          'server_name': 'sni.example.com',
+          'alpn': ['h2', 'http/1.1'],
+          'insecure': true,
+          'utls': {'fingerprint': 'chrome'},
+          'reality': {'enabled': true, 'public_key': 'pubk', 'short_id': 'sid'},
+        },
+      });
+      expect(valid.isOk, isTrue);
+      final tr = (valid as Ok).value as TrojanOutbound;
+      expect(tr.server, 'tr.example.com');
+      expect(tr.tls?.serverName, 'sni.example.com');
+      expect(tr.tls?.insecure, isTrue);
+      expect(tr.tls?.reality?.publicKey, 'pubk');
+      expect(tr.tls?.utls?.fingerprint, 'chrome');
+    });
+
+    test('reads vmess and vless outbounds and validates mandatory fields', () {
+      final missingVmessUuid = readSingBoxOutboundJson({
+        'type': 'vmess',
+        'server': 'vm.example.com',
+        'server_port': 443,
+      });
+      expect(missingVmessUuid.isErr, isTrue);
+
+      final validVmess = readSingBoxOutboundJson({
+        'type': 'vmess',
+        'server': 'vm.example.com',
+        'server_port': 443,
+        'uuid': _uuid,
+        'security': 'chacha20-poly1305',
+        'alter_id': 16,
+      });
+      expect(validVmess.isOk, isTrue);
+      final vm = (validVmess as Ok).value as VmessOutbound;
+      expect(vm.security, 'chacha20-poly1305');
+      expect(vm.alterId, 16);
+
+      final missingVlessUuid = readSingBoxOutboundJson({
+        'type': 'vless',
+        'server': 'vl.example.com',
+        'server_port': 443,
+      });
+      expect(missingVlessUuid.isErr, isTrue);
+
+      final validVless = readSingBoxOutboundJson({
+        'type': 'vless',
+        'server': 'vl.example.com',
+        'server_port': 443,
+        'uuid': _uuid,
+        'flow': 'xtls-rprx-vision',
+        'packet_encoding': 'xudp',
+      });
+      expect(validVless.isOk, isTrue);
+      final vl = (validVless as Ok).value as VlessOutbound;
+      expect(vl.flow, 'xtls-rprx-vision');
+      expect(vl.packetEncoding, 'xudp');
+    });
+
+    test('reads hysteria2 and tuic outbounds', () {
+      final missingHyPass = readSingBoxOutboundJson({
+        'type': 'hysteria2',
+        'server': 'hy.example.com',
+        'server_port': 443,
+      });
+      expect(missingHyPass.isErr, isTrue);
+
+      final validHy = readSingBoxOutboundJson({
+        'type': 'hysteria2',
+        'server': 'hy.example.com',
+        'server_port': 443,
+        'password': 'sec',
+        'up_mbps': 50,
+        'down_mbps': 100,
+        'obfs': {'type': 'salamander', 'password': 'obfs-pass'},
+      });
+      expect(validHy.isOk, isTrue);
+      final hy = (validHy as Ok).value as Hysteria2Outbound;
+      expect(hy.upMbps, 50);
+      expect(hy.downMbps, 100);
+      expect(hy.obfsType, 'salamander');
+
+      final missingTuicUuid = readSingBoxOutboundJson({
+        'type': 'tuic',
+        'server': 'tuic.example.com',
+        'server_port': 443,
+      });
+      expect(missingTuicUuid.isErr, isTrue);
+
+      final missingTuicPass = readSingBoxOutboundJson({
+        'type': 'tuic',
+        'server': 'tuic.example.com',
+        'server_port': 443,
+        'uuid': _uuid,
+      });
+      expect(missingTuicPass.isErr, isTrue);
+
+      final validTuic = readSingBoxOutboundJson({
+        'type': 'tuic',
+        'server': 'tuic.example.com',
+        'server_port': 443,
+        'uuid': _uuid,
+        'password': 'sec',
+        'congestion_control': 'bbr',
+        'udp_relay_mode': 'quic',
+        'udp_over_stream': true,
+        'zero_rtt_handshake': true,
+      });
+      expect(validTuic.isOk, isTrue);
+      final tuic = (validTuic as Ok).value as TuicOutbound;
+      expect(tuic.congestionControl, 'bbr');
+      expect(tuic.udpRelayMode, 'quic');
+      expect(tuic.udpOverStream, isTrue);
+      expect(tuic.zeroRttHandshake, isTrue);
+    });
+
+    test('reads wireguard and amneziawg outbounds', () {
+      final missingPriv = readSingBoxOutboundJson({
+        'type': 'wireguard',
+        'server': 'wg.example.com',
+        'server_port': 51820,
+      });
+      expect(missingPriv.isErr, isTrue);
+
+      final missingPub = readSingBoxOutboundJson({
+        'type': 'wireguard',
+        'server': 'wg.example.com',
+        'server_port': 51820,
+        'private_key': 'priv',
+      });
+      expect(missingPub.isErr, isTrue);
+
+      final missingAddr = readSingBoxOutboundJson({
+        'type': 'wireguard',
+        'server': 'wg.example.com',
+        'server_port': 51820,
+        'private_key': 'priv',
+        'peer_public_key': 'pub',
+      });
+      expect(missingAddr.isErr, isTrue);
+
+      final emptyAddr = readSingBoxOutboundJson({
+        'type': 'wireguard',
+        'server': 'wg.example.com',
+        'server_port': 51820,
+        'private_key': 'priv',
+        'peer_public_key': 'pub',
+        'local_address': [''],
+      });
+      expect(emptyAddr.isErr, isTrue);
+
+      final validWg = readSingBoxOutboundJson({
+        'type': 'wireguard',
+        'server': 'wg.example.com',
+        'server_port': 51820,
+        'private_key': 'priv',
+        'peer_public_key': 'pub',
+        'local_address': ['10.0.0.2/32'],
+        'pre_shared_key': 'psk',
+        'reserved': [1, 2, 3],
+        'mtu': 1420,
+        'workers': 4,
+      });
+      expect(validWg.isOk, isTrue);
+      final wg = (validWg as Ok).value as WireGuardOutbound;
+      expect(wg.presharedKey, 'psk');
+      expect(wg.reserved, [1, 2, 3]);
+      expect(wg.mtu, 1420);
+      expect(wg.workers, 4);
+
+      final validAwg = readSingBoxOutboundJson({
+        'type': 'wireguard',
+        'server': 'wg.example.com',
+        'server_port': 51820,
+        'private_key': 'priv',
+        'peer_public_key': 'pub',
+        'local_address': ['10.0.0.2/32'],
+        'amneziawg_obfuscation': {
+          'jc': 3,
+          'jmin': 10,
+          'jmax': 50,
+          's1': 15,
+          's2': 20,
+          'h1': 1,
+          'h2': 2,
+          'h3': 3,
+          'h4': 4,
+        },
+      });
+      expect(validAwg.isOk, isTrue);
+      final awg = (validAwg as Ok).value as AmneziaWgOutbound;
+      expect(awg.jc, 3);
+      expect(awg.jmin, 10);
+      expect(awg.jmax, 50);
+      expect(awg.s1, 15);
+      expect(awg.s2, 20);
+      expect(awg.h1, 1);
     });
   });
 }

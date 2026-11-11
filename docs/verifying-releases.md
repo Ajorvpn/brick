@@ -18,9 +18,19 @@ To mitigate these threats, every official release provides:
 
 ---
 
-## 2. Verifying Release Checksums
+## 2. Verifying Release Checksums & Dual-Distribution Artifact Guide
 
 Alongside each GitHub Release, a canonical `SHA256SUMS.txt` file is published containing the SHA-256 hashes of all official release artifacts sorted alphabetically.
+
+### Release Artifact Guide (Which File Should I Download?)
+
+| Artifact File | Architecture / Target | Description & Recommendation | Typical Size |
+|---|---|---|---|
+| `app-arm64-v8a-release.apk` | 64-bit ARM (`arm64-v8a`) | **Recommended Default:** For modern Android phones and tablets (~95%+ of devices). Smallest download and fastest runtime. | ~45 MB |
+| `app-armeabi-v7a-release.apk` | 32-bit ARM (`armeabi-v7a`) | For older 32-bit Android phones and legacy devices. | ~40 MB |
+| `app-x86_64-release.apk` | 64-bit Intel/AMD (`x86_64`) | For Android on x86_64 Chromebooks, Windows Subsystem for Android (WSA), and Android emulators. | ~48 MB |
+| `app-release.apk` | Universal Multi-ABI ("Fat" APK) | **Universal Fallback:** Contains native binaries for all 3 architectures (`arm64-v8a`, `armeabi-v7a`, `x86_64`). Use if you do not know your device's CPU architecture (~81 MB larger than split APKs). | ~126 MB |
+| `app-release.aab` | Android App Bundle | Official distribution bundle format for Google Play Store (contains all 3 ABIs before Play dynamic delivery splits into ~40–45 MB device-specific installs). | ~103 MB |
 
 ### Linux
 
@@ -90,15 +100,16 @@ Verified using v3 scheme (APK Signature Scheme v3): true
 Verified using v4 scheme (APK Signature Scheme v4): false
 Verified for SourceStamp: false
 Number of signers: 1
-Signer #1 certificate DN: CN=Android Debug, O=Android, C=US
-Signer #1 certificate SHA-256 digest: dac4433e48f6ca383f7d8958589d9a944c76e01ea813d4e83cf0d43d3d65f934
+Signer #1 certificate DN: CN=Brick VPN Release, OU=Security, O=Brick VPN Project, C=CA
+Signer #1 certificate SHA-256 digest: 563daf7196c565ad432bf5800e2a9eaae0a10918b0489e7965e63d973827303b
 Signer #1 key algorithm: RSA
-Signer #1 key size (bits): 2048
+Signer #1 key size (bits): 4096
 ```
 
 Verify that:
 1. `Verified using v2 scheme (APK Signature Scheme v2)` is `true`.
-2. The `Signer #1 certificate SHA-256 digest` matches the expected signing certificate fingerprint.
+2. `Verified using v3 scheme (APK Signature Scheme v3)` is `true`.
+3. The `Signer #1 certificate SHA-256 digest` matches `563daf7196c565ad432bf5800e2a9eaae0a10918b0489e7965e63d973827303b`.
 
 ### Method B: Using JDK `keytool` (Limitation Note on APK Signature Scheme v2/v3)
 
@@ -118,33 +129,29 @@ keytool -printcert -jarfile app-release.apk
 
 ---
 
-## 4. Current Signing Key Status & Phase 10 Transition
+## 4. Official Production Signing Certificate (Established in Phase 10 — P10-T1)
 
-> [!IMPORTANT]
-> **Pre-Release Milestone Notice (Phase 8):**
-> At the current development milestone, the release build type in `apps/mobile/android/app/build.gradle.kts` uses debug signing keys (`signingConfigs.getByName("debug")`) for local and CI validation builds:
-> ```kotlin
-> buildTypes {
->     release {
->         // TODO: Add your own signing config for the release build.
->         // Signing with the debug keys for now, so `flutter run --release` works.
->         signingConfig = signingConfigs.getByName("debug")
->     }
-> }
-> ```
-> Production release keystore generation, hardware-security-module / offline key custody, and GitHub Actions secret provisioning are explicitly scoped to **Phase 10 (Release Preparation)** per roadmap task `P8-T4` (Scope 1 & Criterion 1).
->
-> Once Phase 10 is executed, the official production certificate details below will be populated.
+As of Phase 10 (`P10-T1`), Brick VPN production releases are signed with the project's official 4096-bit RSA release signing key. The release keystore is stored securely outside source control and injected during GitHub Actions CI tag builds.
 
-### Official Production Signing Certificate (Target Placeholder for Phase 10)
+### Official Production Signing Certificate Fingerprints
 
 ```text
 Certificate Signer #1:
-Subject: CN=Brick VPN Release, OU=Security, O=Brick VPN Project
-Issuer:  CN=Brick VPN Release, OU=Security, O=Brick VPN Project
-Signature Algorithm: SHA256withRSA (or Ed25519)
-SHA-256 Certificate Fingerprint:
-[PENDING_PHASE10_PRODUCTION_KEY_FINGERPRINT]
+Subject: CN=Brick VPN Release, OU=Security, O=Brick VPN Project, C=CA
+Issuer:  CN=Brick VPN Release, OU=Security, O=Brick VPN Project, C=CA
+Signature Algorithm: SHA256withRSA
+Key Algorithm: 4096-bit RSA
+Validity: 10,000 days (until 2054)
+
+Certificate Fingerprints:
+SHA-256 (with colons):
+56:3D:AF:71:96:C5:65:AD:43:2B:F5:80:0E:2A:9E:AA:E0:A1:09:18:B0:48:9E:79:65:E6:3D:97:38:27:30:3B
+
+SHA-256 (lowercase hex, apksigner format):
+563daf7196c565ad432bf5800e2a9eaae0a10918b0489e7965e63d973827303b
+
+SHA-1:
+86:4A:75:50:9E:29:87:09:BD:8A:E8:A5:26:6C:71:EC:2A:4D:7B:B1
 ```
 
 ---

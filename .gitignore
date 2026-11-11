@@ -21,12 +21,16 @@ pubspec_overrides.yaml
 # OS
 .DS_Store
 
-# Android / signing / build artifacts
+# Android / signing / build artifacts (NEVER commit keys or credentials)
 android/local.properties
 **/local.properties
 key.properties
+keystore.env
 *.jks
 *.keystore
+*.p12
+*.pem
+*.der
 *.aar
 *.jar
 android/app/build/
