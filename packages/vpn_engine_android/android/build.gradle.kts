@@ -116,7 +116,7 @@ dependencies {
     // silent false green. The suite must keep running all tests (84 host-JVM tests across all suites).
     // org.json is an Android SDK class whose JVM stub throws "not mocked"; pull
     // the pure-Java implementation so host-JVM tests exercising config building pass.
-    testImplementation("org.json:json:20231013")
+    testImplementation("org.json:json:20260814")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
     testImplementation("io.flutter:flutter_embedding_debug:1.0.0-06a2e2a110089dff50fe635cffd2a61e1b24fbcd")
