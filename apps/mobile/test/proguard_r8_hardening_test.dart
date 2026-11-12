@@ -7,6 +7,8 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   group('P10-T2 / P10-T3 ProGuard / R8 Hardening & Dual Distribution Suite', () {
     late final Directory repoRoot;
+    final requireBuiltArtifacts =
+        Platform.environment['VERIFY_RELEASE_ARTIFACTS'] == 'true';
 
     setUpAll(() {
       var dir = Directory.current;
@@ -155,17 +157,40 @@ void main() {
 
       // Enum static method preservation
       expect(content.contains('-keepclassmembers enum * {'), isTrue);
+
+      // Google ML Kit Barcode Scanning & Barhopper keep rules
+      expect(
+        content.contains(
+          '-keep class com.google.android.libraries.barhopper.**',
+        ),
+        isTrue,
+      );
+      expect(content.contains('-keep class com.google.mlkit.**'), isTrue);
+
+      // AndroidX CameraX & DataStore keep rules
+      expect(content.contains('-keep class androidx.camera.**'), isTrue);
+      expect(content.contains('-keep class androidx.datastore.**'), isTrue);
+
+      // Application MainActivity & Flutter plugin registrants
+      expect(content.contains('-keep class dev.brickvpn.mobile.**'), isTrue);
     });
 
     test('Criterion 1 & 2: R8 seeds.txt preserves gomobile and libbox', () {
       final seedsFile = File(
         '${repoRoot.path}/apps/mobile/build/app/outputs/mapping/release/seeds.txt',
       );
-      if (seedsFile.existsSync()) {
+      if (requireBuiltArtifacts || seedsFile.existsSync()) {
+        expect(
+          seedsFile.existsSync(),
+          isTrue,
+          reason: 'R8 seeds.txt must exist from release build',
+        );
         final seeds = seedsFile.readAsStringSync();
         expect(seeds.contains('go.Seq'), isTrue);
         expect(seeds.contains('io.nekohasekai.libbox'), isTrue);
         expect(seeds.contains('dev.brickvpn.harness'), isTrue);
+        expect(seeds.contains('dev.brickvpn.mobile.MainActivity'), isTrue);
+        expect(seeds.contains('barhopper'), isTrue);
       }
     });
 
@@ -193,125 +218,173 @@ void main() {
         ),
         isTrue,
       );
+      expect(
+        content.contains(
+          'keytool -printcert -jarfile '
+          'apps/mobile/build/app/outputs/bundle/release/app-release.aab',
+        ),
+        isTrue,
+      );
+      expect(
+        content.contains(
+          <String>[
+            '56:3D:AF:71:96:C5:65:AD:43:2B:F5:80:0E:2A:9E:AA:',
+            'E0:A1:09:18:B0:48:9E:79:65:E6:3D:97:38:27:30:3B',
+          ].join(),
+        ),
+        isTrue,
+      );
     });
 
-    test(
-      'P10-T3 Criterion 1 & 2: Built AAB and Split-ABI APKs contain exact '
-      'expected native ABI .so libraries',
-      () {
-        final aabFile = File(
-          '${repoRoot.path}/apps/mobile/build/app/outputs/bundle/release/app-release.aab',
+    test('P10-T3 Criterion 1 & 2: Built AAB and Split-ABI APKs contain exact '
+        'expected native ABI .so libraries', () {
+      final aabFile = File(
+        '${repoRoot.path}/apps/mobile/build/app/outputs/bundle/release/app-release.aab',
+      );
+      final arm64Apk = File(
+        '${repoRoot.path}/apps/mobile/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk',
+      );
+      final arm32Apk = File(
+        '${repoRoot.path}/apps/mobile/build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk',
+      );
+      final x8664Apk = File(
+        '${repoRoot.path}/apps/mobile/build/app/outputs/flutter-apk/app-x86_64-release.apk',
+      );
+      final universalApk = File(
+        '${repoRoot.path}/apps/mobile/build/app/outputs/flutter-apk/app-release.apk',
+      );
+
+      if (requireBuiltArtifacts || aabFile.existsSync()) {
+        expect(
+          aabFile.existsSync(),
+          isTrue,
+          reason: 'app-release.aab must exist on disk',
         );
-        final arm64Apk = File(
-          '${repoRoot.path}/apps/mobile/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk',
+        expect(
+          arm64Apk.existsSync(),
+          isTrue,
+          reason: 'app-arm64-v8a-release.apk must exist on disk',
         );
-        final arm32Apk = File(
-          '${repoRoot.path}/apps/mobile/build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk',
+        expect(
+          arm32Apk.existsSync(),
+          isTrue,
+          reason: 'app-armeabi-v7a-release.apk must exist on disk',
         );
-        final x8664Apk = File(
-          '${repoRoot.path}/apps/mobile/build/app/outputs/flutter-apk/app-x86_64-release.apk',
+        expect(
+          x8664Apk.existsSync(),
+          isTrue,
+          reason: 'app-x86_64-release.apk must exist on disk',
         );
-        final universalApk = File(
-          '${repoRoot.path}/apps/mobile/build/app/outputs/flutter-apk/app-release.apk',
+        expect(
+          universalApk.existsSync(),
+          isTrue,
+          reason: 'app-release.apk must exist on disk',
         );
 
-        if (aabFile.existsSync() &&
-            arm64Apk.existsSync() &&
-            arm32Apk.existsSync() &&
-            x8664Apk.existsSync()) {
-          // 1. Inspect app-release.aab
-          final aabResult = Process.runSync('unzip', <String>[
-            '-Z1',
-            aabFile.path,
-          ]);
-          expect(aabResult.exitCode, equals(0));
-          final aabLines = (aabResult.stdout as String).split('\n');
+        // 1. Inspect app-release.aab
+        final aabResult = Process.runSync('unzip', <String>[
+          '-Z1',
+          aabFile.path,
+        ]);
+        expect(aabResult.exitCode, equals(0));
+        final aabLines = (aabResult.stdout as String).split('\n');
 
-          expect(aabLines.contains('base/lib/arm64-v8a/libgojni.so'), isTrue);
-          expect(aabLines.contains('base/lib/arm64-v8a/libapp.so'), isTrue);
-          expect(aabLines.contains('base/lib/armeabi-v7a/libgojni.so'), isTrue);
-          expect(aabLines.contains('base/lib/armeabi-v7a/libapp.so'), isTrue);
-          expect(aabLines.contains('base/lib/x86_64/libgojni.so'), isTrue);
-          expect(aabLines.contains('base/lib/x86_64/libapp.so'), isTrue);
+        expect(aabLines.contains('base/lib/arm64-v8a/libgojni.so'), isTrue);
+        expect(aabLines.contains('base/lib/arm64-v8a/libapp.so'), isTrue);
+        expect(aabLines.contains('base/lib/armeabi-v7a/libgojni.so'), isTrue);
+        expect(aabLines.contains('base/lib/armeabi-v7a/libapp.so'), isTrue);
+        expect(aabLines.contains('base/lib/x86_64/libgojni.so'), isTrue);
+        expect(aabLines.contains('base/lib/x86_64/libapp.so'), isTrue);
 
-          // 2. Inspect app-arm64-v8a-release.apk
-          final arm64Result = Process.runSync('unzip', <String>[
-            '-Z1',
+        // 2. Inspect app-arm64-v8a-release.apk
+        final arm64Result = Process.runSync('unzip', <String>[
+          '-Z1',
+          arm64Apk.path,
+        ]);
+        expect(arm64Result.exitCode, equals(0));
+        final arm64Lines = (arm64Result.stdout as String).split('\n');
+        expect(arm64Lines.contains('lib/arm64-v8a/libgojni.so'), isTrue);
+        expect(arm64Lines.contains('lib/arm64-v8a/libapp.so'), isTrue);
+        expect(
+          arm64Lines.any((l) => l.startsWith('lib/armeabi-v7a/')),
+          isFalse,
+        );
+        expect(arm64Lines.any((l) => l.startsWith('lib/x86_64/')), isFalse);
+
+        // Verify compiled binary manifest has android:label="Brick VPN"
+        final androidHome =
+            Platform.environment['ANDROID_HOME'] ??
+            Platform.environment['ANDROID_SDK_ROOT'] ??
+            '/home/bellard/Android/Sdk';
+        final apkanalyzerBin = File(
+          '$androidHome/cmdline-tools/latest/bin/apkanalyzer',
+        );
+        final aaptBin = File('$androidHome/build-tools/36.0.0/aapt');
+
+        var manifestOutput = '';
+        if (apkanalyzerBin.existsSync()) {
+          final res = Process.runSync(apkanalyzerBin.path, <String>[
+            'manifest',
+            'print',
             arm64Apk.path,
           ]);
-          expect(arm64Result.exitCode, equals(0));
-          final arm64Lines = (arm64Result.stdout as String).split('\n');
-          expect(arm64Lines.contains('lib/arm64-v8a/libgojni.so'), isTrue);
-          expect(arm64Lines.contains('lib/arm64-v8a/libapp.so'), isTrue);
-          expect(
-            arm64Lines.any((l) => l.startsWith('lib/armeabi-v7a/')),
-            isFalse,
-          );
-          expect(
-            arm64Lines.any((l) => l.startsWith('lib/x86_64/')),
-            isFalse,
-          );
-
-          // 3. Inspect app-armeabi-v7a-release.apk
-          final arm32Result = Process.runSync('unzip', <String>[
-            '-Z1',
-            arm32Apk.path,
+          expect(res.exitCode, equals(0));
+          manifestOutput = res.stdout as String;
+        } else if (aaptBin.existsSync()) {
+          final res = Process.runSync(aaptBin.path, <String>[
+            'dump',
+            'badging',
+            arm64Apk.path,
           ]);
-          expect(arm32Result.exitCode, equals(0));
-          final arm32Lines = (arm32Result.stdout as String).split('\n');
-          expect(arm32Lines.contains('lib/armeabi-v7a/libgojni.so'), isTrue);
-          expect(arm32Lines.contains('lib/armeabi-v7a/libapp.so'), isTrue);
-          expect(
-            arm32Lines.any((l) => l.startsWith('lib/arm64-v8a/')),
-            isFalse,
-          );
-          expect(
-            arm32Lines.any((l) => l.startsWith('lib/x86_64/')),
-            isFalse,
-          );
-
-          // 4. Inspect app-x86_64-release.apk
-          final x86Result = Process.runSync('unzip', <String>[
-            '-Z1',
-            x8664Apk.path,
-          ]);
-          expect(x86Result.exitCode, equals(0));
-          final x86Lines = (x86Result.stdout as String).split('\n');
-          expect(x86Lines.contains('lib/x86_64/libgojni.so'), isTrue);
-          expect(x86Lines.contains('lib/x86_64/libapp.so'), isTrue);
-          expect(
-            x86Lines.any((l) => l.startsWith('lib/arm64-v8a/')),
-            isFalse,
-          );
-          expect(
-            x86Lines.any((l) => l.startsWith('lib/armeabi-v7a/')),
-            isFalse,
-          );
-
-          // 5. Inspect universal app-release.apk
-          if (universalApk.existsSync()) {
-            final universalResult = Process.runSync('unzip', <String>[
-              '-Z1',
-              universalApk.path,
-            ]);
-            expect(universalResult.exitCode, equals(0));
-            final universalLines =
-                (universalResult.stdout as String).split('\n');
-            expect(
-              universalLines.contains('lib/arm64-v8a/libgojni.so'),
-              isTrue,
-            );
-            expect(
-              universalLines.contains('lib/armeabi-v7a/libgojni.so'),
-              isTrue,
-            );
-            expect(
-              universalLines.contains('lib/x86_64/libgojni.so'),
-              isTrue,
-            );
-          }
+          expect(res.exitCode, equals(0));
+          manifestOutput = res.stdout as String;
+        } else {
+          final res = Process.runSync('apkanalyzer', <String>[
+            'manifest',
+            'print',
+            arm64Apk.path,
+          ], runInShell: true);
+          expect(res.exitCode, equals(0));
+          manifestOutput = res.stdout as String;
         }
-      },
-    );
+        expect(manifestOutput.contains('Brick VPN'), isTrue);
+        expect(manifestOutput.contains('android:label="mobile"'), isFalse);
+
+        // 3. Inspect app-armeabi-v7a-release.apk
+        final arm32Result = Process.runSync('unzip', <String>[
+          '-Z1',
+          arm32Apk.path,
+        ]);
+        expect(arm32Result.exitCode, equals(0));
+        final arm32Lines = (arm32Result.stdout as String).split('\n');
+        expect(arm32Lines.contains('lib/armeabi-v7a/libgojni.so'), isTrue);
+        expect(arm32Lines.contains('lib/armeabi-v7a/libapp.so'), isTrue);
+        expect(arm32Lines.any((l) => l.startsWith('lib/arm64-v8a/')), isFalse);
+        expect(arm32Lines.any((l) => l.startsWith('lib/x86_64/')), isFalse);
+
+        // 4. Inspect app-x86_64-release.apk
+        final x86Result = Process.runSync('unzip', <String>[
+          '-Z1',
+          x8664Apk.path,
+        ]);
+        expect(x86Result.exitCode, equals(0));
+        final x86Lines = (x86Result.stdout as String).split('\n');
+        expect(x86Lines.contains('lib/x86_64/libgojni.so'), isTrue);
+        expect(x86Lines.contains('lib/x86_64/libapp.so'), isTrue);
+        expect(x86Lines.any((l) => l.startsWith('lib/arm64-v8a/')), isFalse);
+        expect(x86Lines.any((l) => l.startsWith('lib/armeabi-v7a/')), isFalse);
+
+        // 5. Inspect universal app-release.apk
+        final universalResult = Process.runSync('unzip', <String>[
+          '-Z1',
+          universalApk.path,
+        ]);
+        expect(universalResult.exitCode, equals(0));
+        final universalLines = (universalResult.stdout as String).split('\n');
+        expect(universalLines.contains('lib/arm64-v8a/libgojni.so'), isTrue);
+        expect(universalLines.contains('lib/armeabi-v7a/libgojni.so'), isTrue);
+        expect(universalLines.contains('lib/x86_64/libgojni.so'), isTrue);
+      }
+    });
   });
 }

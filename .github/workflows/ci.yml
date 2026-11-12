@@ -83,6 +83,14 @@ jobs:
           echo "BRICK_KEY_ALIAS=$ANDROID_KEY_ALIAS" >> "$GITHUB_ENV"
           echo "BRICK_KEY_PASSWORD=$ANDROID_KEY_PASSWORD" >> "$GITHUB_ENV"
 
+      - name: Ensure libbox.aar native engine binary is built
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          if [ ! -f packages/vpn_engine_android/android/libs/libbox.aar ]; then
+            packages/vpn_engine_android/scripts/build_libbox_aar.sh
+          fi
+          test -s packages/vpn_engine_android/android/libs/libbox.aar
+
       - name: Build release Split-ABI APKs, Universal APK, and App Bundle
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
@@ -91,6 +99,14 @@ jobs:
           flutter build apk --release
           flutter build appbundle --release
           cp build/app/outputs/bundle/release/app-release.aab build/app/outputs/flutter-apk/app-release.aab
+
+      - name: Verify R8 seeds.txt and Dual-Distribution ABI packaging
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          VERIFY_RELEASE_ARTIFACTS: 'true'
+        run: |
+          cd apps/mobile
+          flutter test --no-pub -r expanded test/proguard_r8_hardening_test.dart
 
       - name: Verify release APK signature
         if: startsWith(github.ref, 'refs/tags/v')

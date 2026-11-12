@@ -53,4 +53,23 @@
     public static ** valueOf(java.lang.String);
 }
 
+# 9. Google ML Kit Barcode Scanning & Barhopper Native JNI Bridge (libbarhopper_v3.so)
+# Used by mobile_scanner in QrScanScreen; native C++ code reflects on Barhopper fields & constructors.
+-keep class com.google.android.libraries.barhopper.** { *; }
+-keep class com.google.photos.vision.barhopper.** { *; }
+-keep class com.google.mlkit.** { *; }
+-dontwarn com.google.mlkit.**
+-dontwarn com.google.android.libraries.barhopper.**
+-dontwarn com.google.photos.vision.barhopper.**
+
+# 10. AndroidX CameraX & DataStore Native JNI Bridges (libimage_processing_util_jni.so, libsurface_util_jni.so, libdatastore_shared_counter.so)
+-keep class androidx.camera.** { *; }
+-dontwarn androidx.camera.**
+-keep class androidx.datastore.** { *; }
+-dontwarn androidx.datastore.**
+
+# 11. Application MainActivity & Flutter Plugin Registrants
+-keep class dev.brickvpn.mobile.** { *; }
+
+
 

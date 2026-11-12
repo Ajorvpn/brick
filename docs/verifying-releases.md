@@ -26,11 +26,11 @@ Alongside each GitHub Release, a canonical `SHA256SUMS.txt` file is published co
 
 | Artifact File | Architecture / Target | Description & Recommendation | Typical Size |
 |---|---|---|---|
-| `app-arm64-v8a-release.apk` | 64-bit ARM (`arm64-v8a`) | **Recommended Default:** For modern Android phones and tablets (~95%+ of devices). Smallest download and fastest runtime. | ~45 MB |
-| `app-armeabi-v7a-release.apk` | 32-bit ARM (`armeabi-v7a`) | For older 32-bit Android phones and legacy devices. | ~40 MB |
-| `app-x86_64-release.apk` | 64-bit Intel/AMD (`x86_64`) | For Android on x86_64 Chromebooks, Windows Subsystem for Android (WSA), and Android emulators. | ~48 MB |
-| `app-release.apk` | Universal Multi-ABI ("Fat" APK) | **Universal Fallback:** Contains native binaries for all 3 architectures (`arm64-v8a`, `armeabi-v7a`, `x86_64`). Use if you do not know your device's CPU architecture (~81 MB larger than split APKs). | ~126 MB |
-| `app-release.aab` | Android App Bundle | Official distribution bundle format for Google Play Store (contains all 3 ABIs before Play dynamic delivery splits into ~40–45 MB device-specific installs). | ~103 MB |
+| `app-arm64-v8a-release.apk` | 64-bit ARM (`arm64-v8a`) | **Recommended Default:** For modern Android phones and tablets (~95%+ of devices). Smallest download and fastest runtime. | ~47 MB (45 MiB) |
+| `app-armeabi-v7a-release.apk` | 32-bit ARM (`armeabi-v7a`) | For older 32-bit Android phones and legacy devices. | ~42 MB (40 MiB) |
+| `app-x86_64-release.apk` | 64-bit Intel/AMD (`x86_64`) | For Android on x86_64 Chromebooks, Windows Subsystem for Android (WSA), and Android emulators. | ~51 MB (48 MiB) |
+| `app-release.apk` | Universal Multi-ABI ("Fat" APK) | **Universal Fallback:** Contains native binaries for all 3 architectures (`arm64-v8a`, `armeabi-v7a`, `x86_64`). Use if you do not know your device's CPU architecture (~81 MB larger than split APKs). | ~132 MB (126 MiB) |
+| `app-release.aab` | Android App Bundle | Official distribution bundle format for Google Play Store (contains all 3 ABIs before Play dynamic delivery splits into ~40–45 MB device-specific installs). | ~108 MB (103 MiB) |
 
 ### Linux
 

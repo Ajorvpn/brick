@@ -1745,6 +1745,9 @@ flowchart TD
    - `-dontwarn com.google.android.play.core.**`: Suppresses non-fatal warnings for deferred Play Core dynamic component references.
    - `-dontwarn kotlinx.coroutines.**`: Suppresses non-fatal warnings for optional coroutine reflection metadata.
    - `-keepclassmembers enum *`: Guarantees Pigeon codec enum values are never inlined or stripped by application-level R8 optimizations.
+   - `-keep class com.google.android.libraries.barhopper.** { *; }` & `com.google.photos.vision.barhopper.**` & `com.google.mlkit.**`: Protects Google ML Kit Barcode Scanning and Barhopper native JNI runtime (`libbarhopper_v3.so`) used by `mobile_scanner` in QR code importing.
+   - `-keep class androidx.camera.** { *; }` & `androidx.datastore.**`: Preserves CameraX (`libimage_processing_util_jni.so`, `libsurface_util_jni.so`) and Jetpack DataStore (`libdatastore_shared_counter.so`) JNI reflection boundaries.
+   - `-keep class dev.brickvpn.mobile.** { *; }`: Preserves application entry points (`MainActivity`) and Flutter plugin registrants.
    - `-keepattributes SourceFile,LineNumberTable` & `-renamesourcefileattribute SourceFile`: Preserves line numbers in crash stack traces so production crashes can be de-obfuscated with `mapping.txt`.
 
 #### Architectural Invariants
@@ -1759,11 +1762,11 @@ Brick VPN targets two distinct distribution channels with fundamentally differen
 1. **Google Play Store (App Bundle / AAB):**
    - Play Store requires an Android App Bundle (`app-release.aab`) rather than monolithic APKs.
    - Google Play dynamic feature and asset delivery automatically assembles optimized split APKs containing only the device's specific CPU architecture (ABI), display density, and language resources at download time.
-   - The multi-ABI bundle is ~103 MB on disk, but Google Play dynamic split delivery delivers an optimized ~40–45 MB installation to user devices.
+   - The multi-ABI bundle is ~108 MB (103 MiB) on disk, but Google Play dynamic split delivery delivers an optimized ~40–45 MB installation to user devices.
 2. **Direct Distribution (GitHub Releases / F-Droid / Website Downloads):**
    - For users bypassing Google Play in censorship-heavy or de-Googled environments, direct APK installation is required.
-   - Shipping only a universal "fat" APK (`app-release.apk`, ~126 MB) forces users to download native shared libraries for all 3 supported architectures (`arm64-v8a`, `armeabi-v7a`, `x86_64`), wasting over 81 MB of mobile bandwidth per download.
-   - Consequently, Brick VPN builds **ABI-split release APKs** (`flutter build apk --release --split-per-abi`) providing lightweight architecture-specific binaries (`arm64-v8a`: ~45 MB, `armeabi-v7a`: ~40 MB, `x86_64`: ~48 MB) saving ~81 MB download size, alongside a universal fallback APK (`app-release.apk`, ~126 MB) for non-technical users.
+   - Shipping only a universal "fat" APK (`app-release.apk`, ~132 MB (126 MiB)) forces users to download native shared libraries for all 3 supported architectures (`arm64-v8a`, `armeabi-v7a`, `x86_64`), wasting over 81 MB of mobile bandwidth per download.
+   - Consequently, Brick VPN builds **ABI-split release APKs** (`flutter build apk --release --split-per-abi`) providing lightweight architecture-specific binaries (`arm64-v8a`: ~47 MB (45 MiB), `armeabi-v7a`: ~42 MB (40 MiB), `x86_64`: ~51 MB (48 MiB)) saving ~81 MB download size, alongside a universal fallback APK (`app-release.apk`, ~132 MB (126 MiB)) for non-technical users.
 
 ```mermaid
 flowchart TD
@@ -1775,17 +1778,17 @@ flowchart TD
     end
 
     subgraph Store["Google Play Store Channel"]
-        AAB["app-release.aab (~103 MB)"]
+        AAB["app-release.aab (~108 MB (103 MiB))"]
         PlayDynamic["Google Play Feature & ABI Delivery"]
         UserPlay["End-User Device (~40-45 MB download)"]
         AAB --> PlayDynamic --> UserPlay
     end
 
     subgraph Direct["Direct / GitHub Releases Channel"]
-        ARM64["app-arm64-v8a-release.apk (~45 MB, 64-bit ARM)"]
-        ARM32["app-armeabi-v7a-release.apk (~40 MB, 32-bit ARM)"]
-        X86_64["app-x86_64-release.apk (~48 MB, 64-bit x86)"]
-        FAT["app-release.apk (~126 MB, Universal Fallback)"]
+        ARM64["app-arm64-v8a-release.apk (~47 MB (45 MiB), 64-bit ARM)"]
+        ARM32["app-armeabi-v7a-release.apk (~42 MB (40 MiB), 32-bit ARM)"]
+        X86_64["app-x86_64-release.apk (~51 MB (48 MiB), 64-bit x86)"]
+        FAT["app-release.apk (~132 MB (126 MiB), Universal Fallback)"]
         Checksums["SHA256SUMS.txt & Signatures"]
     end
 
@@ -1865,6 +1868,124 @@ flowchart TD
 #### Architectural Invariants
 - **Invariant 29 (VpnService Traffic Encryption Invariant):** All traffic routed through the Android VpnService interface must be encapsulated in cryptographically authenticated encrypted tunnels (TLS 1.3, AEAD, Noise, or QUIC). Cleartext unencrypted transport is architecturally prohibited.
 - **Invariant 30 (Zero-Telemetry & Ad-Free Invariant):** The application and all contained packages must never include advertising SDKs, Advertising ID permissions (`AD_ID`), third-party analytics trackers, or user traffic modification mechanisms.
+
+---
+
+### 12.5 P10-T5 — Minimal Release Store Listing Assets & Privacy Policy Architecture
+
+#### Purpose & Scope
+Governs the public distribution metadata, graphical store assets, and legal privacy disclosures required by the Google Play Console and direct open-source distribution channels. Ensures absolute compliance with Google Play Developer Program policies through honest representation, zero-telemetry commitments, and automated binary asset verification.
+
+#### Store Listing Copy Specifications
+1. **Application Title:**
+   - Play Console Limit: `<= 30` characters.
+   - Value: `Brick VPN` (9 characters).
+2. **Short Description:**
+   - Play Console Limit: `<= 80` characters.
+   - Value: `Open-source, ad-free VPN client supporting VLESS, Reality, WireGuard, and HY2.` (78 characters).
+3. **Full Description:**
+   - Play Console Limit: `<= 4000` characters.
+   - Value: Explicitly describes the "Bring Your Own Server" (BYOS) self-hosted architecture without commercial server bundling.
+   - Covers all 8 supported transport protocols (VLESS Reality, VMess, Trojan, Shadowsocks AEAD, WireGuard, AmneziaWG, Hysteria2, TUIC), Sing-box core, server ingestion (URI paste, optical QR scanning via ML Kit, HTTPS subscriptions), resilience mechanisms (fail-closed Kill Switch, smart auto-reconnect, foreground service), and cryptographic privacy safeguards (Keystore AES-256-GCM, 3-surface log redaction, GPL-3.0-or-later).
+
+#### Store Visual Asset Specifications
+- **High-Resolution Icon (`docs/release/store-assets/icon-512x512.png`):**
+  - Dimensions: `512 x 512` pixels, 32-bit RGBA (with alpha), `< 1024 KB`.
+  - Design: Clean geometric shield/brick emblem on dark slate background.
+- **Feature Graphic (`docs/release/store-assets/feature-graphic-1024x500.png`):**
+  - Dimensions: `1024 x 500` pixels, 24-bit RGB, `< 15 MB`.
+  - Design: Minimal banner featuring Brick VPN emblem, dark theme palette, protocol highlights, and trust badges.
+- **Genuine UI Screenshots (`docs/release/store-assets/screenshots/`):**
+  - Dimensions: `1080 x 1920` pixels (9:16 portrait), `> 5 KB` each.
+  - Exactly captures 4 real Flutter UI states:
+    1. `01_home_disconnected.png`: Disconnected dashboard with `ConnectionStateBadge` ("Disconnected"), `SessionInfoPanel`, `ThroughputReadout`, `FilledButton` ("Connect"), and quick action buttons ("Add Server", "Add Subscription").
+    2. `02_home_connected.png`: Connected dashboard with `ConnectionStateBadge` ("Connected"), live duration counter, real-time speedometers, active profile, and one-tap Disconnect button.
+    3. `03_servers_and_subscriptions.png`: `ServersScreen` displaying standalone server profiles and subscription groups with child profiles.
+    4. `04_live_logs_redacted.png`: `LiveLogsScreen` displaying automatic 3-surface redaction banner and sanitized monospace diagnostic log entries (`[REDACTED]`, `[REDACTED_IP]`).
+
+#### Privacy Policy & Permissions Disclosure Architecture
+- Hosted in-tree at `docs/privacy-policy.md` (accessible at `https://github.com/Ajorvpn/brick/blob/master/docs/privacy-policy.md`).
+- Enforces an absolute zero-data-collection posture: zero telemetry SDKs, zero crash reporters, zero advertising trackers, and zero traffic logging.
+- Fully explains all 8 declared Android OS permissions:
+  1. `android.permission.BIND_VPN_SERVICE`: Core VpnService subsystem binding and TUN routing.
+  2. `android.permission.INTERNET`: Outbound encrypted tunnel transport and subscription fetching.
+  3. `android.permission.ACCESS_NETWORK_STATE`: Interface change detection for auto-reconnect and kill-switch enforcement.
+  4. `android.permission.FOREGROUND_SERVICE`: Background process survival.
+  5. `android.permission.FOREGROUND_SERVICE_SPECIAL_USE`: Android 14+ FGS subtype declaration.
+  6. `android.permission.POST_NOTIFICATIONS`: Android 13+ persistent status notification (`"Brick VPN"` / `"Tunnel active"`).
+  7. `android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`: OEM battery management bypass for uninterrupted connections.
+  8. `android.permission.CAMERA`: Local in-memory optical QR scanning via Google ML Kit / CameraX.
+
+#### Architectural Invariants
+- **Invariant 31 (Store Listing Honesty Invariant):** Store listing copy, screenshots, and metadata must honestly reflect the actual functionality, screens, widgets, and protocols implemented in the application. Feature mockups, unbundled commercial proxy promises, or aspirational marketing claims are strictly prohibited.
+- **Invariant 32 (Privacy Policy & Zero-Telemetry Contract Invariant):** The privacy policy at `docs/privacy-policy.md` forms an immutable public contract. No telemetry, third-party trackers, analytics, or unencrypted cleartext logging may ever be introduced into the application without prior formal architectural review and policy revision.
+
+---
+
+### 12.6 P10-T6 — Direct-Distribution GitHub Release & Artifact Verification Architecture
+
+#### Purpose & Scope
+Governs the direct-APK distribution channel independent of Google Play, enabling censorship-resistant, direct sideloading of cryptographically signed and checksum-verified Android packages via GitHub Releases. Fully integrates the build, signing, and verification pipelines established across P0-T8, P10-T1, P10-T2, P10-T3, and P8-T4.
+
+#### Release Distribution Matrix
+The direct-distribution release bundle publishes 5 distinct artifacts to support all Android deployment targets without bloat:
+1. `app-arm64-v8a-release.apk` (~47 MB): Recommended default for modern 64-bit ARM Android devices (Android 7.0+, API 24+).
+2. `app-armeabi-v7a-release.apk` (~42 MB): Sideload target for legacy 32-bit ARM smartphones.
+3. `app-x86_64-release.apk` (~51 MB): Target for x86_64 emulators, Chromebooks, and ChromeOS Android subsystem.
+4. `app-release.apk` (~132 MB): Universal fallback multi-ABI APK for devices with unknown ABI configurations.
+5. `app-release.aab` (~108 MB): Android App Bundle submitted to Google Play Console.
+
+#### Cryptographic Integrity & Verification Architecture
+- **Deterministic Checksums:** Canonical `SHA256SUMS.txt` is generated using `scripts/generate_and_verify_checksums.sh`, providing sorted basename entries that are self-verified with `sha256sum -c`.
+- **Dual-Scheme APK Signing (v2/v3):** Every APK is signed using APK Signature Scheme v2 and v3 backed by an official 4096-bit RSA production key, verified via `apksigner verify --print-certs -v`.
+- **AAB JAR Signing:** The App Bundle is signed using standard JAR signing, verified via `keytool -printcert -jarfile`.
+- **Production Certificate Fingerprint:** All artifacts are anchored to the immutable SHA-256 certificate digest:
+  `563daf7196c565ad432bf5800e2a9eaae0a10918b0489e7965e63d973827303b`
+  (`56:3D:AF:71:96:C5:65:AD:43:2B:F5:80:0E:2A:9E:AA:E0:A1:09:18:B0:48:9E:79:65:E6:3D:97:38:27:30:3B`).
+- **Release Automation Script:** `scripts/prepare_github_release_bundle.sh` automates full bundle integrity verification, checking artifact sizes, checksum validity, certificate digests, and compiled binary manifest attributes (`android:label="Brick VPN"`, `versionName="1.0.0"`, `versionCode="2001"`).
+
+#### Architectural Invariants
+- **Invariant 33 (Release Artifact Cryptographic Traceability):** Every distributed release artifact must be traceable to the canonical `SHA256SUMS.txt` manifest and verifiable against the official production signing certificate fingerprint.
+- **Invariant 34 (Direct-Distribution Sideloading Safety):** Direct-distribution release documentation must explicitly guide users through Android OS sideloading security ("Install unknown apps"), checksum validation, and permission consent without bypassing or compromising system security barriers.
+
+---
+
+### 12.7 P10-T7 — Play Store Closed/Internal Testing Track Submission & Signing Strategy
+
+#### Purpose & Scope
+Governs the distribution strategy and cryptographic signing topology for the Google Play Store channel. Resolves the dual-distribution certificate consistency challenge across Google Play and direct GitHub releases, defines the testing-track staged rollout, establishes the reviewer compliance playbook, and formalizes the Google MASA assessment posture.
+
+#### Signing Topology & Cross-Channel Certificate Uniformity
+- **Play App Signing Enrollment with Local Keystore Export:** Enrolls in Google Play App Signing using the Play Encrypt Private Key (PEPK) tool, exporting our existing 4096-bit RSA release key (`brickvpn_release`, SHA-256: `563daf7196c565ad432bf5800e2a9eaae0a10918b0489e7965e63d973827303b`).
+- **Elimination of `INSTALL_PARSE_FAILED_INCONSISTENT_CERTIFICATES`:** By anchoring both GitHub direct APKs and Google Play App Bundles to the exact same production certificate fingerprint, users can migrate between distribution channels in-place without data wipe or signature conflicts.
+- **Testing-Track Staged Rollout:** Targets Internal Testing and Closed Testing tracks first, protecting against public listing suspensions during automated and manual Google Play reviewer evaluations.
+- **MASA "Independent Security Review" Deferral:** Deliberately defers ADA/MASA Level 1 certification until post-launch eligibility thresholds (10,000+ installs, 250+ reviews, 90+ days on store) are reached.
+
+#### Architectural Invariants
+- **Invariant 35 (Cross-Channel Signing Uniformity Invariant):** The cryptographic signing identity of Google Play Store releases must remain identical to direct-distribution GitHub APKs. Independent signing identities that induce `INSTALL_PARSE_FAILED_INCONSISTENT_CERTIFICATES` upon channel switching are strictly prohibited.
+- **Invariant 36 (Testing-Track Pre-Submission Invariant):** New platform permissions, VpnService declarations, or major engine upgrades must be validated on an Internal or Closed Testing track prior to production track rollout.
+
+---
+
+### 12.8 P10-T8 — Phase 10 Closeout: Android MVP Milestone & Phase 11 UI/UX Handoff Architecture
+
+#### Purpose & Scope
+Marks the formal completion of the **Brick VPN Android MVP (Phases 0–10)**, closing out the engine, protocol, resilience, security, and release-packaging phases, and establishing the frozen architectural contract for **Phase 11 (Full UI/UX Design & Implementation — P11-T1: Design System Foundation: Visual Identity and Style Guide)**.
+
+#### Rebuilt MVP Foundation vs. Legacy Collapse
+Phases 0–10 permanently solved all five systemic failure modes of the legacy prototype:
+1. Replaced monolithic untestable code with a 7-package clean architecture with 81.12% unit coverage and 93 JVM tests.
+2. Replaced zombie services and state races with `CommandCoordinator`, `VpnStateMachine`, and `ServiceLifecycleHub`.
+3. Replaced silent blackholes with `hijack-dns`, RFC 6066 SNI stripping, auto-reconnect, and OS lockdown Kill Switch.
+4. Replaced plaintext secrets with Android Keystore AES-256-GCM encryption at rest and 3-surface log redaction.
+5. Replaced release-only R8 crashes with comprehensive keep rules, 4096-bit RSA signing, and multi-ABI packaging.
+
+#### Phase 11 UI/UX Handoff Contract
+All functional engine, protocol-parsing, platform-service, and encryption boundaries are declared **frozen**:
+- Phase 11 (`P11-T1` onward) operates exclusively on presentation-tier widgets (`apps/mobile/lib/features/`) and theme tokens (`packages/ui_theme/`).
+- Phase 11 will introduce custom visual styling, dark/light theme palettes, illustrations, and motion design without altering underlying domain state machines or cryptographic guarantees.
+
+
 
 
 

@@ -6,7 +6,34 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('P10-T1 Release Signing & Key Isolation Security Suite', () {
-    final repoRoot = Directory.current.parent.parent;
+    var dir = Directory.current;
+    while (!File('${dir.path}/pubspec.yaml').existsSync() ||
+        !Directory('${dir.path}/apps').existsSync()) {
+      final parent = dir.parent;
+      if (parent.path == dir.path) break;
+      dir = parent;
+    }
+    final repoRoot = dir;
+
+    Iterable<File> walkRepoSourceFiles(Directory dir) sync* {
+      const skippedDirs = <String>{
+        '.git',
+        'build',
+        '.dart_tool',
+        '.gradle',
+        '.idea',
+      };
+      for (final entity in dir.listSync(followLinks: false)) {
+        final name =
+            entity.uri.pathSegments.where((s) => s.isNotEmpty).lastOrNull ?? '';
+        if (entity is Directory) {
+          if (skippedDirs.contains(name)) continue;
+          yield* walkRepoSourceFiles(entity);
+        } else if (entity is File) {
+          yield entity;
+        }
+      }
+    }
 
     test('Criterion 3: Zero private key or credential files in repo tree', () {
       final forbiddenExtensions = ['.jks', '.keystore', '.p12', '.pem', '.der'];
@@ -14,20 +41,8 @@ void main() {
 
       final foundViolations = <String>[];
 
-      for (final entity in repoRoot.listSync(
-        recursive: true,
-        followLinks: false,
-      )) {
-        if (entity is! File) continue;
+      for (final entity in walkRepoSourceFiles(repoRoot)) {
         final path = entity.path;
-
-        // Skip build artifacts and git internals
-        if (path.contains('/.git/') ||
-            path.contains('/build/') ||
-            path.contains('/.dart_tool/')) {
-          continue;
-        }
-
         final fileName = entity.uri.pathSegments.last;
 
         for (final ext in forbiddenExtensions) {

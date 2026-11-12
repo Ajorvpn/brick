@@ -44,6 +44,12 @@ void main() {
         File('${repoRoot.path}/pubspec.yaml'),
         File('${repoRoot.path}/pubspec.lock'),
         File('${repoRoot.path}/apps/mobile/pubspec.yaml'),
+        File('${repoRoot.path}/packages/core_domain/pubspec.yaml'),
+        File('${repoRoot.path}/packages/config_parser/pubspec.yaml'),
+        File('${repoRoot.path}/packages/core_vpn_engine/pubspec.yaml'),
+        File('${repoRoot.path}/packages/shared_utils/pubspec.yaml'),
+        File('${repoRoot.path}/packages/ui_theme/pubspec.yaml'),
+        File('${repoRoot.path}/packages/vpn_engine_android/pubspec.yaml'),
         File('${repoRoot.path}/apps/mobile/android/app/build.gradle.kts'),
         File(
           '${repoRoot.path}/packages/vpn_engine_android/android/build.gradle.kts',
@@ -230,6 +236,33 @@ void main() {
 
       // Section 5: Codebase audit confirmation
       expect(content.contains('Monorepo Codebase Audit Confirmation'), isTrue);
+
+      // Verify official Google Play Policy source link
+      expect(
+        content.contains(
+          'https://support.google.com/googleplay/android-developer/answer/12564964',
+        ),
+        isTrue,
+        reason: 'Policy document must cite official Google Play VpnService URL',
+      );
+
+      // Verify every referenced repo path in backticks genuinely exists
+      final repoPathRegex = RegExp('`((?:apps|packages)/[^`]+)`');
+      final matches = repoPathRegex.allMatches(content);
+      expect(matches, isNotEmpty);
+
+      for (final match in matches) {
+        final relPath = match.group(1)!;
+        final file = File('${repoRoot.path}/$relPath');
+        final dir = Directory('${repoRoot.path}/$relPath');
+        expect(
+          file.existsSync() || dir.existsSync(),
+          isTrue,
+          reason:
+              'Path "$relPath" cited in play-store-vpn-compliance.md '
+              'does not exist on disk',
+        );
+      }
     });
   });
 }
