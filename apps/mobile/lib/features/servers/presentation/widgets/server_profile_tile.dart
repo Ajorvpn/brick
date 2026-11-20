@@ -3,10 +3,12 @@
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:mobile/features/connection/domain/entities/saved_server.dart';
+import 'package:ui_theme/ui_theme.dart';
 
 /// Presentation tile representing a valid saved server profile.
 ///
-/// Modular and design-ready for Phase 11 styling and P5-T6 selection/actions.
+/// Sculpted with Obsidian Glass styling, an interactive selection ring,
+/// protocol pill, and compact action buttons.
 class ServerProfileTile extends StatelessWidget {
   /// Creates a server profile tile.
   const ServerProfileTile({
@@ -29,7 +31,7 @@ class ServerProfileTile extends StatelessWidget {
   /// Invoked when the user taps the remove button.
   final VoidCallback onDelete;
 
-  /// Invoked when the user taps the edit button (null for subscription-sourced
+  /// Invoked when the user taps the edit button (null for subscription
   /// servers).
   final VoidCallback? onEdit;
 
@@ -45,123 +47,163 @@ class ServerProfileTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final colors = context.brickColors;
     final profile = server.profile;
 
-    return Card(
-      key: ValueKey<String>('server_tile_${profile.id}'),
-      margin: const EdgeInsets.symmetric(vertical: 4),
-      elevation: 0,
-      color: isSelected
-          ? theme.colorScheme.primaryContainer.withValues(alpha: 0.15)
-          : null,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: isSelected
-            ? BorderSide(color: theme.colorScheme.primary, width: 2)
-            : BorderSide(color: theme.colorScheme.outlineVariant),
-      ),
-      child: ListTile(
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: BrickSpacing.xxs),
+      child: BrickGlassCard(
+        key: ValueKey<String>('server_tile_${profile.id}'),
+        isSelected: isSelected,
+        accentColor: colors.brandBrick,
+        padding: const EdgeInsets.symmetric(
+          horizontal: BrickSpacing.md,
+          vertical: BrickSpacing.sm,
+        ),
         onTap: onSelect,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-        leading: CircleAvatar(
-          backgroundColor: theme.colorScheme.primaryContainer,
-          foregroundColor: theme.colorScheme.onPrimaryContainer,
-          child: Text(
-            server.protocolLabel.substring(0, 1).toUpperCase(),
-            style: theme.textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ),
-        title: Row(
-          children: [
-            Expanded(
-              child: Text(
-                server.name,
-                style: theme.textTheme.titleMedium,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            if (isSelected)
-              Icon(
-                Icons.check_circle,
-                key: ValueKey<String>('server_selected_${profile.id}'),
-                color: theme.colorScheme.primary,
-                size: 20,
-              ),
-          ],
-        ),
-        subtitle: Padding(
-          padding: const EdgeInsets.only(top: 4),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.secondaryContainer,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  server.protocolLabel.toUpperCase(),
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: theme.colorScheme.onSecondaryContainer,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  server.endpoint,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  sourceLabel,
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
-          ),
-        ),
-        trailing: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (onEdit != null)
-              IconButton(
-                key: ValueKey<String>('server_edit_${profile.id}'),
-                icon: const Icon(Icons.edit_outlined),
-                tooltip: 'servers.edit'.tr(),
-                onPressed: onEdit,
-              ),
-            if (onDuplicate != null)
-              IconButton(
-                key: ValueKey<String>('server_duplicate_${profile.id}'),
-                icon: const Icon(Icons.copy_outlined),
-                tooltip: 'servers.duplicate'.tr(),
-                onPressed: onDuplicate,
-              ),
-            IconButton(
-              key: ValueKey<String>('server_delete_${profile.id}'),
-              icon: const Icon(Icons.delete_outline),
-              tooltip: 'connection.remove'.tr(),
-              onPressed: onDelete,
+            // Row 1 (Identity)
+            Row(
+              children: [
+                // Leading Selection Ring (22 x 22 dp)
+                AnimatedContainer(
+                  duration: BrickMotion.standard,
+                  curve: BrickMotion.curveStandard,
+                  width: 22,
+                  height: 22,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: isSelected
+                        ? colors.brandBrickSoft
+                        : Colors.transparent,
+                    border: Border.all(
+                      color: isSelected
+                          ? colors.brandBrick
+                          : colors.glassBorder,
+                      width: 1.5,
+                    ),
+                  ),
+                  child: isSelected
+                      ? Center(
+                          child: BrickStatusDot(
+                            key: ValueKey<String>(
+                              'server_selected_${profile.id}',
+                            ),
+                            color: colors.brandBrick,
+                            size: 7,
+                          ),
+                        )
+                      : null,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    server.name,
+                    style: theme.textTheme.bodyLarge?.copyWith(
+                      fontWeight: FontWeight.w500,
+                      color: colors.textPrimary,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                BrickProtocolPill(label: server.protocolLabel, compact: true),
+              ],
+            ),
+            const SizedBox(height: 6),
+            // Row 2 (Metadata Left + 48x48dp Actions Right)
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        server.endpoint,
+                        style: BrickTypography.monoLog(color: colors.textMuted),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 4),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: colors.surfaceElevated,
+                          borderRadius: BorderRadius.circular(BrickRadius.xs),
+                          border: Border.all(
+                            color: colors.glassBorder,
+                            width: 0.5,
+                          ),
+                        ),
+                        child: Text(
+                          sourceLabel,
+                          style: TextStyle(
+                            fontFamily: BrickTypography.primaryFontFamily,
+                            fontSize: 12,
+                            color: colors.textMuted,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (onEdit != null)
+                      IconButton(
+                        key: ValueKey<String>('server_edit_${profile.id}'),
+                        icon: const Icon(Icons.edit_outlined),
+                        tooltip: 'servers.edit'.tr(),
+                        onPressed: onEdit,
+                        padding: EdgeInsets.zero,
+                        iconSize: 18,
+                        color: colors.textMuted,
+                        constraints: const BoxConstraints(
+                          minWidth: BrickSpacing.minTouchTarget,
+                          minHeight: BrickSpacing.minTouchTarget,
+                        ),
+                      ),
+                    if (onDuplicate != null)
+                      IconButton(
+                        key: ValueKey<String>('server_duplicate_${profile.id}'),
+                        icon: const Icon(Icons.copy_outlined),
+                        tooltip: 'servers.duplicate'.tr(),
+                        onPressed: onDuplicate,
+                        padding: EdgeInsets.zero,
+                        iconSize: 18,
+                        color: colors.textMuted,
+                        constraints: const BoxConstraints(
+                          minWidth: BrickSpacing.minTouchTarget,
+                          minHeight: BrickSpacing.minTouchTarget,
+                        ),
+                      ),
+                    IconButton(
+                      key: ValueKey<String>('server_delete_${profile.id}'),
+                      icon: const Icon(Icons.delete_outline),
+                      tooltip: 'connection.remove'.tr(),
+                      onPressed: onDelete,
+                      padding: EdgeInsets.zero,
+                      iconSize: 18,
+                      color: colors.textMuted,
+                      constraints: const BoxConstraints(
+                        minWidth: BrickSpacing.minTouchTarget,
+                        minHeight: BrickSpacing.minTouchTarget,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ],
         ),
@@ -188,40 +230,72 @@ class BrokenServerTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final colors = context.brickColors;
 
-    return Card(
-      key: ValueKey<String>('server_broken_tile_${server.id}'),
-      margin: const EdgeInsets.symmetric(vertical: 4),
-      elevation: 0,
-      color: theme.colorScheme.errorContainer.withValues(alpha: 0.3),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: theme.colorScheme.error.withValues(alpha: 0.5)),
-      ),
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-        leading: CircleAvatar(
-          backgroundColor: theme.colorScheme.errorContainer,
-          foregroundColor: theme.colorScheme.onErrorContainer,
-          child: const Icon(Icons.warning_amber_rounded),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: BrickSpacing.xxs),
+      child: BrickGlassCard(
+        key: ValueKey<String>('server_broken_tile_${server.id}'),
+        isSelected: true,
+        accentColor: colors.stateError,
+        padding: const EdgeInsets.symmetric(
+          horizontal: BrickSpacing.md,
+          vertical: BrickSpacing.sm,
         ),
-        title: Text(
-          'connection.broken_title'.tr(),
-          style: theme.textTheme.titleMedium?.copyWith(
-            color: theme.colorScheme.error,
-          ),
-        ),
-        subtitle: Text(
-          server.reason,
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onErrorContainer,
-          ),
-        ),
-        trailing: IconButton(
-          key: ValueKey<String>('server_delete_${server.id}'),
-          icon: const Icon(Icons.delete_outline),
-          tooltip: 'connection.remove'.tr(),
-          onPressed: onDelete,
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: colors.stateError.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(BrickRadius.sm),
+              ),
+              child: Icon(
+                Icons.warning_amber_rounded,
+                color: colors.stateError,
+                size: 20,
+              ),
+            ),
+            const SizedBox(width: BrickSpacing.sm),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'connection.broken_title'.tr(),
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w500,
+                      color: colors.stateError,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    server.reason,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      fontSize: 12,
+                      color: colors.textSecondary,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            IconButton(
+              key: ValueKey<String>('server_delete_${server.id}'),
+              icon: const Icon(Icons.delete_outline_rounded, size: 20),
+              color: colors.stateError,
+              tooltip: 'connection.remove'.tr(),
+              onPressed: onDelete,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(
+                minWidth: BrickSpacing.minTouchTarget,
+                minHeight: BrickSpacing.minTouchTarget,
+              ),
+            ),
+          ],
         ),
       ),
     );
