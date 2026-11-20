@@ -41,7 +41,7 @@ dependencies:
   # `OutboundConfig`. Being pure Dart, it never drags Flutter into the
   # pure-Dart packages.
   config_parser:
-  connectivity_plus: ^6.1.0
+  connectivity_plus: ^7.3.2
   core_domain:
   core_vpn_engine:
   # The following adds the Cupertino Icons font to your application.
