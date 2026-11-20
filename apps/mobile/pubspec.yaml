@@ -56,7 +56,7 @@ dependencies:
   mobile_scanner: ^7.4.3
   path_provider: ^2.1.2
   permission_handler: ^13.0.2
-  riverpod_annotation: ^4.0.7
+  riverpod_annotation: ^4.0.8
   # TODO(Ajorvpn): SECURITY.md Section 3 classifies server configuration as
   # High-sensitivity data that must live in platform-native secure storage
   # (Android Keystore / `flutter_secure_storage`), NEVER in plain
