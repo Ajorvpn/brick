@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import 'dart:convert';
+
 import 'package:config_parser/config_parser.dart';
 import 'package:core_domain/core_domain.dart';
 import 'package:shared_utils/shared_utils.dart' show Err, Ok;
@@ -505,12 +507,14 @@ void main() {
           serverPort: 443,
           password: 'pass',
           tls: TlsSettings(enabled: true),
-          extraParams: {'server_name': '203.0.113.5', 'insecure': true},
+          extraParams: {'server_name': '203.0.113.5', 'disable_sni': true},
         ),
       );
       final tls = out['tls'] as Map<String, dynamic>;
       expect(tls.containsKey('server_name'), isFalse);
-      expect(tls['insecure'], isTrue);
+      // P10-HF1: non-SNI extras still pass through; verification opt-outs do
+      // not (see the P10-HF1 extraParams sanitization test).
+      expect(tls['disable_sni'], isTrue);
     });
   });
 
@@ -699,6 +703,324 @@ void main() {
       final vl = (validVless as Ok).value as VlessOutbound;
       expect(vl.flow, 'xtls-rprx-vision');
       expect(vl.packetEncoding, 'xudp');
+    });
+
+    // -------------------------------------------------------------------
+    // P10-HF1 — Anti-DPI connectivity hotfix
+    // -------------------------------------------------------------------
+    group('P10-HF1 anti-DPI TLS hardening', () {
+      const hardened = SingBoxOutboundSerializer(enable112Fragmentation: true);
+
+      Map<String, dynamic> tlsOf(Map<String, dynamic> out) =>
+          out['tls'] as Map<String, dynamic>;
+
+      Map<String, dynamic>? utlsOf(Map<String, dynamic> out) =>
+          tlsOf(out)['utls'] as Map<String, dynamic>?;
+
+      String? fingerprintOf(Map<String, dynamic> out) =>
+          utlsOf(out)?['fingerprint'] as String?;
+
+      VlessOutbound vlessTls({String fp = 'chrome'}) => VlessOutbound(
+        server: 'node.example.com',
+        serverPort: 443,
+        uuid: _uuid,
+        tls: TlsSettings(
+          enabled: true,
+          serverName: 'node.example.com',
+          utls: UtlsSettings(enabled: true, fingerprint: fp),
+        ),
+      );
+
+      test('v1.10.7 default emits utls only, never 1.12 keys', () {
+        final out = buildSingBoxOutbound(vlessTls(fp: 'edge'));
+        final tls = tlsOf(out);
+
+        expect(tls['utls'], {'enabled': true, 'fingerprint': 'chrome'});
+        // The vendored libbox v1.10.7 decoder rejects unknown fields, so no
+        // 1.12+ fragmentation key may appear without an explicit opt-in.
+        expect(tls.containsKey('record_fragment'), isFalse);
+        expect(tls.containsKey('fragment'), isFalse);
+        expect(tls.containsKey('fragment_fallback_delay'), isFalse);
+        expect(out.containsKey('tcp_fast_open'), isFalse);
+      });
+
+      test('the serializer defaults to the v1.10.7-safe mode', () {
+        expect(
+          const SingBoxOutboundSerializer().enable112Fragmentation,
+          isFalse,
+        );
+        expect(hardened.enable112Fragmentation, isTrue);
+      });
+
+      test('1.12+ mode emits fragmentation keys for VLESS REALITY', () {
+        final out = hardened.build(
+          VlessOutbound(
+            server: 'node.example.com',
+            serverPort: 443,
+            uuid: _uuid,
+            flow: 'xtls-rprx-vision',
+            tls: TlsSettings(
+              enabled: true,
+              serverName: 'node.example.com',
+              utls: const UtlsSettings(enabled: true, fingerprint: 'edge'),
+              reality: const RealitySettings(
+                enabled: true,
+                publicKey: 'PBK',
+                shortId: 'ab12',
+              ),
+            ),
+          ),
+        );
+
+        final tls = tlsOf(out);
+        expect(tls['record_fragment'], isTrue);
+        expect(tls['fragment'], isTrue);
+        expect(tls['fragment_fallback_delay'], '500ms');
+        expect(tls['utls'], {'enabled': true, 'fingerprint': 'chrome'});
+        // SING-BOX: TCP Fast Open conflicts with initial packet fragmentation.
+        expect(out.containsKey('tcp_fast_open'), isFalse);
+      });
+
+      test('1.12+ mode overlays VLESS, Trojan and VMess alike', () {
+        final vless = buildSingBoxOutbound(
+          vlessTls(),
+          enable112Fragmentation: true,
+        );
+        final trojan = hardened.build(
+          TrojanOutbound(
+            server: 'node.example.com',
+            serverPort: 443,
+            password: 'pw',
+            tls: TlsSettings(
+              enabled: true,
+              serverName: 'node.example.com',
+            ),
+          ),
+        );
+        final vmess = hardened.build(
+          VmessOutbound(
+            server: 'node.example.com',
+            serverPort: 443,
+            uuid: _uuid,
+            tls: TlsSettings(
+              enabled: true,
+              serverName: 'node.example.com',
+            ),
+          ),
+        );
+
+        for (final out in [vless, trojan, vmess]) {
+          final tls = tlsOf(out);
+          expect(tls['record_fragment'], isTrue);
+          expect(tls['fragment'], isTrue);
+          expect(tls['fragment_fallback_delay'], '500ms');
+          expect(tls['utls'], {'enabled': true, 'fingerprint': 'chrome'});
+          expect(out.containsKey('tcp_fast_open'), isFalse);
+        }
+      });
+
+      test('incompatible fingerprints normalize to chrome', () {
+        for (final raw in <String>[
+          'edge',
+          'ios',
+          'qq',
+          'android',
+          '360',
+          'random',
+          ' EDGE ',
+          '',
+        ]) {
+          final out = buildSingBoxOutbound(vlessTls(fp: raw));
+          expect(
+            fingerprintOf(out),
+            'chrome',
+            reason: 'fp="$raw" must normalize to chrome',
+          );
+        }
+      });
+
+      test('a missing uTLS block still yields chrome', () {
+        final out = buildSingBoxOutbound(
+          VlessOutbound(
+            server: 'node.example.com',
+            serverPort: 443,
+            uuid: 'b831381d-6324-4d53-ad4f-8cda48b30811',
+            tls: TlsSettings(enabled: true, serverName: 'node.example.com'),
+          ),
+        );
+        expect(utlsOf(out), {'enabled': true, 'fingerprint': 'chrome'});
+      });
+
+      test('firefox and safari are preserved', () {
+        for (final safe in <String>['firefox', 'safari', 'chrome']) {
+          final out = buildSingBoxOutbound(vlessTls(fp: safe));
+          expect(fingerprintOf(out), safe);
+        }
+      });
+
+      test('normalizePqcSafeFingerprint is case-insensitive and total', () {
+        expect(normalizePqcSafeFingerprint('CHROME'), 'chrome');
+        expect(normalizePqcSafeFingerprint(' Safari '), 'safari');
+        expect(normalizePqcSafeFingerprint(null), 'chrome');
+        expect(normalizePqcSafeFingerprint('unknown-profile'), 'chrome');
+        expect(kPqcSafeUtlsFingerprints, {'chrome', 'firefox', 'safari'});
+      });
+
+      test('ech= and fm= query parameters never reach the tls block', () {
+        final parsed = parseVlessUri(
+          'vless://$_uuid@example.com:443'
+          '?security=tls&sni=example.com&fp=edge'
+          '&ech=AEX%2BDQAgACA%2B%2B%2B%2B'
+          '&fm=%7B%22s%22%3A1%7D#ECH',
+        );
+        expect(parsed.isOk, isTrue);
+
+        final out = buildSingBoxOutbound(
+          (parsed as Ok<OutboundConfig, ConfigParseError>).value,
+        );
+        final tls = tlsOf(out);
+        expect(tls.containsKey('ech'), isFalse);
+        expect(tls.containsKey('echConfigList'), isFalse);
+        expect(tls.containsKey('fm'), isFalse);
+        expect(tls['utls'], {'enabled': true, 'fingerprint': 'chrome'});
+      });
+
+      test('a VMess payload carrying ech is ignored', () {
+        final payload = jsonEncode(<String, String>{
+          'v': '2',
+          'ps': 'vmess-ech',
+          'add': 'example.com',
+          'port': '443',
+          'id': _uuid,
+          'aid': '0',
+          'net': 'ws',
+          'path': '/',
+          'host': 'cdn.example.com',
+          'tls': 'tls',
+          'sni': 'example.com',
+          'ech': 'AEX+DQAgACA+',
+          'echConfigList': 'AEX+DQAgACA+',
+        });
+        final parsed = parseVmessUri(
+          'vmess://${base64Encode(utf8.encode(payload))}',
+        );
+        expect(parsed.isOk, isTrue);
+
+        final out = buildSingBoxOutbound(
+          (parsed as Ok<OutboundConfig, ConfigParseError>).value,
+        );
+        final tls = tlsOf(out);
+        expect(tls.containsKey('ech'), isFalse);
+        expect(tls.containsKey('echConfigList'), isFalse);
+        expect(tls['utls'], {'enabled': true, 'fingerprint': 'chrome'});
+      });
+
+      test(
+        'links carrying allowInsecure=1 or insecure=1 are sanitized and '
+        'never emit tls.insecure',
+        () {
+          for (final uri in <String>[
+            'vless://$_uuid@example.com:443'
+                '?security=tls&sni=example.com&allowInsecure=1',
+            'vless://$_uuid@example.com:443'
+                '?security=tls&sni=example.com&insecure=1',
+            'vless://$_uuid@example.com:443'
+                '?security=tls&sni=example.com&allow_insecure=1',
+            'vless://$_uuid@example.com:443'
+                '?security=reality&sni=example.com&pbk=PBK&sid=ab12'
+                '&allowInsecure=1&fp=edge',
+          ]) {
+            final parsed = parseVlessUri(uri);
+            expect(parsed.isOk, isTrue, reason: 'must stay usable: $uri');
+            final out = buildSingBoxOutbound(
+              (parsed as Ok<OutboundConfig, ConfigParseError>).value,
+            );
+            final tls = tlsOf(out);
+            expect(tls.containsKey('insecure'), isFalse);
+            expect(tls['utls'], {'enabled': true, 'fingerprint': 'chrome'});
+          }
+
+          final trojan = parseTrojanUri(
+            'trojan://pw@example.com:443?security=tls&allowInsecure=1',
+          );
+          expect(trojan.isOk, isTrue);
+          final trojanTls = tlsOf(
+            buildSingBoxOutbound(
+              (trojan as Ok<OutboundConfig, ConfigParseError>).value,
+            ),
+          );
+          expect(trojanTls.containsKey('insecure'), isFalse);
+
+          final vmessPayload = jsonEncode(<String, String>{
+            'v': '2',
+            'add': 'example.com',
+            'port': '443',
+            'id': _uuid,
+            'tls': 'tls',
+            'sni': 'example.com',
+            'allowInsecure': '1',
+            'insecure': '1',
+          });
+          final vmess = parseVmessUri(
+            'vmess://${base64Encode(utf8.encode(vmessPayload))}',
+          );
+          expect(vmess.isOk, isTrue);
+          final vmessTls = tlsOf(
+            buildSingBoxOutbound(
+              (vmess as Ok<OutboundConfig, ConfigParseError>).value,
+            ),
+          );
+          expect(vmessTls.containsKey('insecure'), isFalse);
+        },
+      );
+
+      test('insecure flags in extraParams are dropped by the serializer', () {
+        final out = buildSingBoxOutbound(
+          Hysteria2Outbound(
+            server: 'hy.example.com',
+            serverPort: 443,
+            password: 'pw',
+            tls: TlsSettings(enabled: true, serverName: 'hy.example.com'),
+            extraParams: <String, dynamic>{
+              'insecure': true,
+              'allowInsecure': true,
+              'allow_insecure': true,
+              'server_name': 'hy.example.com',
+            },
+          ),
+        );
+        final tls = tlsOf(out);
+        expect(tls.containsKey('insecure'), isFalse);
+        expect(tls.containsKey('allowInsecure'), isFalse);
+        expect(tls.containsKey('allow_insecure'), isFalse);
+        expect(tls['server_name'], 'hy.example.com');
+      });
+
+      test('Hysteria2 keeps its documented insecure field', () {
+        final parsed = parseHysteria2Uri(
+          'hysteria2://pw@hy.example.com:443?sni=hy.example.com&insecure=1',
+        );
+        expect(parsed.isOk, isTrue);
+        final out = buildSingBoxOutbound(
+          (parsed as Ok<OutboundConfig, ConfigParseError>).value,
+        );
+        expect(tlsOf(out)['insecure'], isTrue);
+      });
+
+      test('QUIC outbounds never carry the TLS-over-TCP overlay', () {
+        final out = buildSingBoxOutbound(
+          Hysteria2Outbound(
+            server: 'hy.example.com',
+            serverPort: 443,
+            password: 'pw',
+            tls: TlsSettings(enabled: true, serverName: 'hy.example.com'),
+          ),
+        );
+        final tls = tlsOf(out);
+        expect(tls.containsKey('utls'), isFalse);
+        expect(tls.containsKey('fragment'), isFalse);
+        expect(tls.containsKey('record_fragment'), isFalse);
+      });
     });
 
     test('reads hysteria2 and tuic outbounds', () {

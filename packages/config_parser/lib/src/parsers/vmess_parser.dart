@@ -80,6 +80,10 @@ Result<OutboundConfig, ConfigParseError> parseVmessUri(String uri) {
     alterId = parsed;
   }
 
+  // P10-HF1: an `allowInsecure` / `insecure` JSON flag from an aggregator is
+  // simply not read: the payload's field whitelist below never forwards it,
+  // so the emitted TLS block always verifies certificates.
+
   // v2rayN encodes booleans as the strings "true"/"false".
   final tlsField = _stringField(map, 'tls')?.toLowerCase();
   final wantsTls = tlsField == 'tls' || tlsField == 'true';

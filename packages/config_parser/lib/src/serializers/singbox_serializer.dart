@@ -5,6 +5,38 @@ import 'package:shared_utils/shared_utils.dart' show Err, Ok, Result;
 
 import '../config_parse_error.dart';
 
+/// uTLS fingerprints that are safe against post-quantum REALITY servers.
+///
+/// Xray `26.9.8+` REALITY servers require the hybrid post-quantum key share
+/// `X25519MLKEM768` and reject the smaller legacy ClientHello profiles: they
+/// forward `edge`, `ios`, `qq`, `android`, `360` and `random` to the decoy
+/// site, which surfaces as `REALITY: received real certificate` /
+/// `reality verification failed`. Only these three profiles advertise the
+/// hybrid key share, so everything else is normalized to `chrome`.
+const Set<String> kPqcSafeUtlsFingerprints = <String>{
+  'chrome',
+  'firefox',
+  'safari',
+};
+
+/// Delay sing-box waits before falling back from fragmented to plain writes.
+const String kTlsFragmentFallbackDelay = '500ms';
+
+/// Normalizes a link's `fp=` value to a PQC-safe uTLS fingerprint.
+///
+/// Returns the lower-cased value when it is one of
+/// [kPqcSafeUtlsFingerprints], and `chrome` for anything else, including
+/// null, empty and unknown fingerprints. Normalizing instead of failing keeps
+/// a subscription usable while guaranteeing the outbound never offers a
+/// ClientHello that a `X25519MLKEM768` REALITY server rejects.
+String normalizePqcSafeFingerprint(String? rawFingerprint) {
+  final normalized = (rawFingerprint ?? '').trim().toLowerCase();
+  if (kPqcSafeUtlsFingerprints.contains(normalized)) {
+    return normalized;
+  }
+  return 'chrome';
+}
+
 /// Serializes a typed [OutboundConfig] into a sing-box 1.10+ outbound JSON
 /// object.
 ///
@@ -33,7 +65,19 @@ import '../config_parse_error.dart';
 ///    `httpupgrade`. The URI parser accepts both and this serializer emits
 ///    the sing-box spelling.
 class SingBoxOutboundSerializer {
-  const SingBoxOutboundSerializer();
+  const SingBoxOutboundSerializer({this.enable112Fragmentation = false});
+
+  /// Whether to emit the sing-box 1.12+ TLS fragmentation keys
+  /// (`record_fragment`, `fragment`, `fragment_fallback_delay`).
+  ///
+  /// Defaults to `false` because the vendored Android `libbox.aar` is pinned
+  /// at sing-box `v1.10.7`, whose JSON decoder rejects unknown fields — an
+  /// unconditional `record_fragment` would abort startup with
+  /// `unknown field "record_fragment"`. Set to `true` once `libbox.aar` is
+  /// upgraded to a sing-box 1.12+ core. The PQC-safe `utls` block,
+  /// `ech`/`fm` stripping and encrypted DoH are independent of this flag and
+  /// stay active on `v1.10.7`.
+  final bool enable112Fragmentation;
 
   /// Builds the sing-box outbound object for [config].
   ///
@@ -82,6 +126,16 @@ class SingBoxOutboundSerializer {
       out['tag'] = tag;
     }
     out.addAll(map);
+
+    // sing-box documents that TCP Fast Open conflicts with initial TLS packet
+    // fragmentation: the kernel would emit the ClientHello before the
+    // fragmented writer takes over and the whole DPI bypass silently stops
+    // working. Fragmented outbounds therefore never carry `tcp_fast_open`.
+    final tls = out['tls'];
+    if (tls is Map && tls['fragment'] == true) {
+      out.remove('tcp_fast_open');
+    }
+
     return Ok<Map<String, dynamic>, ConfigParseError>(out);
   }
 
@@ -178,7 +232,10 @@ class SingBoxOutboundSerializer {
   /// Fields shared by every TCP-based outbound.
   Map<String, dynamic> _shared(TcpBasedOutbound c) => <String, dynamic>{
     ..._network(c.network),
-    if (c.tls != null) 'tls': _tls(c.tls!),
+    // Every TLS-enabled TCP outbound gets the anti-DPI overlay (record
+    // fragmentation plus a PQC-safe uTLS fingerprint). QUIC outbounds are
+    // excluded on purpose: `utls` is a TLS-over-TCP setting only.
+    if (c.tls != null) 'tls': _tls(c.tls!, antiDpi: c.tls!.enabled),
     if (c.transport != null) 'transport': _transport(c.transport!),
     ..._multiplex(c.multiplex),
   };
@@ -228,10 +285,11 @@ class SingBoxOutboundSerializer {
     final sanitizedExtras = extraParams != null
         ? <String, dynamic>{
             for (final entry in extraParams.entries)
-              if (entry.key != 'server_name' ||
+              if (!_isUnverifiedEchKey(entry.key) &&
+                  (entry.key != 'server_name' ||
                   (entry.value is String &&
                       (entry.value as String).isNotEmpty &&
-                      !_isIpLiteral(entry.value as String)))
+                      !_isIpLiteral(entry.value as String))))
                 entry.key: entry.value,
           }
         : null;
@@ -244,7 +302,30 @@ class SingBoxOutboundSerializer {
     };
   }
 
-  Map<String, dynamic> _tls(TlsSettings tls) {
+  /// `ech` / `echConfigList` carried through [extraParams] may be a corrupted
+  /// or hostile `ECHConfigList` copied from an Xray subscription. sing-box
+  /// fails the whole outbound with `tls: malformed ECHConfigList`, and a
+  /// valid one would still force a DoH lookup of the ECH config, so these
+  /// keys are always dropped rather than forwarded.
+  ///
+  /// `allowInsecure` / `allow_insecure` / `insecure` are dropped for the same
+  /// reason they are stripped from URIs: they disable certificate
+  /// verification. Hysteria2/TUIC never park them in [extraParams] — they own
+  /// a real `TlsSettings.insecure` field — so this cannot affect them.
+  static bool _isUnverifiedEchKey(String key) {
+    final normalized = key.trim().toLowerCase();
+    return normalized == 'ech' ||
+        normalized == 'echconfiglist' ||
+        normalized == 'allowinsecure' ||
+        normalized == 'allow_insecure' ||
+        normalized == 'insecure';
+  }
+
+  /// Emits the `tls` object.
+  ///
+  /// When [antiDpi] is true the PQC-safe `utls` block is added, plus the
+  /// sing-box 1.12+ fragmentation keys when [enable112Fragmentation] is set.
+  Map<String, dynamic> _tls(TlsSettings tls, {bool antiDpi = false}) {
     final serverName = tls.serverName;
     final emitServerName =
         serverName != null &&
@@ -258,7 +339,8 @@ class SingBoxOutboundSerializer {
       if (tls.alpn != null && tls.alpn!.isNotEmpty) 'alpn': tls.alpn,
       if (tls.minVersion != null) 'min_version': tls.minVersion,
       if (tls.maxVersion != null) 'max_version': tls.maxVersion,
-      if (tls.utls != null)
+      if (antiDpi) ..._tlsAntiDpi(tls),
+      if (!antiDpi && tls.utls != null)
         'utls': <String, dynamic>{
           'enabled': tls.utls!.enabled,
           'fingerprint': tls.utls!.fingerprint,
@@ -272,6 +354,28 @@ class SingBoxOutboundSerializer {
         },
     };
   }
+
+  /// Anti-DPI overlay for a TLS-enabled outbound.
+  ///
+  /// Iran's NGFW reassembles up to 10 TCP segments before inspecting the
+  /// ClientHello SNI and then injects `TCP RST` (`read: connection reset by
+  /// peer`). The uTLS block is always emitted here so a REALITY handshake
+  /// never offers a fingerprint a `X25519MLKEM768` server rejects.
+  ///
+  /// The fragmentation keys are gated behind [enable112Fragmentation] because
+  /// they do not exist in sing-box `v1.10.7`, the core currently vendored in
+  /// `libbox.aar`.
+  Map<String, dynamic> _tlsAntiDpi(TlsSettings tls) => <String, dynamic>{
+    'utls': <String, dynamic>{
+      'enabled': true,
+      'fingerprint': normalizePqcSafeFingerprint(tls.utls?.fingerprint),
+    },
+    if (enable112Fragmentation) ...<String, dynamic>{
+      'record_fragment': true,
+      'fragment': true,
+      'fragment_fallback_delay': kTlsFragmentFallbackDelay,
+    },
+  };
 
   Map<String, dynamic> _transport(TransportSettings transport) =>
       switch (transport) {
@@ -326,7 +430,14 @@ class SingBoxOutboundSerializer {
 ///
 /// Throws [UnsupportedError] for a protocol with no serializer yet; use
 /// [SingBoxOutboundSerializer.tryBuild] for a `Result`-based call site.
+///
+/// [enable112Fragmentation] must stay `false` for a sing-box `v1.10.7` core
+/// (the vendored `libbox.aar`), which rejects the 1.12+ TLS fragmentation
+/// fields as unknown.
 Map<String, dynamic> buildSingBoxOutbound(
   OutboundConfig config, {
   String? tag,
-}) => const SingBoxOutboundSerializer().build(config, tag: tag);
+  bool enable112Fragmentation = false,
+}) => SingBoxOutboundSerializer(
+  enable112Fragmentation: enable112Fragmentation,
+).build(config, tag: tag);

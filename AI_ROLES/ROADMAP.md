@@ -4213,7 +4213,7 @@ This task's success should not be defined as "achieved full public Play Store ap
 
 ### P10-T8 — Phase 10 Closeout: Android MVP Milestone
 
-**Status:** Ready for Human Review
+**Status:** Completed ✅
 **Depends On:** P10-T1 through P10-T7
 
 **Objective:**
@@ -4247,11 +4247,18 @@ This is the most significant closeout in the roadmap so far — it marks the act
 
 **Granularity Note (reaffirmed):** Written at the same coarser-but-fully-templated grain as Phases 5–10, expandable later. This phase is unusual in that it is primarily a *design* effort as much as an engineering one — several tasks below explicitly call for design-decision documentation (mood boards, style guides, component libraries) alongside code, and several explicitly invite deeper human involvement/preference than earlier, more mechanically-specified phases.
 
+### Human-Approved UX & Design Refinements (2026-11-18)
+The human has reviewed and explicitly approved the following core UX, navigation, and visual identity directions:
+1. **Locked Visual Identity (`P11-T1`):** *"Obsidian Glass & Brick Ember"* — Dark-first obsidian surfaces (`#07090F` / `#111521`) with crafted Ceramic Light mode (`#F4F6FA` / `#FFFFFF`), Brand **Brick Ember** (`#F97316` / `#C2410C`) for idle/brand accents, **Amber Pulse** (`#F59E0B` / `#B45309`) for connecting/reconnecting, **Shield Emerald** (`#10B981` / `#047857`) for Connected peak state, and **Signal Crimson** (`#EF4444` / `#DC2626`) reserved strictly for Kill Switch lockdown & errors.
+2. **Temporary Geometric Brick Emblem (`P11-T1` / `P11-T2`):** Use a clean programmatic geometric Brick placeholder mark (`BrickEmblemPlaceholder`) for now; bespoke professional icon/illustration branding is explicitly deferred to a later dedicated brand-asset pass.
+3. **3-Tab Navigation & Simplified User-Facing Surface (`P11-T2` / `P11-T4`):** Bottom navigation consolidates to **3 tabs (`Home`, `Servers`, `Settings`)**. `LiveLogsScreen` (`/logs`) moves under **Settings -> Diagnostic Logs**. User-facing entry buttons for manual Add Server / Add Subscription are hidden from the primary UI while **preserving all underlying routes (`/add-server`, `/add-subscription`, `/logs`), controllers, and Phase 5–9 tests intact** (zero deletions, zero regressions).
+4. **Hierarchical Server Browser & Managed Feed UI (`P11-T2`):** `Servers` screen organizes servers by **`Country -> City/State -> Servers`** (with graceful fallback when city metadata is absent) and provides a prominent **`Update Servers`** button (Hiddify-style opt-in remote feed sync & Play-compliant prominent disclosure dialog wired cleanly without altering core VPN engine or security invariants).
+
 ---
 
 ### P11-T1 — Design System Foundation: Visual Identity and Style Guide
 
-**Status:** Not Started
+**Status:** Completed ✅
 **Depends On:** P10-T8
 
 **Objective:**
@@ -4271,12 +4278,12 @@ Establish Brick VPN's actual visual identity — color palette, typography, spac
   - Custom app icon/launcher icon design — handled in P11-T2 alongside the broader screen-by-screen pass, since it's more of an asset-production task than a system-definition task.
 
 **Acceptance Criteria:**
-- [ ] Color palette (light + dark), typography scale, spacing scale, and iconography approach are all proposed, documented, and presented to the human for explicit approval before proceeding further.
-- [ ] Font licensing is verified compatible with GPL v3 / open-source distribution.
-- [ ] Icon set licensing (if a third-party set is chosen) is verified compatible.
-- [ ] A working `ThemeData` (or equivalent) implementation exists and is demonstrably switchable between light/dark modes.
-- [ ] Design system is documented durably in the repository.
-- [ ] Report follows the `DEFINITION_OF_DONE.md` template, and explicitly notes that human design approval was sought and obtained before this task is considered ready for review.
+- [x] Color palette (light + dark), typography scale, spacing scale, and iconography approach are all proposed, documented, and presented to the human for explicit approval before proceeding further (approved 2026-11-18: *"Obsidian Glass & Brick Ember"*).
+- [x] Font licensing is verified compatible with GPL v3 / open-source distribution (Inter OFL-1.1, JetBrains Mono OFL-1.1, Roboto Apache-2.0).
+- [x] Icon set licensing (if a third-party set is chosen) is verified compatible (Material Symbols / Material Icons Apache-2.0).
+- [x] A working `ThemeData` (or equivalent) implementation exists and is demonstrably switchable between light/dark modes (`BrickTheme.dark()` & `BrickTheme.light()`).
+- [x] Design system is documented durably in the repository (`docs/design/style-guide.md`).
+- [x] Report follows the `DEFINITION_OF_DONE.md` template, and explicitly notes that human design approval was sought and obtained before this task is considered ready for review.
 
 **Notes for Agent:**
 This task is explicitly more subjective than almost anything earlier in the roadmap — do not unilaterally lock in major visual identity decisions (primary brand color, overall aesthetic direction) without presenting options and getting real human sign-off first, since this is exactly the kind of decision where the human's personal taste and product vision legitimately overrides an agent's default aesthetic judgment. Present a small number of well-reasoned options rather than either a single unexplained choice or an overwhelming number of alternatives.
@@ -4285,7 +4292,7 @@ This task is explicitly more subjective than almost anything earlier in the road
 
 ### P11-T2 — Screen-by-Screen Redesign Pass: Core Navigation and Server Management
 
-**Status:** Not Started
+**Status:** In Progress (Chunk 2B of 3)
 **Depends On:** P11-T1
 
 **Objective:**

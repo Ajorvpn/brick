@@ -99,7 +99,7 @@ void main() {
       expect(find.text('No saved servers yet'), findsOneWidget);
 
       // Switch to Servers tab via bottom navigation bar
-      await tester.tap(find.byIcon(Icons.dns));
+      await tester.tap(find.byKey(const ValueKey<String>('nav_tab_servers')));
       await tester.pumpAndSettle();
 
       expect(find.byType(ServersScreen), findsOneWidget);
@@ -132,7 +132,7 @@ void main() {
       expect(find.text('ManualNode1'), findsOneWidget);
 
       // Switch to HomeScreen and verify auto-selection of first valid server
-      await tester.tap(find.byIcon(Icons.home));
+      await tester.tap(find.byKey(const ValueKey<String>('nav_tab_home')));
       await tester.pumpAndSettle();
 
       expect(
@@ -144,7 +144,7 @@ void main() {
       // =====================================================================
       // STEP 3: Add a second standalone server via QR scan (P5-T3)
       // =====================================================================
-      await tester.tap(find.byIcon(Icons.dns));
+      await tester.tap(find.byKey(const ValueKey<String>('nav_tab_servers')));
       await tester.pumpAndSettle();
 
       await tester.tap(
@@ -252,6 +252,8 @@ void main() {
 
       final copyName = '${subNode1.name} (Copy)';
       // Standalone section now contains 3 servers including the copy
+      await tester.drag(find.byType(ListView), const Offset(0, 300));
+      await tester.pumpAndSettle();
       expect(find.text(copyName), findsOneWidget);
       expect(find.text('3'), findsOneWidget);
 
@@ -294,6 +296,8 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text(copyName), findsNothing);
+      await tester.drag(find.byType(ListView), const Offset(0, 300));
+      await tester.pumpAndSettle();
       expect(find.text('2'), findsNWidgets(2)); // 2 standalone, 2 subscription
 
       // =====================================================================
@@ -313,7 +317,7 @@ void main() {
       // =====================================================================
       // STEP 7: Connect toggle, traffic readout, lastUsedAt, disconnect (P5-T8)
       // =====================================================================
-      await tester.tap(find.byIcon(Icons.home));
+      await tester.tap(find.byKey(const ValueKey<String>('nav_tab_home')));
       await tester.pumpAndSettle();
 
       expect(find.text('Active: QrNode2'), findsOneWidget);

@@ -208,7 +208,7 @@ void main() {
 
         // Switch to ServersScreen to verify imported nodes and select
         // Alpha node
-        await tester.tap(find.byIcon(Icons.dns).first);
+        await tester.tap(find.byKey(const ValueKey<String>('nav_tab_servers')));
         await tester.pumpAndSettle();
 
         expect(
@@ -227,7 +227,7 @@ void main() {
         await tester.pumpAndSettle();
 
         // Switch back to HomeScreen
-        await tester.tap(find.byIcon(Icons.home).first);
+        await tester.tap(find.byKey(const ValueKey<String>('nav_tab_home')));
         await tester.pumpAndSettle();
 
         // 3. Connect to Sub Node Alpha
@@ -609,7 +609,7 @@ void main() {
 
       // 5. Trigger seamless server switch (switch to Servers tab,
       // select copy, return to Home, connect)
-      await tester.tap(find.byIcon(Icons.dns).first);
+      await tester.tap(find.byKey(const ValueKey<String>('nav_tab_servers')));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 200));
 
@@ -618,7 +618,7 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 200));
 
-      await tester.tap(find.byIcon(Icons.home).first);
+      await tester.tap(find.byKey(const ValueKey<String>('nav_tab_home')));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 200));
 

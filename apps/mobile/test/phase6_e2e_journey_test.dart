@@ -14,8 +14,10 @@ import 'package:core_domain/core_domain.dart'
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:mobile/core/data/repositories/app_preferences_repository.dart';
 import 'package:mobile/features/connection/presentation/screens/home_screen.dart';
+import 'package:mobile/features/logs/presentation/screens/logs_screen.dart';
 import 'package:mobile/main.dart';
 
 import 'localization_test_harness.dart';
@@ -152,7 +154,7 @@ void main() {
       // STEP 4: Cycle 1 — Live Log Capture, Structured View & Export
       // =====================================================================
       // Switch to Logs tab (pump frame + animation duration)
-      await tester.tap(find.byIcon(Icons.article_outlined));
+      tester.element(find.byType(HomeScreen)).go('/logs');
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
       expect(find.widgetWithText(AppBar, 'Logs'), findsOneWidget);
@@ -222,7 +224,7 @@ void main() {
       // =====================================================================
       // STEP 5: Cycle 1 — Disconnect Cleanly
       // =====================================================================
-      await tester.tap(find.byIcon(Icons.home));
+      tester.element(find.byType(LogsScreen)).go('/');
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
       expect(find.byType(HomeScreen), findsOneWidget);
@@ -230,7 +232,8 @@ void main() {
       await tester.tap(toggleBtn);
       await tester.pump();
       engine.emit(const Disconnecting());
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
       expect(find.text('Tunnel: Disconnecting'), findsOneWidget);
       expect(find.text('Duration: 00:00:00'), findsOneWidget);
 
@@ -282,7 +285,7 @@ void main() {
       expect(find.text('Duration: 00:00:03'), findsOneWidget);
 
       // Cycle 2 Live Logs: only shows fresh log line, no Cycle 1 leakage
-      await tester.tap(find.byIcon(Icons.article_outlined));
+      tester.element(find.byType(HomeScreen)).go('/logs');
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
       expect(find.widgetWithText(AppBar, 'Logs'), findsOneWidget);
@@ -295,7 +298,7 @@ void main() {
       expect(find.text('Initializing tunnel'), findsNothing);
 
       // Return to Home
-      await tester.tap(find.byIcon(Icons.home));
+      tester.element(find.byType(LogsScreen)).go('/');
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
 

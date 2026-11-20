@@ -8,6 +8,7 @@ import 'package:flutter/material.dart' hide ConnectionState;
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:mobile/core/logging/log_manager.dart';
 import 'package:mobile/core/network/network_status_provider.dart';
 import 'package:mobile/core/providers/server_profile_repository_provider.dart';
@@ -308,8 +309,8 @@ void main() {
           contains('vless-node-1'),
         );
 
-        // Switch to the Logs tab in AppShell
-        await tester.tap(find.byIcon(Icons.article_outlined));
+        // Navigate to /logs (preserved top-level route)
+        tester.element(find.byType(HomeScreen)).go('/logs');
         await tester.pumpAndSettle();
         expect(find.byType(LogsScreen), findsOneWidget);
         expect(find.byType(LiveLogsScreen), findsOneWidget);

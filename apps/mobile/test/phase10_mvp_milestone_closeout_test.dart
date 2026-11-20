@@ -260,18 +260,18 @@ void main() {
           r'^\*\*Status:\*\* Completed ✅$',
           multiLine: true,
         ).allMatches(phase10Slice).length,
-        equals(7),
-        reason:
-            'Phase 10 slice must have exactly 7 Completed tasks (P10-T1..T7)',
+        equals(8),
+        reason: 'Phase 10 slice must have all 8 Completed tasks (P10-T1..T8)',
       );
       expect(
         RegExp(
           r'^\*\*Status:\*\* Ready for Human Review$',
           multiLine: true,
         ).allMatches(phase10Slice).length,
-        equals(1),
+        equals(0),
         reason:
-            'Phase 10 slice must have exactly 1 Ready for Review task (P10-T8)',
+            'Phase 10 slice must have 0 Ready for Review tasks after '
+            'P10-T8 approval',
       );
       expect(
         phase10Slice.contains('**Status:** Not Started'),

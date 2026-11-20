@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:mobile/core/router/app_router.dart';
 import 'package:mobile/features/connection/presentation/screens/home_screen.dart';
 import 'package:mobile/features/logs/presentation/screens/logs_screen.dart';
@@ -37,7 +38,7 @@ void main() {
         overrides: repositoryOverride(),
       );
 
-      await tester.tap(find.byIcon(Icons.dns));
+      await tester.tap(find.byKey(const ValueKey('nav_tab_servers')));
       await tester.pumpAndSettle();
 
       expect(find.byType(ServersScreen), findsOneWidget);
@@ -52,7 +53,7 @@ void main() {
         overrides: repositoryOverride(),
       );
 
-      await tester.tap(find.byIcon(Icons.article_outlined));
+      tester.element(find.byType(HomeScreen)).go('/logs');
       await tester.pumpAndSettle();
 
       expect(find.byType(LogsScreen), findsOneWidget);
@@ -68,7 +69,7 @@ void main() {
         overrides: repositoryOverride(),
       );
 
-      await tester.tap(find.byIcon(Icons.settings));
+      await tester.tap(find.byKey(const ValueKey('nav_tab_settings')));
       await tester.pumpAndSettle();
 
       expect(find.byType(SettingsScreen), findsOneWidget);
@@ -87,11 +88,11 @@ void main() {
         overrides: repositoryOverride(),
       );
 
-      await tester.tap(find.byIcon(Icons.settings));
+      await tester.tap(find.byKey(const ValueKey('nav_tab_settings')));
       await tester.pumpAndSettle();
       expect(find.byType(SettingsScreen), findsOneWidget);
 
-      await tester.tap(find.byIcon(Icons.home));
+      await tester.tap(find.byKey(const ValueKey('nav_tab_home')));
       await tester.pumpAndSettle();
 
       expect(find.byType(HomeScreen), findsOneWidget);

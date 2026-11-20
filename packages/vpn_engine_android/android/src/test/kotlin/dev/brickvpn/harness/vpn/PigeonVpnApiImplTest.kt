@@ -515,7 +515,16 @@ class PigeonVpnApiImplTest {
             if (tag == "dns-remote") {
                 hasDnsRemote = true
                 assertEquals("tokyo-proxy", server.getString("detour"))
-                assertEquals("tcp://1.1.1.1", server.getString("address"))
+                // P10-HF1: proxied DNS must be encrypted DoH, never plain UDP.
+                assertEquals("https://1.1.1.1/dns-query", server.getString("address"))
+                assertTrue(
+                    "dns-remote must use DoH",
+                    server.getString("address").startsWith("https://"),
+                )
+                assertFalse(
+                    "dns-remote must not be plain UDP",
+                    server.getString("address").startsWith("udp://"),
+                )
             } else if (tag == "dns-direct") {
                 hasDnsDirect = true
                 assertEquals("direct-out", server.getString("detour"))

@@ -73,6 +73,52 @@ String decodeRemark(Uri uri) {
   return percentDecodeOrRaw(fragment);
 }
 
+/// Query parameters that must never reach an outbound.
+///
+///  * `ech` / `echConfigList` — a corrupted `ECHConfigList` makes sing-box
+///    fail with `tls: malformed ECHConfigList`, and a lookup of a valid one
+///    goes over UDP DNS that Iranian carriers poison. Neither is worth the
+///    risk for a parameter no self-hosted Brick VPN server depends on.
+///  * `fm` — the Xray `26+` FinalMask parameter. sing-box has no such
+///    concept, and forwarding it produces a config libbox rejects.
+const Set<String> kIgnoredUriQueryParameters = <String>{
+  'ech',
+  'echconfiglist',
+  'fm',
+};
+
+bool _isIgnoredQueryParameter(String key) =>
+    kIgnoredUriQueryParameters.contains(key.trim().toLowerCase());
+
+/// Query parameters that ask a client to stop verifying TLS certificates.
+///
+/// Public aggregators (`OpenRay`, `sub_merge`, …) append `allowInsecure=1` or
+/// `insecure=1` to otherwise healthy nodes, so rejecting such a link would
+/// discard most of a real subscription. These flags are stripped instead: the
+/// node stays usable and the client keeps strict certificate verification,
+/// which is safer than either honouring or rejecting the request.
+///
+/// This set is deliberately separate from [kIgnoredUriQueryParameters]
+/// because Hysteria2 and TUIC own a documented `insecure` query parameter;
+/// only the VLESS/Trojan/VMess paths strip it.
+const Set<String> kInsecureTlsQueryParameters = <String>{
+  'allowinsecure',
+  'allow_insecure',
+  'insecure',
+};
+
+/// Returns [query] without any certificate-verification opt-out flag.
+Map<String, String> stripInsecureTlsFlags(Map<String, String> query) {
+  if (query.isEmpty) return query;
+  return <String, String>{
+    for (final entry in query.entries)
+      if (!kInsecureTlsQueryParameters.contains(
+        entry.key.trim().toLowerCase(),
+      ))
+        entry.key: entry.value,
+  };
+}
+
 /// Reads [uri]'s query parameters without ever throwing.
 ///
 /// `Uri.queryParameters` calls `Uri.decodeQueryComponent` on every value, and
@@ -84,9 +130,16 @@ String decodeRemark(Uri uri) {
 /// cannot be decoded are kept as their raw (still-encoded) text rather than
 /// aborting the parse, and key/value decoding is otherwise unchanged. A
 /// parser that needs a strictly valid value will reject it downstream.
+///
+/// Parameters listed in [kIgnoredUriQueryParameters] are removed here, at the
+/// single chokepoint every URI parser reads through, so no parser or outbound
+/// builder downstream can emit `ech` or `fm` into a sing-box config.
 Map<String, String> safeQueryParameters(Uri uri) {
   try {
-    return uri.queryParameters;
+    return <String, String>{
+      for (final entry in uri.queryParameters.entries)
+        if (!_isIgnoredQueryParameter(entry.key)) entry.key: entry.value,
+    };
   } on FormatException {
     // Re-parse leniently, preserving whatever the decoder can handle.
     final out = <String, String>{};
@@ -97,7 +150,9 @@ Map<String, String> safeQueryParameters(Uri uri) {
       final eq = pair.indexOf('=');
       final rawKey = eq == -1 ? pair : pair.substring(0, eq);
       final rawValue = eq == -1 ? '' : pair.substring(eq + 1);
-      out[percentDecodeOrRaw(rawKey)] = percentDecodeOrRaw(rawValue);
+      final key = percentDecodeOrRaw(rawKey);
+      if (_isIgnoredQueryParameter(key)) continue;
+      out[key] = percentDecodeOrRaw(rawValue);
     }
     return out;
   }

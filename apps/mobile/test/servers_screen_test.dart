@@ -76,7 +76,7 @@ void main() {
       );
 
       // Switch to Servers tab (bottom navigation bar)
-      await tester.tap(find.byIcon(Icons.dns));
+      await tester.tap(find.byKey(const ValueKey<String>('nav_tab_servers')));
       await tester.pumpAndSettle();
 
       expect(find.byType(ServersScreen), findsOneWidget);
@@ -139,7 +139,7 @@ void main() {
         dataSource: dataSource,
       );
 
-      await tester.tap(find.byIcon(Icons.dns));
+      await tester.tap(find.byKey(const ValueKey<String>('nav_tab_servers')));
       await tester.pumpAndSettle();
 
       // Tap AppBar Add Server action
@@ -175,7 +175,7 @@ void main() {
         );
 
         // Switch to Servers tab
-        await tester.tap(find.byIcon(Icons.dns));
+        await tester.tap(find.byKey(const ValueKey<String>('nav_tab_servers')));
         await tester.pumpAndSettle();
         expect(find.text('No servers added yet'), findsOneWidget);
 
@@ -271,7 +271,7 @@ void main() {
         await tester.pumpAndSettle();
 
         // Switch to Servers tab
-        await tester.tap(find.byIcon(Icons.dns));
+        await tester.tap(find.byKey(const ValueKey<String>('nav_tab_servers')));
         await tester.pumpAndSettle();
 
         expect(find.byType(ServersScreen), findsOneWidget);
@@ -327,7 +327,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Go to Servers screen
-      await tester.tap(find.byIcon(Icons.dns));
+      await tester.tap(find.byKey(const ValueKey<String>('nav_tab_servers')));
       await tester.pumpAndSettle();
       expect(find.text('Standalone1'), findsOneWidget);
 
@@ -378,7 +378,7 @@ void main() {
           dataSource: dataSource,
         );
 
-        await tester.tap(find.byIcon(Icons.dns));
+        await tester.tap(find.byKey(const ValueKey<String>('nav_tab_servers')));
         await tester.pumpAndSettle();
 
         // Broken tile rendered safely with safe title
@@ -452,7 +452,7 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        await tester.tap(find.byIcon(Icons.dns));
+        await tester.tap(find.byKey(const ValueKey<String>('nav_tab_servers')));
         await tester.pumpAndSettle();
         expect(find.text('Standalone1'), findsOneWidget);
 
@@ -554,7 +554,7 @@ void main() {
         await tester.pumpAndSettle();
 
         // Go to Servers screen
-        await tester.tap(find.byIcon(Icons.dns));
+        await tester.tap(find.byKey(const ValueKey<String>('nav_tab_servers')));
         await tester.pumpAndSettle();
 
         final standaloneId = dataSource.records.first.id;
@@ -698,7 +698,7 @@ void main() {
         await tester.pumpAndSettle();
 
         // Switch to Servers screen
-        await tester.tap(find.byIcon(Icons.dns));
+        await tester.tap(find.byKey(const ValueKey<String>('nav_tab_servers')));
         await tester.pumpAndSettle();
 
         expect(find.text('Standalone Servers'), findsNothing);
@@ -777,7 +777,7 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        await tester.tap(find.byIcon(Icons.dns));
+        await tester.tap(find.byKey(const ValueKey<String>('nav_tab_servers')));
         await tester.pumpAndSettle();
 
         final subId = dataSource.subscriptions.first.id;
@@ -861,7 +861,7 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        await tester.tap(find.byIcon(Icons.dns));
+        await tester.tap(find.byKey(const ValueKey<String>('nav_tab_servers')));
         await tester.pumpAndSettle();
 
         expect(find.text('Cascade Plan'), findsAtLeast(1));
@@ -931,7 +931,7 @@ void main() {
         await tester.pumpAndSettle();
 
         // Switch to Servers screen
-        await tester.tap(find.byIcon(Icons.dns));
+        await tester.tap(find.byKey(const ValueKey<String>('nav_tab_servers')));
         await tester.pumpAndSettle();
 
         final originalId = dataSource.records.first.id;
@@ -994,7 +994,7 @@ void main() {
         await tester.pumpAndSettle();
 
         // Switch to Servers screen
-        await tester.tap(find.byIcon(Icons.dns));
+        await tester.tap(find.byKey(const ValueKey<String>('nav_tab_servers')));
         await tester.pumpAndSettle();
 
         final serverId = dataSource.records.first.id;
@@ -1055,7 +1055,7 @@ void main() {
         await tester.pumpAndSettle();
 
         // Switch to Servers screen
-        await tester.tap(find.byIcon(Icons.dns));
+        await tester.tap(find.byKey(const ValueKey<String>('nav_tab_servers')));
         await tester.pumpAndSettle();
 
         final srv1Id = dataSource.records.first.id;
@@ -1111,7 +1111,7 @@ void main() {
         await tester.pumpAndSettle();
 
         // Switch to Servers screen
-        await tester.tap(find.byIcon(Icons.dns));
+        await tester.tap(find.byKey(const ValueKey<String>('nav_tab_servers')));
         await tester.pumpAndSettle();
 
         final srv1Id = dataSource.records.first.id;
@@ -1173,7 +1173,7 @@ void main() {
         await tester.pumpAndSettle();
 
         // Switch to Servers screen
-        await tester.tap(find.byIcon(Icons.dns));
+        await tester.tap(find.byKey(const ValueKey<String>('nav_tab_servers')));
         await tester.pumpAndSettle();
 
         final srv1Id = dataSource.records.first.id;
@@ -1256,7 +1256,7 @@ void main() {
         await tester.pumpAndSettle();
 
         // Switch to Servers screen
-        await tester.tap(find.byIcon(Icons.dns));
+        await tester.tap(find.byKey(const ValueKey<String>('nav_tab_servers')));
         await tester.pumpAndSettle();
 
         final srv1Id = dataSource.records.first.id;
@@ -1274,7 +1274,7 @@ void main() {
         await tester.pumpAndSettle();
 
         // Switch to Home screen
-        await tester.tap(find.byIcon(Icons.home));
+        await tester.tap(find.byKey(const ValueKey<String>('nav_tab_home')));
         await tester.pumpAndSettle();
 
         // Active server card shows server 2

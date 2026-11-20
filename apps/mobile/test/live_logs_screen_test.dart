@@ -123,7 +123,9 @@ void main() {
         );
 
         // Navigate to Settings tab
-        await tester.tap(find.byIcon(Icons.settings));
+        await tester.tap(
+          find.byKey(const ValueKey<String>('nav_tab_settings')),
+        );
         await tester.pumpAndSettle();
 
         expect(find.byType(SettingsScreen), findsOneWidget);

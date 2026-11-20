@@ -21,9 +21,12 @@ part 'app_router.g.dart';
 /// one entry to this list rather than threading navigation state through the
 /// widget tree.
 ///
-/// In Phase 4 (P4-T5 remediation), top-level tabs (Home, Servers, Logs,
-/// Settings) are hosted within a [StatefulShellRoute.indexedStack] so that
-/// each tab preserves its own navigation stack and scroll state.
+/// In Phase 11 (P11-T2 Chunk 2B), the primary floating navigation dock
+/// consolidates to 3 branches (Home, Servers, Settings) within a
+/// [StatefulShellRoute.indexedStack], preserving state across tab switches,
+/// with `/settings/logs` hosted as a child of Settings. Standalone `/logs`,
+/// `/add-server`, and `/add-subscription` routes remain fully registered
+/// top-level routes (zero deletions).
 ///
 /// `keepAlive: true` is deliberate and load-bearing (same reasoning as
 /// `vpnEngineProvider`): a bare `@riverpod` generates an auto-dispose
@@ -61,15 +64,6 @@ GoRouter appRouter(Ref ref) {
           StatefulShellBranch(
             routes: [
               GoRoute(
-                path: '/logs',
-                name: 'logs',
-                builder: (context, state) => const LogsScreen(),
-              ),
-            ],
-          ),
-          StatefulShellBranch(
-            routes: [
-              GoRoute(
                 path: '/settings',
                 name: 'settings',
                 builder: (context, state) => const SettingsScreen(),
@@ -84,6 +78,11 @@ GoRouter appRouter(Ref ref) {
             ],
           ),
         ],
+      ),
+      GoRoute(
+        path: '/logs',
+        name: 'logs',
+        builder: (context, state) => const LogsScreen(),
       ),
       GoRoute(
         path: '/add-server',

@@ -166,10 +166,14 @@ class PigeonVpnApiImpl(
                     .put("address", "1.1.1.1")
                     .put("detour", "direct-out"),
             )
+            // P10-HF1: plain UDP/TCP DNS is intercepted and poisoned on
+            // Iranian carriers, so proxied resolution uses encrypted DoH over
+            // the tunnel outbound. The address is an IP literal so resolving
+            // the DoH endpoint never needs a recursive lookup.
             dnsServers.put(
                 JSONObject()
                     .put("tag", "dns-remote")
-                    .put("address", "tcp://1.1.1.1")
+                    .put("address", "https://1.1.1.1/dns-query")
                     .put("detour", outboundTag),
             )
             val dnsRules = JSONArray()

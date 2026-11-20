@@ -2,11 +2,13 @@
 
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobile/core/bootstrap/app_bootstrap.dart';
 import 'package:mobile/core/providers/app_preferences_provider.dart';
 import 'package:mobile/core/router/app_router.dart';
 import 'package:mobile/features/connection/presentation/providers/connection_state_provider.dart';
+import 'package:ui_theme/ui_theme.dart';
 
 Future<void> main() async {
   // Execute the explicit, ordered startup sequence:
@@ -53,9 +55,29 @@ class MyApp extends ConsumerWidget {
     final themeMode = ref.watch(themeModeProvider);
 
     return MaterialApp.router(
+      debugShowCheckedModeBanner: false,
       routerConfig: router,
+      theme: BrickTheme.light(),
+      darkTheme: BrickTheme.dark(),
       themeMode: themeMode,
-      darkTheme: ThemeData.dark(),
+      builder: (context, child) {
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+        return AnnotatedRegion<SystemUiOverlayStyle>(
+          value: SystemUiOverlayStyle(
+            statusBarColor: Colors.transparent,
+            systemNavigationBarColor: Colors.transparent,
+            statusBarIconBrightness: isDark
+                ? Brightness.light
+                : Brightness.dark,
+            statusBarBrightness: isDark ? Brightness.dark : Brightness.light,
+            systemNavigationBarIconBrightness: isDark
+                ? Brightness.light
+                : Brightness.dark,
+            systemNavigationBarDividerColor: Colors.transparent,
+          ),
+          child: child ?? const SizedBox.shrink(),
+        );
+      },
       // `EasyLocalization` does not insert its delegate automatically: the
       // app must register it on `MaterialApp` or `.tr()` silently falls back
       // to returning the raw key.

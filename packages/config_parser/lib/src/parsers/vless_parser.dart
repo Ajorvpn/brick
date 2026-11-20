@@ -60,7 +60,9 @@ Result<OutboundConfig, ConfigParseError> parseVlessUri(String uri) {
   }
   final port = (portCheck as Ok<int, ConfigParseError>).value;
 
-  final query = safeQueryParameters(value);
+  // P10-HF1: aggregator-appended `allowInsecure` / `insecure` flags are
+  // dropped so the node still parses, with certificate verification kept on.
+  final query = stripInsecureTlsFlags(safeQueryParameters(value));
   final transport = buildTransportSettings(query);
   if (transport case Err(:final error)) {
     return Err(error);

@@ -1985,6 +1985,95 @@ All functional engine, protocol-parsing, platform-service, and encryption bounda
 - Phase 11 (`P11-T1` onward) operates exclusively on presentation-tier widgets (`apps/mobile/lib/features/`) and theme tokens (`packages/ui_theme/`).
 - Phase 11 will introduce custom visual styling, dark/light theme palettes, illustrations, and motion design without altering underlying domain state machines or cryptographic guarantees.
 
+---
+
+## 13. Phase 11 — Full UI/UX Design & Implementation
+
+### 13.1 P11-T1 — Design System Foundation ("Obsidian Glass & Brick Ember")
+
+#### Purpose & Scope
+Establishes the visual identity, token architecture, and design system foundation for Brick VPN in `packages/ui_theme`, replacing the minimal placeholder theme carried since Phase 4. Implements a dark-first aesthetic ("Obsidian Glass & Brick Ember") alongside a crafted ceramic light theme, strict 8-point spatial geometry, 4-size typography with monospace telemetry styles, and a temporary geometric brick emblem widget.
+
+#### Core Architectural Pillars
+1. **Visual Identity & 60/30/10 Color Harmony:**
+   - **Dark Mode ("Obsidian Glass & Brick Ember"):** 60% deep obsidian base (`#07090F`), 30% elevated container surfaces (`#111521` / `#181E2E`) with hairline glass borders (`0x14FFFFFF`), 10% tactile Brick Ember accent (`#F97316`).
+   - **Light Mode ("Ceramic Light & Brick Ember"):** 60% warm ceramic base (`#F4F6FA`), 30% crisp white card surfaces (`#FFFFFF` / `#EEF2F7`), 10% deep Brick Ember accent (`#C2410C`).
+   - **Psychology of Connection States:** Disconnected / Idle (`Brick Ember`), Connecting / Reconnecting (`Amber Pulse` `#F59E0B` / `#B45309`), Connected Peak State (`Shield Emerald` `#10B981` / `#047857` with glow halo), and Kill Switch / Errors (`Signal Crimson` `#EF4444` / `#DC2626`).
+2. **Strict 8-Point Spatial System (`BrickSpacing`, `BrickRadius`, `BrickMotion`):**
+   - Spatial scale strictly divisible by 4.0 and 8.0 (`xxs: 4`, `xs: 8`, `sm: 12`, `md: 16`, `lg: 24`, `xl: 32`, `xxl: 48`, `section: 64`, `hero: 80`).
+   - Minimum 48x48 dp touch target bounding box (`BrickSpacing.minTouchTarget`) adhering to WCAG 2.1 Success Criterion 2.5.5.
+   - Max readable container width clamped to 600 dp (`BrickSpacing.maxReadableWidth`).
+3. **Typography & Open-Source Licensing Compliance:**
+   - Primary UI family: Inter with system fallback `['Roboto', 'sans-serif']` (SIL OFL-1.1 / Apache-2.0, 100% GPL-3.0-compatible).
+   - Monospace telemetry family: JetBrains Mono with system fallback `['RobotoMono', 'monospace']` (SIL OFL-1.1 / Apache-2.0).
+   - Zero proprietary fonts; zero network font downloads at runtime.
+   - Disciplined 4-size hierarchy: Display (28sp w700), Title (18sp w700), Body (14sp w500/w400), Label (12sp w500).
+   - Dedicated monospace styles (`monoMetricLarge`, `monoMetric`, `monoLog`) with `FontFeature.tabularFigures()` eliminating 1 Hz numeral jitter.
+4. **ThemeData & ThemeExtension Integration:**
+   - Full Material 3 builder via `BrickTheme.dark()` and `BrickTheme.light()` registering `BrickSemanticColors` via `ThemeExtension`.
+   - Backward-compatible `AppTheme` delegating directly to `BrickTheme`.
+5. **Programmatic Geometric Brick Mark (`BrickEmblemPlaceholder`):**
+   - Lightweight, scalable `CustomPainter` rendering a 3-row staggered masonry brick shield motif, dynamically tinted with `brandBrick` or `stateConnected`.
+   - Explicitly designed as a temporary placeholder mark per human direction, ready for drop-in replacement by bespoke illustrated brand assets in a future dedicated pass.
+6. **Durable Style Guide Reference:**
+   - Fully documented in `docs/design/style-guide.md` covering color tokens, contrast math, typography licenses, spatial tokens, and screen blueprints for Chunks 2–4.
+
+#### Architectural Invariants
+- **Invariant 37 (Zero Network Font Fetching / GPL-3.0 Licensing Invariant):** All typography and iconography assets must be locally bundled or system-available, permissively licensed (SIL OFL-1.1, Apache-2.0), and 100% compatible with GPL-3.0-or-later. Zero external network font requests at runtime.
+- **Invariant 38 (WCAG 2.1 AA Contrast Invariant):** All user-facing text tokens (`textPrimary`, `textSecondary`, `textMuted`, `onAccent`) across both light and dark modes must maintain a contrast ratio >= 4.5:1 against their respective backgrounds, card surfaces, and vibrant accent fills.
+- **Invariant 39 (Tabular Telemetry Invariant):** All real-time telemetry meters, speedometers, timers, and log viewers must enforce tabular monospace numeral glyphs (`FontFeature.tabularFigures()`) to prevent horizontal layout shift during 1 Hz state updates.
+
+### 13.2 P11-T2 — Screen-by-Screen Redesign Pass: Core Navigation and Server Management
+
+#### Chunk 2A — Signature "Obsidian Glass" Primitives, Root Theme Wiring & Obsidian Splash Screen
+
+##### Purpose & Scope
+Delivers the core architectural UI primitives for the "Obsidian Glass & Brick Ember" design system in `packages/ui_theme/lib/src/widgets/`, wires root `BrickTheme` and transparent Edge-to-Edge `SystemUiOverlayStyle` into `apps/mobile/lib/main.dart`, and eliminates cold-start launch flash by upgrading Android's native splash screen to Deep Obsidian (`#07090F`).
+
+##### Core Architectural Pillars
+1. **Signature Obsidian Glass Primitives (`packages/ui_theme`):**
+   - **`BrickGlassCard`:** Architectural glass surface featuring dual-state surface elevation (`surface` vs. `surfaceElevated`), specular top-edge sheen gradient (`Alignment.topCenter -> bottomCenter`), dynamic accent halo shadow when `isSelected`, and tactile micro-press feedback (`AnimatedScale` to 0.985 with `BrickMotion.fast`) enforcing `BrickSpacing.minTouchTarget` (48dp).
+   - **`BrickProtocolPill`:** Monospace protocol badge with deterministic semantic hue mapping across all 8 supported VPN protocols (`REALITY` Emerald Mint, `VLESS` Brand Brick, `WG`/`AWG` Sky Cyan, `HY2`/`TUIC` Solar Amber, `TROJAN`/`VMESS`/`SS` Soft Violet), guaranteed `FontFeature.tabularFigures()`, and >= 4.5:1 WCAG AA contrast against composite card backgrounds.
+   - **`BrickStatusDot`:** Signal indicator with optional concentric outer ripple animation (`AnimationController` with `BrickMotion.orbPulse`), bounded by a fixed `size * 2.2` box to eliminate layout jitter and clean lifecycle disposal preventing ticker leaks.
+   - **`BrickSectionHeader`:** Monospace-aligned micro-header with optional 14dp icon, uppercase tracked label (12sp w500, letterSpacing 0.8), and numeric count pill.
+2. **Root Theme Wiring & Edge-to-Edge System Bars (`apps/mobile/lib/main.dart`):**
+   - Configures `MaterialApp.router` with `theme: BrickTheme.light()` and `darkTheme: BrickTheme.dark()`.
+   - Wraps root view in `AnnotatedRegion<SystemUiOverlayStyle>` enforcing fully transparent status and navigation bars (`statusBarColor: Colors.transparent`, `systemNavigationBarColor: Colors.transparent`) with adaptive icon brightness matched to theme luminance.
+3. **Native Obsidian Cold-Start Splash Screen:**
+   - Updates `drawable/launch_background.xml` and `drawable-v21/launch_background.xml` to solid `#07090F` Deep Obsidian with centered `@mipmap/ic_launcher`.
+   - Synchronizes `values/styles.xml` and `values-night/styles.xml` so Android window startup transitions seamlessly into Flutter's first frame with zero white flash.
+
+#### Chunk 2B — 3-Tab Obsidian Glass Floating Dock & Router Consolidation
+
+##### Purpose & Scope
+Consolidates the bottom shell navigation into an architectural, floating **3-Tab Obsidian Glass Bottom Dock** (`Home`, `Servers`, `Settings`) in `apps/mobile/lib/core/presentation/widgets/app_shell.dart`, reorganizes `StatefulShellRoute.indexedStack` branches in `apps/mobile/lib/core/router/app_router.dart` while preserving `/logs` as a top-level route (zero regressions), and introduces a peripheral VPN tunnel status beacon directly on the Home tab.
+
+##### Core Architectural Pillars
+1. **Consolidated 3-Branch Navigation with Zero Deletions (`app_router.dart`):**
+   - Consolidates `StatefulShellRoute.indexedStack` to 3 active branches: Branch 0 (`/`, `HomeScreen`), Branch 1 (`/servers`, `ServersScreen`), and Branch 2 (`/settings`, `SettingsScreen` with child `logs` -> `/settings/logs`, `LiveLogsScreen`).
+   - Preserves `/logs` (`LogsScreen`) as a top-level `GoRoute` alongside `/add-server` and `/add-subscription`, ensuring 100% backwards compatibility for existing deep links and tests (`context.go('/logs')`).
+2. **Floating Translucent Obsidian Glass Dock (`AppShell`):**
+   - Hosts `Scaffold.bottomNavigationBar` wrapped in `SafeArea(top: false)` with outer padding `EdgeInsets.fromLTRB(BrickSpacing.md, BrickSpacing.xs, BrickSpacing.md, BrickSpacing.sm)` (`16dp` horizontal, `8dp` top, `12dp` bottom following the strict 4/8-point grid).
+   - Constrained to `BrickSpacing.maxReadableWidth` (600dp) with rounded pill geometry (`BorderRadius.circular(BrickRadius.sheet)` = `24.0dp`).
+   - Frosted real glass effect powered by `BackdropFilter(filter: ImageFilter.blur(sigmaX: 20.0, sigmaY: 20.0))` and obsidian glass fill (`colors.surface.withValues(alpha: isDark ? 0.86 : 0.94)`).
+   - Specular top-edge sheen hairline (`colors.glassBorder`, `1px`) and linear gradient (`Color(0x14FFFFFF)` in dark / `Color(0x66FFFFFF)` in light -> transparent) catching ambient light, grounded by `colors.tintedShadow` (blur 24, offset (0, 8)).
+3. **Animated Brick Ember Selection Capsule, Precision Indicator Bar & Haptics:**
+   - Active destination highlighted via animated selection capsule (`BrickRadius.cardLarge - 2` = `18.0dp`, `colors.brandBrickSoft`) and precision Ember indicator bar (`AnimatedContainer`, `height: 2.5dp`, `width: isSelected ? 18.0dp : 0.0dp`, `color: colors.brandBrick`, `BorderRadius.circular(BrickRadius.pill)`).
+   - Distinct outlined/rounded icons: Home (`shield_outlined` / `shield_rounded`), Servers (`public_outlined` / `public_rounded`), Settings (`tune_outlined` / `tune_rounded`), with `Semantics(selected: isSelected, button: true, label: label)`.
+   - Tactile selection click (`HapticFeedback.selectionClick()`) dispatched on tab switch.
+   - Re-tapping currently active tab triggers `initialLocation: true` to pop nested branch stacks back to root.
+4. **Peripheral Tunnel Micro-Beacon (`_HomeBeaconIcon`):**
+   - Micro-beacon dot (6.5dp) anchored to top-right corner of the Home shield icon.
+   - Watches strictly `connectionStateProvider` and `killSwitchProvider` in isolation to eliminate dock rebuilds on unrelated state changes.
+   - State priority hierarchy:
+     - `KillSwitchBlocking` -> Crimson pulsing beacon (`colors.killSwitchActive`, `pulsing: true`). Highest safety priority for fail-closed leak protection.
+     - `Connected` -> Emerald solid beacon with ambient glow (`colors.stateConnected`).
+     - `Connecting` / `Disconnecting` -> Amber pulsing beacon (`colors.stateConnecting`, `pulsing: true`).
+     - `Error` -> Crimson solid beacon (`colors.stateError`).
+     - `Disconnected` -> Inactive (`const SizedBox.shrink()`).
+
+
+
 
 
 
