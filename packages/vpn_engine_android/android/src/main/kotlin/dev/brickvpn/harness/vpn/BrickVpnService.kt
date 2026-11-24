@@ -17,6 +17,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -63,6 +64,18 @@ class BrickVpnService : VpnService() {
     private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     /**
+     * The most recent `onStartCommand` start id.
+     *
+     * A teardown that finishes *after* a newer `ACTION_START` must not destroy
+     * the service: `stopSelf(id)` is a no-op unless `id` is still the newest.
+     * Before this field, a bare `stopSelf()` at the end of `ACTION_STOP` killed
+     * a freshly started session ~1 frame after its `ACTION_START`, which is the
+     * native half of the multi-server switch race.
+     */
+    @Volatile
+    private var latestStartId: Int = -1
+
+    /**
      * Survives `onDestroy` so the descriptor close is *guaranteed*: on a scope
      * cancelled during `onDestroy` the close could be skipped and the TUN
      * interface leaked — the exact legacy bug this project must not inherit.
@@ -106,6 +119,11 @@ class BrickVpnService : VpnService() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // The framework's most recent start id. A finishing ACTION_STOP uses
+        // this to avoid destroying the service after a newer ACTION_START has
+        // already arrived (see requestStop / stopSelf(startId)).
+        latestStartId = startId
+
         // Must be called for EVERY action, including ACTION_STOP. The framework
         // kills a service that was started with startForegroundService() and did
         // not call startForeground() within its window — which is exactly what
@@ -117,7 +135,7 @@ class BrickVpnService : VpnService() {
         return when (intent?.action) {
             ACTION_STOP -> {
                 Log.i(TAG, "onStartCommand: ACTION_STOP")
-                requestStop(StopReason.ACTION_STOP)
+                requestStop(StopReason.ACTION_STOP, startId)
                 START_NOT_STICKY
             }
 
@@ -204,6 +222,38 @@ class BrickVpnService : VpnService() {
     private fun requestStart() {
         val pendingConfig = PendingConfigHolder.take()
         val result = stateMachine.start()
+
+        // A server switch that outruns the previous teardown lands here: the
+        // stop was accepted, `state -> Stopping` is still in flight, and
+        // `start()` correctly refuses to layer a session over a teardown
+        // (RejectedBusy). Surfacing that to the user would make a perfectly
+        // valid switch fail, so wait (bounded) for the resting state and retry
+        // once. `CommandVerdictHub` is only published after the retry, which
+        // keeps the Dart `start()` await semantically identical.
+        if (result == VpnCommandResult.RejectedBusy &&
+            stateMachine.currentState is VpnState.Stopping
+        ) {
+            Log.i(TAG, "start deferred: previous teardown still in flight")
+            ioScope.launch {
+                val stopped = awaitTeardownComplete(TEARDOWN_WAIT_MS)
+                val retry = if (stopped) {
+                    stateMachine.start()
+                } else {
+                    VpnCommandResult.RejectedBusy
+                }
+                CommandVerdictHub.publish(CommandKind.START, retry)
+                if (retry == VpnCommandResult.Accepted) {
+                    Log.i(TAG, "start accepted after teardown wait")
+                    runStartSequence(pendingConfig)
+                } else {
+                    PendingConfigHolder.clear()
+                    Log.w(TAG, "start rejected after teardown wait: " +
+                        "$retry (state=${stateMachine.currentState})")
+                }
+            }
+            return
+        }
+
         CommandVerdictHub.publish(CommandKind.START, result)
         when (result) {
             VpnCommandResult.Accepted -> ioScope.launch { runStartSequence(pendingConfig) }
@@ -212,6 +262,25 @@ class BrickVpnService : VpnService() {
                 Log.w(TAG, "start rejected: $result (state=${stateMachine.currentState})")
             }
         }
+    }
+
+    /**
+     * Waits for an in-flight teardown to leave [VpnState.Stopping].
+     *
+     * Bounded by [maxMillis] so a wedged teardown can never block a start
+     * forever (the state machine's own stop watchdog is the authority for that
+     * case; this method only serializes against the normal ~50 ms window).
+     *
+     * @return true when the machine is no longer [VpnState.Stopping].
+     */
+    private suspend fun awaitTeardownComplete(maxMillis: Long): Boolean {
+        val deadline = System.currentTimeMillis() + maxMillis
+        while (stateMachine.currentState is VpnState.Stopping &&
+            System.currentTimeMillis() < deadline
+        ) {
+            delay(TEARDOWN_POLL_MS)
+        }
+        return stateMachine.currentState !is VpnState.Stopping
     }
 
     /**
@@ -275,11 +344,17 @@ class BrickVpnService : VpnService() {
             if (isLockdownEnabled) {
                 Log.i(TAG, "Start failed and lockdown enabled; establishing lockdown TUN")
                 establishLockdownTun()
+            } else {
+                // No lockdown TUN will take ownership of the descriptor, so the
+                // failed session must release it or tun0 leaks until the
+                // process dies.
+                Log.i(TAG, "Start failed without lockdown; releasing TUN descriptor")
+                closeTunOnce()
             }
         }
     }
 
-    private fun requestStop(reason: StopReason) {
+    private fun requestStop(reason: StopReason, stopStartId: Int = -1) {
         val token = stateMachine.activeSession
         ioScope.launch {
             val result = stateMachine.stop()
@@ -294,7 +369,18 @@ class BrickVpnService : VpnService() {
                 Log.i(TAG, "Lockdown active: establishing lockdown TUN and keeping service alive")
                 establishLockdownTun()
             } else {
-                stopSelf()
+                // Scoped stop: if a newer ACTION_START arrived while this
+                // teardown was running, the framework ignores this older id and
+                // the service survives for the new session. A bare stopSelf()
+                // here killed the brand-new session's service ~1 frame after
+                // its ACTION_START.
+                if (stopStartId >= 0) {
+                    Log.i(TAG, "stopSelf(startId=$stopStartId) " +
+                        "(latestStartId=$latestStartId)")
+                    stopSelf(stopStartId)
+                } else {
+                    stopSelf()
+                }
             }
         }
     }
@@ -480,6 +566,12 @@ class BrickVpnService : VpnService() {
         private const val CHANNEL_ID = "brick_vpn_gate_a"
         private const val CHANNEL_NAME = "VPN status"
         private const val NOTIFICATION_ID = 1001
+        /** Upper bound for serializing a start behind an in-flight teardown. */
+        private const val TEARDOWN_WAIT_MS = 3_000L
+
+        /** Poll interval while waiting for a teardown to reach a resting state. */
+        private const val TEARDOWN_POLL_MS = 10L
+
         private const val TUN_ADDRESS = "10.111.222.1"
         private const val TUN_SUBNET = "10.111.222.0"
         private const val TUN_DNS = "10.111.222.2"

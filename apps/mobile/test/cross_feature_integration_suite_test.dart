@@ -239,7 +239,7 @@ void main() {
         await tester.pump();
 
         fakeEngine.emit(const Connected());
-        await tester.pump(const Duration(milliseconds: 100));
+        await tester.pump(const Duration(milliseconds: 400));
 
         // Verify SessionInfoPanel and ThroughputReadout
         expect(
@@ -338,7 +338,7 @@ void main() {
             .read(autoReconnectProvider.notifier)
             .onUserInitiatedDisconnect();
         fakeEngine.emit(const Disconnected());
-        await tester.pump(const Duration(milliseconds: 100));
+        await tester.pump(const Duration(milliseconds: 400));
         _dismissAnySnackBar(tester);
         await tester.pump(const Duration(milliseconds: 100));
 
@@ -416,7 +416,7 @@ void main() {
       await tester.pump();
 
       fakeEngine.emit(const Connected());
-      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump(const Duration(milliseconds: 400));
 
       fakeEngine.emitStats(
         TrafficStats(
@@ -461,7 +461,7 @@ void main() {
 
       // 4. Induce connection drop
       fakeEngine.emit(const Disconnected());
-      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump(const Duration(milliseconds: 400));
 
       // Verify KillSwitch triggers fail-closed blocking
       expect(fakeBridge.isCurrentlyBlocking, isTrue);
@@ -491,7 +491,7 @@ void main() {
       await tester.pump();
 
       fakeEngine.emit(const Connected());
-      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump(const Duration(milliseconds: 400));
 
       // Verify KillSwitch safely unblocks
       expect(fakeBridge.isCurrentlyBlocking, isFalse);
@@ -502,7 +502,7 @@ void main() {
           .read(autoReconnectProvider.notifier)
           .onUserInitiatedDisconnect();
       fakeEngine.emit(const Disconnected());
-      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump(const Duration(milliseconds: 400));
       _dismissAnySnackBar(tester);
       await tester.pump(const Duration(milliseconds: 100));
     });
@@ -575,7 +575,7 @@ void main() {
       await tester.pump();
 
       fakeEngine.emit(const Connected());
-      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump(const Duration(milliseconds: 400));
       expect(fakeEngine.lastState, const Connected());
 
       // 3. Rename "Server Original" -> "Server Renamed" while connected
@@ -629,13 +629,13 @@ void main() {
       await tester.tap(toggleBtn);
       await tester.pump();
       fakeEngine.emit(const Disconnected());
-      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump(const Duration(milliseconds: 400));
 
       // Now tap Connect to start copyProfile and verify engine received it
       await tester.tap(toggleBtn);
       await tester.pump();
       fakeEngine.emit(const Connected());
-      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump(const Duration(milliseconds: 400));
 
       expect(fakeEngine.lastState, const Connected());
       expect(fakeEngine.startCalls.map((p) => p.id), contains(copyProfile.id));
@@ -645,7 +645,7 @@ void main() {
           .read(autoReconnectProvider.notifier)
           .onUserInitiatedDisconnect();
       fakeEngine.emit(const Disconnected());
-      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump(const Duration(milliseconds: 400));
       _dismissAnySnackBar(tester);
       await tester.pump(const Duration(milliseconds: 100));
 
@@ -806,7 +806,7 @@ void main() {
         await tester.pump();
 
         fakeEngine.emit(const Connected());
-        await tester.pump(const Duration(milliseconds: 100));
+        await tester.pump(const Duration(milliseconds: 400));
 
         final homeContext = tester.element(find.byType(HomeScreen));
         final container = ProviderScope.containerOf(homeContext);
@@ -878,7 +878,7 @@ void main() {
 
         // Tunnel drops unexpectedly
         fakeEngine.emit(const Disconnected());
-        await tester.pump(const Duration(milliseconds: 100));
+        await tester.pump(const Duration(milliseconds: 400));
 
         // Auto-reconnect enters offline hold; does not start futile
         // reconnection attempts
@@ -896,7 +896,7 @@ void main() {
 
         // Reconnection succeeds
         fakeEngine.emit(const Connected());
-        await tester.pump(const Duration(milliseconds: 100));
+        await tester.pump(const Duration(milliseconds: 400));
         expect(fakeEngine.lastState, const Connected());
 
         // 5. Clean user disconnect
@@ -904,7 +904,7 @@ void main() {
             .read(autoReconnectProvider.notifier)
             .onUserInitiatedDisconnect();
         fakeEngine.emit(const Disconnected());
-        await tester.pump(const Duration(milliseconds: 100));
+        await tester.pump(const Duration(milliseconds: 400));
         _dismissAnySnackBar(tester);
         await tester.pump(const Duration(milliseconds: 100));
       },

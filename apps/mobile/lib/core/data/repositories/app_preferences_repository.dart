@@ -3,6 +3,27 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+/// The language codes Brick VPN ships translations for.
+///
+/// Persian (`fa`) renders right-to-left; English (`en`) is the fallback.
+const Set<String> kSupportedLanguageCodes = <String>{'en', 'fa'};
+
+/// The language code used when a stored preference is missing or unsupported.
+const String kFallbackLanguageCode = 'en';
+
+/// Normalizes [locale] to a shipped language code.
+///
+/// Returns `null` unchanged (system default). A legacy or unknown stored code
+/// — including the retired `de` — maps to [kFallbackLanguageCode] so an
+/// in-place app upgrade can never crash or render a missing translation.
+Locale? normalizeAppLocale(Locale? locale) {
+  if (locale == null) return null;
+  final code = locale.languageCode.toLowerCase();
+  return Locale(
+    kSupportedLanguageCodes.contains(code) ? code : kFallbackLanguageCode,
+  );
+}
+
 /// Repository contract for non-secret, local application preferences.
 ///
 /// ============================================================================
@@ -64,6 +85,37 @@ abstract class AppPreferencesRepository {
 
   /// Persists the active session start timestamp, or clears it when `null`.
   Future<void> setActiveSessionStartedAt(DateTime? timestamp);
+
+  /// Reads whether the first-run onboarding flow was completed.
+  /// Defaults to `false` for a fresh install.
+  bool hasCompletedOnboarding();
+
+  /// Persists whether the first-run onboarding flow was completed.
+  Future<void> setOnboardingCompleted({required bool completed});
+
+  /// Reads whether anonymous server-health diagnostics are enabled.
+  ///
+  /// Defaults to `false`: strict opt-in. Nothing is buffered or transmitted
+  /// until the user turns this on in Settings.
+  bool isAnonymousProbeReportingEnabled();
+
+  /// Persists [enabled].
+  Future<void> setAnonymousProbeReportingEnabled({required bool enabled});
+
+  /// Reads when the built-in official server directory last synced
+  /// successfully, or `null` when it has never synced on this device.
+  DateTime? getLastDirectorySyncAt();
+
+  /// Persists the last successful directory sync timestamp, or clears it when
+  /// [timestamp] is `null`.
+  Future<void> setLastDirectorySyncAt(DateTime? timestamp);
+
+  /// Reads whether the user accepted the server-directory sync disclosure.
+  /// Defaults to `false` for a fresh install.
+  bool hasAcceptedDirectorySync();
+
+  /// Persists whether the server-directory sync disclosure was accepted.
+  Future<void> setDirectorySyncAccepted({required bool accepted});
 }
 
 /// Concrete implementation of [AppPreferencesRepository] backed by
@@ -98,6 +150,22 @@ class SharedPreferencesAppPreferencesRepository
   static const String keyActiveSessionStartedAt =
       'brick.preferences.active_session_started_at';
 
+  /// Preference key for whether first-run onboarding was completed.
+  static const String keyOnboardingCompleted =
+      'brick.preferences.onboarding_completed';
+
+  /// Preference key for the opt-in anonymous server-health diagnostics.
+  static const String keyAnonymousProbeReportingEnabled =
+      'brick.preferences.anonymous_probe_reporting_enabled';
+
+  /// Preference key for the last successful built-in directory sync.
+  static const String keyLastDirectorySyncAt =
+      'brick.preferences.last_directory_sync_at';
+
+  /// Preference key for the accepted directory-sync disclosure.
+  static const String keyDirectorySyncAccepted =
+      'brick.preferences.directory_sync_accepted';
+
   @override
   ThemeMode getThemeMode() {
     final value = _prefs.getString(keyThemeMode);
@@ -124,7 +192,9 @@ class SharedPreferencesAppPreferencesRepository
     if (value == null || value.isEmpty) {
       return null;
     }
-    return Locale(value);
+    // A device upgrading from a retired locale (e.g. `de`) must never be
+    // handed a language the bundle no longer ships: normalize to `en`.
+    return normalizeAppLocale(Locale(value));
   }
 
   @override
@@ -132,7 +202,10 @@ class SharedPreferencesAppPreferencesRepository
     if (locale == null) {
       await _prefs.remove(keyLocale);
     } else {
-      await _prefs.setString(keyLocale, locale.languageCode);
+      await _prefs.setString(
+        keyLocale,
+        normalizeAppLocale(locale)!.languageCode,
+      );
     }
   }
 
@@ -192,6 +265,57 @@ class SharedPreferencesAppPreferencesRepository
       );
     }
   }
+
+  @override
+  bool hasCompletedOnboarding() {
+    return _prefs.getBool(keyOnboardingCompleted) ?? false;
+  }
+
+  @override
+  Future<void> setOnboardingCompleted({required bool completed}) async {
+    await _prefs.setBool(keyOnboardingCompleted, completed);
+  }
+
+  @override
+  bool isAnonymousProbeReportingEnabled() {
+    return _prefs.getBool(keyAnonymousProbeReportingEnabled) ?? false;
+  }
+
+  @override
+  Future<void> setAnonymousProbeReportingEnabled({
+    required bool enabled,
+  }) async {
+    await _prefs.setBool(keyAnonymousProbeReportingEnabled, enabled);
+  }
+
+  @override
+  DateTime? getLastDirectorySyncAt() {
+    final ms = _prefs.getInt(keyLastDirectorySyncAt);
+    if (ms == null) return null;
+    return DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true);
+  }
+
+  @override
+  Future<void> setLastDirectorySyncAt(DateTime? timestamp) async {
+    if (timestamp == null) {
+      await _prefs.remove(keyLastDirectorySyncAt);
+    } else {
+      await _prefs.setInt(
+        keyLastDirectorySyncAt,
+        timestamp.toUtc().millisecondsSinceEpoch,
+      );
+    }
+  }
+
+  @override
+  bool hasAcceptedDirectorySync() {
+    return _prefs.getBool(keyDirectorySyncAccepted) ?? false;
+  }
+
+  @override
+  Future<void> setDirectorySyncAccepted({required bool accepted}) async {
+    await _prefs.setBool(keyDirectorySyncAccepted, accepted);
+  }
 }
 
 /// In-memory fake implementation of [AppPreferencesRepository] for unit/widget
@@ -199,7 +323,15 @@ class SharedPreferencesAppPreferencesRepository
 class FakeAppPreferencesRepository implements AppPreferencesRepository {
   /// Creates a fake repository with optional initial [initialThemeMode],
   /// [initialLocale], [initialActiveServerId],
-  /// [initialAutoReconnectEnabled], and [initialKillSwitchEnabled].
+  /// [initialAutoReconnectEnabled], [initialKillSwitchEnabled], and
+  /// [initialOnboardingCompleted].
+  ///
+  /// [initialOnboardingCompleted] defaults to `true` so every existing widget
+  /// and end-to-end test boots straight into the app shell; only first-run
+  /// onboarding tests opt into `false`.
+  ///
+  /// [initialAnonymousProbeReportingEnabled] defaults to `false`, mirroring the
+  /// strict opt-in default of production storage.
   FakeAppPreferencesRepository({
     ThemeMode initialThemeMode = ThemeMode.system,
     Locale? initialLocale,
@@ -207,12 +339,20 @@ class FakeAppPreferencesRepository implements AppPreferencesRepository {
     bool initialAutoReconnectEnabled = true,
     bool initialKillSwitchEnabled = false,
     DateTime? initialActiveSessionStartedAt,
+    bool initialOnboardingCompleted = true,
+    bool initialAnonymousProbeReportingEnabled = false,
+    DateTime? initialLastDirectorySyncAt,
+    bool initialDirectorySyncAccepted = false,
   }) : _themeMode = initialThemeMode,
        _locale = initialLocale,
        _activeServerId = initialActiveServerId,
        _autoReconnectEnabled = initialAutoReconnectEnabled,
        _killSwitchEnabled = initialKillSwitchEnabled,
-       _activeSessionStartedAt = initialActiveSessionStartedAt?.toUtc();
+       _activeSessionStartedAt = initialActiveSessionStartedAt?.toUtc(),
+       _onboardingCompleted = initialOnboardingCompleted,
+       _anonymousProbeReportingEnabled = initialAnonymousProbeReportingEnabled,
+       _lastDirectorySyncAt = initialLastDirectorySyncAt?.toUtc(),
+       _directorySyncAccepted = initialDirectorySyncAccepted;
 
   ThemeMode _themeMode;
   Locale? _locale;
@@ -220,6 +360,10 @@ class FakeAppPreferencesRepository implements AppPreferencesRepository {
   bool _autoReconnectEnabled;
   bool _killSwitchEnabled;
   DateTime? _activeSessionStartedAt;
+  bool _onboardingCompleted;
+  bool _anonymousProbeReportingEnabled;
+  DateTime? _lastDirectorySyncAt;
+  bool _directorySyncAccepted;
 
   @override
   ThemeMode getThemeMode() => _themeMode;
@@ -269,5 +413,39 @@ class FakeAppPreferencesRepository implements AppPreferencesRepository {
   @override
   Future<void> setActiveSessionStartedAt(DateTime? timestamp) async {
     _activeSessionStartedAt = timestamp?.toUtc();
+  }
+
+  @override
+  bool hasCompletedOnboarding() => _onboardingCompleted;
+
+  @override
+  Future<void> setOnboardingCompleted({required bool completed}) async {
+    _onboardingCompleted = completed;
+  }
+
+  @override
+  bool isAnonymousProbeReportingEnabled() => _anonymousProbeReportingEnabled;
+
+  @override
+  Future<void> setAnonymousProbeReportingEnabled({
+    required bool enabled,
+  }) async {
+    _anonymousProbeReportingEnabled = enabled;
+  }
+
+  @override
+  DateTime? getLastDirectorySyncAt() => _lastDirectorySyncAt;
+
+  @override
+  Future<void> setLastDirectorySyncAt(DateTime? timestamp) async {
+    _lastDirectorySyncAt = timestamp?.toUtc();
+  }
+
+  @override
+  bool hasAcceptedDirectorySync() => _directorySyncAccepted;
+
+  @override
+  Future<void> setDirectorySyncAccepted({required bool accepted}) async {
+    _directorySyncAccepted = accepted;
   }
 }

@@ -36,14 +36,31 @@ void main() {
     test('round-trips Locale updates', () async {
       final repo = FakeAppPreferencesRepository();
 
-      await repo.setLocale(const Locale('de'));
-      expect(repo.getLocale(), equals(const Locale('de')));
+      await repo.setLocale(const Locale('fa'));
+      expect(repo.getLocale(), equals(const Locale('fa')));
 
       await repo.setLocale(const Locale('en'));
       expect(repo.getLocale(), equals(const Locale('en')));
 
       await repo.setLocale(null);
       expect(repo.getLocale(), isNull);
+    });
+
+    test('round-trips the built-in directory sync timestamp', () async {
+      final repo = FakeAppPreferencesRepository();
+
+      expect(repo.getLastDirectorySyncAt(), isNull);
+
+      final syncedAt = DateTime.utc(2026, 11, 23, 9, 15);
+      await repo.setLastDirectorySyncAt(syncedAt);
+      expect(repo.getLastDirectorySyncAt(), equals(syncedAt));
+      expect(repo.hasAcceptedDirectorySync(), isFalse);
+
+      await repo.setDirectorySyncAccepted(accepted: true);
+      expect(repo.hasAcceptedDirectorySync(), isTrue);
+
+      await repo.setLastDirectorySyncAt(null);
+      expect(repo.getLastDirectorySyncAt(), isNull);
     });
 
     test('round-trips active server ID updates', () async {
@@ -135,16 +152,16 @@ void main() {
 
       expect(repo1.getLocale(), isNull);
 
-      await repo1.setLocale(const Locale('de'));
-      expect(repo1.getLocale(), equals(const Locale('de')));
+      await repo1.setLocale(const Locale('fa'));
+      expect(repo1.getLocale(), equals(const Locale('fa')));
       expect(
         prefs.getString(SharedPreferencesAppPreferencesRepository.keyLocale),
-        equals('de'),
+        equals('fa'),
       );
 
       // Simulate app restart
       final repo2 = SharedPreferencesAppPreferencesRepository(prefs);
-      expect(repo2.getLocale(), equals(const Locale('de')));
+      expect(repo2.getLocale(), equals(const Locale('fa')));
 
       await repo2.setLocale(null);
       expect(repo2.getLocale(), isNull);
@@ -153,6 +170,31 @@ void main() {
         isFalse,
       );
     });
+
+    test(
+      'a legacy stored "de" locale gracefully falls back to English',
+      () async {
+        // Simulates upgrading a device that persisted the retired German code:
+        // the app must never hand easy_localization a bundle it no longer
+        // ships, and must never throw.
+        SharedPreferences.setMockInitialValues(<String, Object>{
+          SharedPreferencesAppPreferencesRepository.keyLocale: 'de',
+        });
+        final prefs = await SharedPreferences.getInstance();
+        final repo = SharedPreferencesAppPreferencesRepository(prefs);
+
+        expect(repo.getLocale(), equals(const Locale('en')));
+
+        // Writing a retired/unknown code persists the normalized fallback
+        // instead of the dead value.
+        await repo.setLocale(const Locale('de'));
+        expect(repo.getLocale(), equals(const Locale('en')));
+        expect(
+          prefs.getString(SharedPreferencesAppPreferencesRepository.keyLocale),
+          equals('en'),
+        );
+      },
+    );
 
     test('persists active server ID and survives repository restart', () async {
       SharedPreferences.setMockInitialValues(<String, Object>{});
@@ -262,6 +304,36 @@ void main() {
         );
       },
     );
+
+    test(
+      'round-trips the built-in directory sync timestamp and disclosure flag',
+      () async {
+        SharedPreferences.setMockInitialValues(<String, Object>{});
+        final prefs = await SharedPreferences.getInstance();
+        final repo1 = SharedPreferencesAppPreferencesRepository(prefs);
+
+        expect(repo1.getLastDirectorySyncAt(), isNull);
+        expect(repo1.hasAcceptedDirectorySync(), isFalse);
+
+        final syncedAt = DateTime.utc(2026, 11, 23, 9, 15);
+        await repo1.setLastDirectorySyncAt(syncedAt);
+        await repo1.setDirectorySyncAccepted(accepted: true);
+
+        // Round-tripped through storage, not just memory.
+        final repo2 = SharedPreferencesAppPreferencesRepository(prefs);
+        expect(repo2.getLastDirectorySyncAt(), equals(syncedAt));
+        expect(repo2.hasAcceptedDirectorySync(), isTrue);
+
+        await repo2.setLastDirectorySyncAt(null);
+        expect(repo2.getLastDirectorySyncAt(), isNull);
+        expect(
+          prefs.containsKey(
+            SharedPreferencesAppPreferencesRepository.keyLastDirectorySyncAt,
+          ),
+          isFalse,
+        );
+      },
+    );
   });
 
   group('Riverpod Notifiers', () {
@@ -299,10 +371,35 @@ void main() {
 
       await container
           .read(localeProvider.notifier)
-          .setLocale(const Locale('de'));
-      expect(container.read(localeProvider), equals(const Locale('de')));
-      expect(fakeRepo.getLocale(), equals(const Locale('de')));
+          .setLocale(const Locale('fa'));
+      expect(container.read(localeProvider), equals(const Locale('fa')));
+      expect(fakeRepo.getLocale(), equals(const Locale('fa')));
     });
+
+    test(
+      'localeProvider normalizes a legacy stored "de" locale to English',
+      () async {
+        final fakeRepo = FakeAppPreferencesRepository(
+          initialLocale: const Locale('de'),
+        );
+        final container = ProviderContainer(
+          overrides: [
+            appPreferencesRepositoryProvider.overrideWithValue(fakeRepo),
+          ],
+        );
+        addTearDown(container.dispose);
+
+        expect(container.read(localeProvider), equals(const Locale('en')));
+
+        // Setting a retired code through the notifier is normalized too, so
+        // easy_localization is never asked for a bundle that does not exist.
+        await container
+            .read(localeProvider.notifier)
+            .setLocale(const Locale('de'));
+        expect(container.read(localeProvider), equals(const Locale('en')));
+        expect(fakeRepo.getLocale(), equals(const Locale('en')));
+      },
+    );
 
     test(
       'autoReconnectEnabledProvider updates state and persists to repository',
@@ -391,10 +488,10 @@ void main() {
 
       expect(find.byType(SimpleDialog), findsOneWidget);
 
-      await tester.tap(find.widgetWithText(SimpleDialogOption, 'Deutsch'));
+      await tester.tap(find.widgetWithText(SimpleDialogOption, 'فارسی'));
       await tester.pumpAndSettle();
 
-      expect(fakeRepo.getLocale(), equals(const Locale('de')));
+      expect(fakeRepo.getLocale(), equals(const Locale('fa')));
     });
 
     testWidgets('toggling Auto-Reconnect switch updates provider and repo', (
@@ -426,6 +523,37 @@ void main() {
 
       expect(fakeRepo.isAutoReconnectEnabled(), isFalse);
     });
+
+    testWidgets(
+      'toggling Anonymous Server Health Diagnostics is strict opt-in',
+      (tester) async {
+        final fakeRepo = FakeAppPreferencesRepository();
+        await pumpLocalizedApp(
+          tester,
+          localizedMaterialApp(home: const SettingsScreen()),
+          overrides: [
+            appPreferencesRepositoryProvider.overrideWithValue(fakeRepo),
+          ],
+        );
+
+        final tile = find.byKey(
+          const ValueKey<String>('settings_anonymous_probe_tile'),
+        );
+        await tester.ensureVisible(tile);
+        await tester.pumpAndSettle();
+
+        expect(tester.widget<SwitchListTile>(tile).value, isFalse);
+        expect(fakeRepo.isAnonymousProbeReportingEnabled(), isFalse);
+
+        await tester.tap(
+          find.descendant(of: tile, matching: find.byType(Switch)),
+        );
+        await tester.pumpAndSettle();
+
+        expect(tester.widget<SwitchListTile>(tile).value, isTrue);
+        expect(fakeRepo.isAnonymousProbeReportingEnabled(), isTrue);
+      },
+    );
 
     testWidgets('toggling Kill Switch switch updates provider and repo', (
       tester,

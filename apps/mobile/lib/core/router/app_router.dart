@@ -2,11 +2,13 @@
 
 import 'package:go_router/go_router.dart';
 import 'package:mobile/core/presentation/widgets/app_shell.dart';
+import 'package:mobile/core/providers/app_preferences_provider.dart';
 import 'package:mobile/features/connection/presentation/screens/add_server_screen.dart';
 import 'package:mobile/features/connection/presentation/screens/add_subscription_screen.dart';
 import 'package:mobile/features/connection/presentation/screens/home_screen.dart';
 import 'package:mobile/features/connection/presentation/screens/qr_scan_screen.dart';
 import 'package:mobile/features/logs/presentation/screens/logs_screen.dart';
+import 'package:mobile/features/onboarding/presentation/screens/onboarding_screen.dart';
 import 'package:mobile/features/servers/presentation/screens/servers_screen.dart';
 import 'package:mobile/features/settings/presentation/screens/live_logs_screen.dart';
 import 'package:mobile/features/settings/presentation/screens/settings_screen.dart';
@@ -37,6 +39,20 @@ part 'app_router.g.dart';
 GoRouter appRouter(Ref ref) {
   return GoRouter(
     initialLocation: '/',
+    // First-run gate. `ref.read` (never `ref.watch`) keeps the router a stable
+    // keepAlive singleton: the redirect re-reads the current preference on each
+    // navigation instead of rebuilding — and disposing — the [GoRouter].
+    redirect: (context, state) {
+      final completed = ref.read(onboardingCompletedProvider);
+      final onOnboarding = state.matchedLocation == '/onboarding';
+      if (!completed && !onOnboarding) {
+        return '/onboarding';
+      }
+      if (completed && onOnboarding) {
+        return '/';
+      }
+      return null;
+    },
     routes: [
       StatefulShellRoute.indexedStack(
         builder: (context, state, navigationShell) {
@@ -78,6 +94,11 @@ GoRouter appRouter(Ref ref) {
             ],
           ),
         ],
+      ),
+      GoRoute(
+        path: '/onboarding',
+        name: 'onboarding',
+        builder: (context, state) => const OnboardingScreen(),
       ),
       GoRoute(
         path: '/logs',

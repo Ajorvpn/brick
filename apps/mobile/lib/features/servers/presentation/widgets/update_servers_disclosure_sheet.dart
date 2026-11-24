@@ -15,6 +15,8 @@ class UpdateServersDisclosureSheet extends StatelessWidget {
   static Future<bool?> show(BuildContext context) {
     return showModalBottomSheet<bool>(
       context: context,
+      // Root navigator so the sheet renders above the floating Obsidian dock.
+      useRootNavigator: true,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => const UpdateServersDisclosureSheet(),

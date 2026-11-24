@@ -67,7 +67,7 @@ void main() {
   final testAssetLoader = TestAssetLoader(
     translations: {
       'en': _loadTranslations('en'),
-      'de': _loadTranslations('de'),
+      'fa': _loadTranslations('fa'),
     },
   );
 
@@ -399,7 +399,7 @@ void main() {
     });
 
     testWidgets(
-      '6. en.json <-> de.json recursive key parity and Locale("de") render',
+      '6. en.json <-> fa.json recursive key parity and Locale("fa") render',
       (tester) async {
         Map<String, dynamic> loadMap(String relativePath) {
           var file = File(relativePath);
@@ -439,24 +439,24 @@ void main() {
         }
 
         final enMap = loadMap('assets/translations/en.json');
-        final deMap = loadMap('assets/translations/de.json');
+        final faMap = loadMap('assets/translations/fa.json');
         final enKeys = collectLeafKeys(enMap);
-        final deKeys = collectLeafKeys(deMap);
+        final faKeys = collectLeafKeys(faMap);
 
-        expect(deKeys, equals(enKeys));
+        expect(faKeys, equals(enKeys));
 
         await pumpLocalizedApp(
           tester,
           _wrapWithMaterialApp(child: const UpdateServersDisclosureSheet()),
-          startLocale: const Locale('de'),
+          startLocale: const Locale('fa'),
           assetLoader: testAssetLoader,
         );
 
-        // Verify German translations render and zero raw servers.* keys
+        // Verify Persian translations render and zero raw servers.* keys
         // surfaced.
-        expect(find.text('Serververzeichnis synchronisieren'), findsOneWidget);
-        expect(find.text('Fortfahren & synchronisieren'), findsOneWidget);
-        expect(find.text('Nicht jetzt'), findsOneWidget);
+        expect(find.text('همگام‌سازی فهرست سرورها'), findsOneWidget);
+        expect(find.text('ادامه و همگام‌سازی'), findsOneWidget);
+        expect(find.text('اکنون نه'), findsOneWidget);
         expect(find.textContaining('servers.'), findsNothing);
       },
     );

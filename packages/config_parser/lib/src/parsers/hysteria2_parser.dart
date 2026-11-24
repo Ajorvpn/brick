@@ -113,7 +113,7 @@ Result<OutboundConfig, ConfigParseError> parseHysteria2Uri(String uri) {
         enabled: true,
         serverName: (sni != null && sni.isNotEmpty) ? sni : host,
         insecure: insecure,
-        alpn: (alpn != null && alpn.isNotEmpty) ? alpn.split(',') : null,
+        alpn: parseAlpnQueryValue(alpn),
       ),
     ),
   );

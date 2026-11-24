@@ -9,6 +9,7 @@ import 'package:core_domain/core_domain.dart'
         Connecting,
         ConnectionState,
         Disconnected,
+        Disconnecting,
         Error,
         InvalidConfig,
         PermissionDenied,
@@ -17,7 +18,8 @@ import 'package:core_vpn_engine/core_vpn_engine.dart'
     show
         VpnCommandAccepted,
         VpnCommandRejectedInvalidConfig,
-        VpnCommandRejectedPermissionDenied;
+        VpnCommandRejectedPermissionDenied,
+        VpnEngine;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobile/core/logging/log_manager.dart';
@@ -218,6 +220,17 @@ class AutoReconnectNotifier extends Notifier<AutoReconnectState> {
   Timer? _backoffTimer;
   Timer? _debounceTimer;
   List<ConnectivityResult> _lastConnectivity = const <ConnectivityResult>[];
+
+  /// The last PHYSICAL bearer set observed, remembered across emissions that
+  /// carry no physical transport at all.
+  ///
+  /// Android can report `[vpn]` (or `[none]`) in the moment Wi-Fi drops while
+  /// our tunnel is still up. Deriving "previous bearer" from the last raw
+  /// emission would then compare the next `[mobile, vpn]` against nothing and
+  /// silently miss the Wi-Fi -> Cellular handoff, so the bearer is kept until a
+  /// real one replaces it.
+  Set<ConnectivityResult> _lastPhysicalTransports =
+      const <ConnectivityResult>{};
   bool _connectivityInitialized = false;
   bool _isExecuting = false;
   bool _isStoppingForReconnect = false;
@@ -243,6 +256,7 @@ class AutoReconnectNotifier extends Notifier<AutoReconnectState> {
     unawaited(
       connSource.checkConnectivity().then((initial) {
         _lastConnectivity = List<ConnectivityResult>.unmodifiable(initial);
+        _rememberPhysicalTransports(initial);
         _connectivityInitialized = true;
       }),
     );
@@ -326,6 +340,45 @@ class AutoReconnectNotifier extends Notifier<AutoReconnectState> {
     return const AutoReconnectIdle();
   }
 
+  /// Extracts only the underlying PHYSICAL transports from a
+  /// `connectivity_plus` emission.
+  ///
+  /// `ConnectivityResult.none` carries no transport and
+  /// `ConnectivityResult.vpn` is our own tunnel rather than a physical link,
+  /// so both are dropped. What remains is the real bearer set (wi-fi, mobile,
+  /// ethernet, bluetooth, ...), which is the only thing a "handoff" can mean.
+  static Set<ConnectivityResult> _physicalTransports(
+    List<ConnectivityResult> results,
+  ) {
+    return <ConnectivityResult>{
+      for (final result in results)
+        if (result != ConnectivityResult.none &&
+            result != ConnectivityResult.vpn)
+          result,
+    };
+  }
+
+  /// Whether [results] describes a device with NO usable physical bearer.
+  ///
+  /// `[ConnectivityResult.vpn]` alone means our own tunnel exists while the
+  /// underlying link is gone, so it is offline for reconnect purposes: counting
+  /// it as online burned the whole retry budget against a dead uplink.
+  static bool _isEffectivelyOffline(List<ConnectivityResult> results) {
+    return results.isEmpty ||
+        results.every(
+          (result) =>
+              result == ConnectivityResult.none ||
+              result == ConnectivityResult.vpn,
+        );
+  }
+
+  /// Remembers [results]' physical bearers, ignoring emissions without any.
+  void _rememberPhysicalTransports(List<ConnectivityResult> results) {
+    final physical = _physicalTransports(results);
+    if (physical.isEmpty) return;
+    _lastPhysicalTransports = Set<ConnectivityResult>.unmodifiable(physical);
+  }
+
   void _handleUnexpectedDrop() {
     final prefs = ref.read(appPreferencesRepositoryProvider);
     if (!prefs.isAutoReconnectEnabled()) {
@@ -336,9 +389,7 @@ class AutoReconnectNotifier extends Notifier<AutoReconnectState> {
     }
 
     final isOffline =
-        _connectivityInitialized &&
-        (_lastConnectivity.isEmpty ||
-            _lastConnectivity.every((r) => r == ConnectivityResult.none));
+        _connectivityInitialized && _isEffectivelyOffline(_lastConnectivity);
     if (isOffline) {
       state = AutoReconnectWaitingForNetwork(attempt: _currentAttempt);
       _logDiagnostic('Tunnel dropped while offline. Waiting for network.');
@@ -358,35 +409,73 @@ class AutoReconnectNotifier extends Notifier<AutoReconnectState> {
 
   void _processDebouncedConnectivity(List<ConnectivityResult> results) {
     _connectivityInitialized = true;
-    final prev = _lastConnectivity;
     _lastConnectivity = List<ConnectivityResult>.unmodifiable(results);
 
-    if (!_userSessionActive) return;
+    if (!_userSessionActive) {
+      _rememberPhysicalTransports(results);
+      return;
+    }
 
-    final isOffline =
-        results.isEmpty || results.every((r) => r == ConnectivityResult.none);
-    if (isOffline) {
+    final prevPhysical = _lastPhysicalTransports;
+    final nextPhysical = _physicalTransports(results);
+    // Remember the bearer only when this emission actually HAS one: an
+    // intermediate `[vpn]` / `[none]` must never erase Wi-Fi, or the following
+    // Wi-Fi -> Cellular handoff would compare against an empty set and be
+    // missed entirely.
+    if (nextPhysical.isNotEmpty && !setEquals(prevPhysical, nextPhysical)) {
+      _lastPhysicalTransports = Set<ConnectivityResult>.unmodifiable(
+        nextPhysical,
+      );
+    }
+
+    if (_isEffectivelyOffline(results)) {
       _backoffTimer?.cancel();
       _backoffTimer = null;
       state = AutoReconnectWaitingForNetwork(attempt: _currentAttempt);
       return;
     }
 
-    // Device returned online from offline
+    // Check if network interface changed while connected.
+    //
+    // Only PHYSICAL transports count. `connectivity_plus` v6+ surfaces
+    // Android's own VPN interface as `ConnectivityResult.vpn`, so bringing
+    // OUR tunnel up turns `[wifi]` into `[wifi, vpn]`. Comparing raw result
+    // lists therefore manufactured a "handoff" on every tunnel start and made
+    // the app stop its own tunnel ~350 ms after `state -> Running`, forever.
+    final connState = ref.read(connectionStateProvider).value;
+    final interfaceChanged =
+        prevPhysical.isNotEmpty &&
+        nextPhysical.isNotEmpty &&
+        !setEquals(prevPhysical, nextPhysical);
+
+    // Device returned online from offline.
     if (state is AutoReconnectWaitingForNetwork) {
-      _scheduleReconnect();
-      return;
+      if (connState is! Connected) {
+        _scheduleReconnect();
+        return;
+      }
+      if (!interfaceChanged) {
+        // Same bearer came back and the tunnel never went down: nothing to do.
+        state = const AutoReconnectIdle();
+        return;
+      }
+      // A different physical bearer returned while the tunnel survived, so the
+      // handoff restart below must run (a plain `_scheduleReconnect()` would
+      // bail out precisely because the tunnel is still `Connected`).
     }
 
-    // Check if network interface changed while connected
-    final connState = ref.read(connectionStateProvider).value;
-    final hadActiveInterface = prev.any((r) => r != ConnectivityResult.none);
-    final interfaceChanged =
-        hadActiveInterface &&
-        (prev.length != results.length ||
-            !prev.every((r) => results.contains(r)));
-
     if (connState is Connected && interfaceChanged) {
+      // The handoff restart is an automatic tunnel restart, so it obeys the
+      // same user preference as every other automatic restart: an explicit
+      // disable in Settings must never be overridden by a network event.
+      final prefs = ref.read(appPreferencesRepositoryProvider);
+      if (!prefs.isAutoReconnectEnabled()) {
+        _logDiagnostic(
+          'Physical interface handoff detected, but auto-reconnect is '
+          'disabled in settings. Leaving tunnel untouched.',
+        );
+        return;
+      }
       _logDiagnostic(
         'Interface handoff detected while connected. Restarting tunnel.',
       );
@@ -411,6 +500,7 @@ class AutoReconnectNotifier extends Notifier<AutoReconnectState> {
     unawaited(
       ref.read(connectivitySourceProvider).checkConnectivity().then((initial) {
         _lastConnectivity = List<ConnectivityResult>.unmodifiable(initial);
+        _rememberPhysicalTransports(initial);
       }),
     );
   }
@@ -420,6 +510,7 @@ class AutoReconnectNotifier extends Notifier<AutoReconnectState> {
     final wasReconnecting = state.isReconnecting;
     _userSessionActive = false;
     _activeProfile = null;
+    _lastPhysicalTransports = const <ConnectivityResult>{};
     _currentAttempt = 0;
     _cancelTimers();
     state = const AutoReconnectIdle();
@@ -456,9 +547,7 @@ class AutoReconnectNotifier extends Notifier<AutoReconnectState> {
     }
 
     final isOffline =
-        _connectivityInitialized &&
-        (_lastConnectivity.isEmpty ||
-            _lastConnectivity.every((r) => r == ConnectivityResult.none));
+        _connectivityInitialized && _isEffectivelyOffline(_lastConnectivity);
     if (isOffline) {
       state = AutoReconnectWaitingForNetwork(attempt: _currentAttempt);
       return;
@@ -524,6 +613,10 @@ class AutoReconnectNotifier extends Notifier<AutoReconnectState> {
         _isStoppingForReconnect = true;
         try {
           await engine.stop();
+          // `stop()` is accepted as soon as native enters Stopping. Starting a
+          // new session before native reaches Stopped races the teardown
+          // (the service may be destroyed under the new start).
+          await _waitUntilStopped(engine);
         } finally {
           _isStoppingForReconnect = false;
         }
@@ -587,6 +680,29 @@ class AutoReconnectNotifier extends Notifier<AutoReconnectState> {
       _scheduleReconnect();
     } finally {
       _isExecuting = false;
+    }
+  }
+
+  /// Awaits the engine's terminal stopped state, bounded.
+  ///
+  /// Returns immediately when the engine is already [Disconnected] / [Error],
+  /// and also when it has not published an in-flight teardown ([Disconnecting])
+  /// - in that case there is no observable stop to await, and blocking on a
+  /// silent engine would wedge the reconnect path.
+  Future<void> _waitUntilStopped(VpnEngine engine) async {
+    final current =
+        ref.read(connectionStateProvider).value ??
+        ref.read(initialConnectionStateProvider);
+    if (current is Disconnected || current is Error) return;
+    // Only a published teardown ([Disconnecting]) is awaitable; see the same
+    // guard in ConnectionController._waitUntilStopped.
+    if (current is! Disconnecting) return;
+    try {
+      await engine.connectionState
+          .firstWhere((state) => state is Disconnected || state is Error)
+          .timeout(const Duration(seconds: 3));
+    } on Object {
+      // Bounded: a slow or silent teardown must never wedge the switch.
     }
   }
 

@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../brick_colors.dart';
 import '../brick_tokens.dart';
@@ -41,6 +44,15 @@ class BrickGlassCard extends StatefulWidget {
 class _BrickGlassCardState extends State<BrickGlassCard> {
   bool _isPressed = false;
 
+  /// Mirrors [MediaQueryData.disableAnimations] for this widget's context.
+  bool _reduceMotion = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _reduceMotion = MediaQuery.disableAnimationsOf(context);
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = context.brickColors;
@@ -74,7 +86,14 @@ class _BrickGlassCardState extends State<BrickGlassCard> {
         color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(widget.borderRadius),
-          onTap: widget.onTap,
+          onTap: widget.onTap == null
+              ? null
+              : () {
+                  // A selection tick acknowledges the tap; it is feedback for
+                  // the gesture only and never implies any state change.
+                  unawaited(HapticFeedback.selectionClick());
+                  widget.onTap!();
+                },
           onLongPress: widget.onLongPress,
           onHighlightChanged: (highlighted) {
             setState(() {
@@ -130,7 +149,7 @@ class _BrickGlassCardState extends State<BrickGlassCard> {
     if (isInteractive) {
       result = AnimatedScale(
         scale: _isPressed ? 0.985 : 1.0,
-        duration: BrickMotion.fast,
+        duration: _reduceMotion ? Duration.zero : BrickMotion.fast,
         curve: BrickMotion.curveStandard,
         child: result,
       );

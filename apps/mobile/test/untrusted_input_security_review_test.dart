@@ -10,10 +10,12 @@ import 'package:core_domain/core_domain.dart'
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:mobile/core/security/sensitive_field_cipher.dart';
 import 'package:mobile/features/connection/domain/usecases/build_server_profile.dart';
 import 'package:mobile/features/connection/presentation/screens/add_server_screen.dart';
 import 'package:mobile/features/connection/presentation/screens/add_subscription_screen.dart';
+import 'package:mobile/features/connection/presentation/screens/home_screen.dart';
 import 'package:mobile/features/connection/presentation/screens/qr_scan_screen.dart';
 import 'package:mobile/features/servers/data/repositories/file_server_profile_repository.dart';
 import 'package:mobile/features/servers/domain/entities/subscription_metadata.dart';
@@ -333,7 +335,7 @@ void main() {
       );
 
       // Navigate to Add Server screen
-      await tester.tap(find.text('Add Server'));
+      unawaited(tester.element(find.byType(HomeScreen)).push('/add-server'));
       await tester.pumpAndSettle();
       expect(find.byType(AddServerScreen), findsOneWidget);
 
@@ -473,7 +475,7 @@ void main() {
       );
 
       // Navigate to QR Scan Screen
-      await tester.tap(find.text('Add Server'));
+      unawaited(tester.element(find.byType(HomeScreen)).push('/add-server'));
       await tester.pumpAndSettle();
       await tester.tap(
         find.byKey(const ValueKey<String>('add_server_scan_qr_button')),
@@ -540,8 +542,8 @@ void main() {
         );
 
         // Navigate to Add Subscription screen directly from HomeScreen
-        await tester.tap(
-          find.byKey(const ValueKey<String>('home_add_subscription_button')),
+        unawaited(
+          tester.element(find.byType(HomeScreen)).push('/add-subscription'),
         );
         await tester.pumpAndSettle();
         expect(find.byType(AddSubscriptionScreen), findsOneWidget);

@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mobile/core/data/repositories/app_preferences_repository.dart';
 
 void main() {
   group('P10-T4 Google Play Store VPN Policy Compliance Suite', () {
@@ -263,6 +265,263 @@ void main() {
               'does not exist on disk',
         );
       }
+    });
+
+    test('Alignment 1: zero external payment URLs or checkout strings in app '
+        'sources and translations', () {
+      const prohibitedPaymentTokens = <String>[
+        'stripe.com',
+        'buy.stripe',
+        'paypal.com',
+        'checkout.',
+        'checkout_url',
+        'upgrade to pro',
+        'upgrade_to_pro',
+        'in_app_purchase',
+        'play_billing',
+        'billingclient',
+        'zarinpal',
+        'idpay',
+        'زرین‌پال',
+        'ارتقا به پرو',
+      ];
+
+      final roots = <Directory>[
+        Directory('${repoRoot.path}/apps/mobile/lib'),
+        Directory('${repoRoot.path}/apps/mobile/assets/translations'),
+      ];
+
+      for (final root in roots) {
+        expect(
+          root.existsSync(),
+          isTrue,
+          reason: 'Payment-audit root ${root.path} must exist',
+        );
+        final files = root.listSync(recursive: true).whereType<File>();
+
+        for (final file in files) {
+          final content = file.readAsStringSync().toLowerCase();
+          for (final token in prohibitedPaymentTokens) {
+            expect(
+              content.contains(token),
+              isFalse,
+              reason:
+                  'Found prohibited payment token "$token" in '
+                  '${file.path}',
+            );
+          }
+        }
+      }
+    });
+
+    test(
+      'Alignment 1: onboarding and privacy copy carry accurate Free-plan '
+      'wording, no rigid "no account ever" absolute, and EN/FA key parity',
+      () {
+        // German was retired in Alignment #1B; only EN + FA ship now.
+        final deFile = File(
+          '${repoRoot.path}/apps/mobile/assets/translations/de.json',
+        );
+        expect(
+          deFile.existsSync(),
+          isFalse,
+          reason: 'de.json must not exist; the German locale was removed',
+        );
+
+        final en = jsonDecode(
+          File('${repoRoot.path}/apps/mobile/assets/translations/en.json')
+              .readAsStringSync(),
+        ) as Map<String, dynamic>;
+        final fa = jsonDecode(
+          File('${repoRoot.path}/apps/mobile/assets/translations/fa.json')
+              .readAsStringSync(),
+        ) as Map<String, dynamic>;
+
+        final rigidAbsolutes = <String>[
+          'no account ever',
+          'zero account',
+          'never needs an account',
+          'never require an account',
+          'requires no account',
+          '100% free forever',
+          'no monetization',
+          'no paid plan',
+        ];
+
+        // Persian equivalents of the same over-promises. `بدون نیاز به حساب`
+        // is deliberately absent: it is the accurate Free-plan wording.
+        final rigidAbsolutesFa = <String>[
+          'بدون حساب برای همیشه',
+          'هرگز نیاز به حساب ندارد',
+          'بدون هیچ مدل درآمدی',
+          'برای همیشه رایگان',
+        ];
+
+        void auditLeaves(
+          Map<String, dynamic> doc,
+          String locale, [
+          List<String>? absolutes,
+        ]) {
+          final auditedAbsolutes = absolutes ?? rigidAbsolutes;
+          void walk(Object? node, String path) {
+            if (node is Map) {
+              for (final entry in node.entries) {
+                walk(entry.value, '$path.${entry.key}');
+              }
+              return;
+            }
+            if (node is List) {
+              for (var i = 0; i < node.length; i++) {
+                walk(node[i], '$path[$i]');
+              }
+              return;
+            }
+            final text = (node! as String).toLowerCase();
+            expect(
+              text.trim().isNotEmpty,
+              isTrue,
+              reason: 'Empty leaf at $path in $locale translations',
+            );
+            for (final absolute in auditedAbsolutes) {
+              expect(
+                text.contains(absolute),
+                isFalse,
+                reason:
+                    'Rigid absolute "$absolute" remains at $path in $locale '
+                    'translations',
+              );
+            }
+          }
+
+          walk(doc, locale);
+        }
+
+        // Zero contradictory absolutes anywhere in either locale.
+        auditLeaves(en, 'en');
+        auditLeaves(fa, 'fa', rigidAbsolutesFa);
+
+        // The accurate Free-plan wording is actually present.
+        final enOnboarding = en['onboarding'] as Map<String, dynamic>;
+        final faOnboarding = fa['onboarding'] as Map<String, dynamic>;
+        expect(
+          (enOnboarding['step2_point1'] as String).toLowerCase(),
+          contains('free to start'),
+        );
+        expect(
+          (enOnboarding['step2_point1'] as String).toLowerCase(),
+          contains('no account required'),
+        );
+        // Persian: "Free to start — no account required".
+        expect(faOnboarding['step2_point1'] as String, contains('شروع رایگان'));
+        expect(
+          faOnboarding['step2_point1'] as String,
+          contains('بدون نیاز به حساب'),
+        );
+
+        final enSettings = en['settings'] as Map<String, dynamic>;
+        final faSettings = fa['settings'] as Map<String, dynamic>;
+        expect(
+          (enSettings['privacy_policy_body'] as String).toLowerCase(),
+          contains('free plan needs no account'),
+        );
+        // Persian: "The Free plan needs no account."
+        expect(
+          faSettings['privacy_policy_body'] as String,
+          contains('طرح رایگان به حساب کاربری نیاز ندارد'),
+        );
+        // The future Pro disclosure must survive translation too.
+        expect(
+          faSettings['privacy_policy_body'] as String,
+          contains('Brick Pro'),
+        );
+
+        // Recursive EN/FA key parity for the audited surfaces.
+        Set<String> leafKeys(Object? node, [String prefix = '']) {
+          if (node is Map) {
+            return {
+              for (final entry in node.entries)
+                ...leafKeys(entry.value, '$prefix.${entry.key}'),
+            };
+          }
+          return {prefix};
+        }
+
+        expect(leafKeys(en), equals(leafKeys(fa)));
+      },
+    );
+
+    test('Item #4: anonymous server-probe diagnostics are strictly opt-in and '
+        'honestly disclosed under Google Play Data Safety', () {
+      // 1. Default OFF everywhere: fake repo (used by every widget test and
+      //    by the app when preferences are unavailable) and production.
+      expect(
+        FakeAppPreferencesRepository().isAnonymousProbeReportingEnabled(),
+        isFalse,
+        reason: 'Anonymous diagnostics must be opt-in only',
+      );
+
+      // 2. Still zero prohibited third-party analytics/telemetry SDKs in the
+      //    build configs that ship the app.
+      const prohibitedAnalytics = <String>[
+        'firebase_analytics',
+        'firebase_crashlytics',
+        'firebase_core',
+        'posthog',
+        'mixpanel',
+        'amplitude',
+        'appsflyer',
+        'adjust',
+        'datadog',
+        'segment_analytics',
+        'sentry_flutter',
+        'braze',
+        'bugsnag',
+      ];
+      final buildConfigs = <File>[
+        File('${repoRoot.path}/apps/mobile/pubspec.yaml'),
+        File('${repoRoot.path}/apps/mobile/android/app/build.gradle.kts'),
+      ];
+      for (final file in buildConfigs) {
+        expect(file.existsSync(), isTrue);
+        final content = file.readAsStringSync().toLowerCase();
+        for (final sdk in prohibitedAnalytics) {
+          expect(
+            content.contains(sdk),
+            isFalse,
+            reason:
+                'Found prohibited analytics/telemetry SDK "$sdk" in '
+                '${file.path}',
+          );
+        }
+      }
+
+      // 3. The privacy policy discloses the optional diagnostics instead of
+      //    claiming that nothing can ever leave the device.
+      final privacy = File('${repoRoot.path}/docs/privacy-policy.md')
+          .readAsStringSync();
+      expect(privacy.contains('Anonymous Server Health Diagnostics'), isTrue);
+      expect(privacy.toLowerCase(), contains('off by default'));
+      expect(privacy.contains('node_hash'), isTrue);
+      expect(privacy.contains('Data Safety'), isTrue);
+      // Permanent invariants survive the addition.
+      expect(privacy.contains('Zero Traffic Logging'), isTrue);
+      expect(privacy.contains('zero-data-collection'), isTrue);
+
+      // 4. The Play compliance doc maps the payload to the exact Data Safety
+      //    category and marks it optional and unlinked.
+      final compliance = File(
+        '${repoRoot.path}/docs/release/play-store-vpn-compliance.md',
+      ).readAsStringSync();
+      expect(compliance.contains('App info and performance'), isTrue);
+      expect(compliance.contains('Diagnostics'), isTrue);
+      expect(compliance.toLowerCase(), contains('optional'));
+      expect(compliance.toLowerCase(), contains('off by default'));
+      expect(compliance.contains('node_hash'), isTrue);
+      expect(
+        compliance.contains('Not linked to identity'),
+        isTrue,
+        reason: 'The Data Safety answer must state the data is unlinked',
+      );
     });
   });
 }

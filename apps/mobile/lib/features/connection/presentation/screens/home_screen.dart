@@ -4,8 +4,12 @@ import 'dart:async';
 
 import 'package:core_domain/core_domain.dart'
     show Connected, Connecting, ConnectionState, Disconnecting;
+import 'package:core_domain/core_domain.dart' as domain show Error;
 import 'package:core_vpn_engine/core_vpn_engine.dart' show VpnCommandAccepted;
-import 'package:easy_localization/easy_localization.dart';
+// `intl` (re-exported by easy_localization) also defines a `TextDirection`
+// whose constants are `LTR`/`RTL`; hide it so this file resolves Flutter's
+// `dart:ui` `TextDirection` (with `.ltr`/`.rtl`) instead.
+import 'package:easy_localization/easy_localization.dart' hide TextDirection;
 import 'package:flutter/material.dart' hide ConnectionState;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -16,27 +20,39 @@ import 'package:mobile/features/connection/presentation/providers/active_server_
 import 'package:mobile/features/connection/presentation/providers/auto_reconnect_provider.dart';
 import 'package:mobile/features/connection/presentation/providers/connection_controller_provider.dart';
 import 'package:mobile/features/connection/presentation/providers/connection_state_provider.dart';
+import 'package:mobile/features/connection/presentation/providers/kill_switch_provider.dart';
 import 'package:mobile/features/connection/presentation/providers/saved_servers_provider.dart';
 import 'package:mobile/features/connection/presentation/widgets/connection_state_badge.dart';
-import 'package:mobile/features/connection/presentation/widgets/server_tile.dart';
 import 'package:mobile/features/connection/presentation/widgets/session_info_panel.dart';
 import 'package:mobile/features/connection/presentation/widgets/throughput_readout.dart';
+import 'package:mobile/features/servers/domain/models/server_location_group.dart';
+import 'package:ui_theme/ui_theme.dart';
 
-/// Home screen for the `connection` feature.
+/// Home screen for the `connection` feature — the app's primary connection
+/// dashboard ("Obsidian Glass & Brick Ember").
 ///
-/// Renders the saved-server list, a connect/disconnect affordance per
-/// server, the live state badge, and live throughput.
+/// Layout: a compact brand bar (emblem, title, live state badge) over a
+/// scrollable body holding the [BrickPowerOrb] hero control, the active-server
+/// selector card, and the isolated telemetry/session cards.
 ///
 /// ### The connection-state invariant
 ///
-/// This screen renders connection state **only** through
-/// [ConnectionStateBadge], which reads the engine's `connectionState`
-/// stream. Tapping Connect calls `ConnectionController.connect`, whose
-/// returned `Future` is deliberately **not** awaited into any state change:
-/// a completed command means "accepted", not "connected"
-/// (`VpnEngine` Invariant 1). Nothing here infers status from a button
-/// press, which is the exact failure `connection/presentation/README.md`
+/// Every orb state, label and action is derived **only** from authoritative
+/// streams (`connectionStateProvider`, `initialConnectionStateProvider`,
+/// `autoReconnectProvider`, `killSwitchProvider`). Tapping the orb dispatches
+/// an engine command, whose returned `Future` is deliberately never written
+/// back into local state: a completed command means "accepted", not
+/// "connected" (`VpnEngine` Invariant 1). Nothing here infers status from a
+/// tap, which is the exact failure `connection/presentation/README.md`
 /// forbids and which the legacy prototype shipped.
+///
+/// ### Rebuild isolation
+///
+/// This screen does not watch `sessionDurationProvider` or
+/// `sessionTrafficMetricsProvider`; those live inside the `const`
+/// `SessionInfoPanel()` and `const` `ThroughputReadout()` leaves. The saved
+/// server list is watched through a narrow `.select` for loading/error status
+/// only.
 ///
 /// Every user-facing string comes from `assets/translations/en.json` via
 /// `.tr()`; hardcoded strings are forbidden (CODING_STANDARDS.md).
@@ -68,188 +84,518 @@ class HomeScreen extends ConsumerWidget {
       );
     });
 
-    final servers = ref.watch(savedServersProvider);
+    final serversStatus = ref.watch(
+      savedServersProvider.select(
+        (servers) => (isLoading: servers.isLoading, hasError: servers.hasError),
+      ),
+    );
     final activeServer = ref.watch(activeServerProvider);
     final connStateAsync = ref.watch(connectionStateProvider);
     final prewarmed = ref.watch(initialConnectionStateProvider);
     ref.watch(connectionControllerProvider);
     final connectionState = connStateAsync.value ?? prewarmed;
     final isChecking = connStateAsync.isLoading && connectionState == null;
-
-    final isConnecting = connectionState is Connecting;
-    final isConnected = connectionState is Connected;
-    final isDisconnecting = connectionState is Disconnecting;
     final autoReconnect = ref.watch(autoReconnectProvider);
+    final killSwitch = ref.watch(killSwitchProvider);
+
+    final theme = Theme.of(context);
+    final colors = context.brickColors;
+    final isDark = theme.brightness == Brightness.dark;
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
+    final isConnected = connectionState is Connected;
     final isConnectedOrConnecting =
-        isConnected || isConnecting || autoReconnect.isReconnecting;
+        isConnected ||
+        connectionState is Connecting ||
+        autoReconnect.isReconnecting;
+
+    final orbViewModel = _resolveOrbViewModel(
+      connectionState: connectionState,
+      isChecking: isChecking,
+      autoReconnect: autoReconnect,
+      killSwitch: killSwitch,
+      hasActiveServer: activeServer != null,
+      colors: colors,
+    );
+
+    final VoidCallback? orbOnTap;
+    if (orbViewModel.isDisabled) {
+      orbOnTap = null;
+    } else if (killSwitch is KillSwitchBlocking || isConnectedOrConnecting) {
+      orbOnTap = () => unawaited(_disconnect(context, ref));
+    } else if (activeServer case final server?) {
+      orbOnTap = () => unawaited(_connect(context, ref, server));
+    } else {
+      orbOnTap = () => context.go('/servers');
+    }
+
+    final orbKey =
+        activeServer != null ||
+            killSwitch is KillSwitchBlocking ||
+            isConnectedOrConnecting
+        ? const ValueKey<String>('home_connect_toggle_button')
+        : const ValueKey<String>('home_connect_orb_idle');
+
+    final orbSemanticLabel = killSwitch is KillSwitchBlocking
+        ? 'connection.kill_switch_unblock'.tr()
+        : activeServer != null
+        ? (isConnectedOrConnecting
+              ? 'connection.disconnect'.tr()
+              : 'connection.connect'.tr())
+        : 'home.browse_servers'.tr();
 
     return Scaffold(
-      appBar: AppBar(title: Text('home.title'.tr())),
-      body: Column(
+      body: Stack(
         children: [
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const ConnectionStateBadge(),
-                const SizedBox(height: 8),
-                const ThroughputReadout(),
-                const SizedBox(height: 8),
-                const SessionInfoPanel(),
-                const SizedBox(height: 16),
-                if (activeServer != null) ...[
-                  Card(
-                    key: const ValueKey<String>('home_active_server_card'),
-                    child: ListTile(
-                      leading: Icon(
-                        Icons.check_circle,
-                        color: Theme.of(context).colorScheme.primary,
+          // Layer 0 — ambient radial atmosphere. Gradient only: a single
+          // `BoxDecoration` must never carry both `color` and `gradient`.
+          // Only the accent color is tweened, and it is read from the orb view
+          // model alone, so 1 Hz traffic/duration ticks never rebuild it.
+          Positioned.fill(
+            child: IgnorePointer(
+              child: TweenAnimationBuilder<Color?>(
+                tween: ColorTween(end: orbViewModel.atmosphereColor),
+                duration: reduceMotion
+                    ? Duration.zero
+                    : BrickMotion.stateTransition,
+                curve: BrickMotion.curveStandard,
+                builder: (context, atmosphereColor, _) {
+                  return DecoratedBox(
+                    key: const ValueKey<String>('home_atmosphere_glow'),
+                    decoration: BoxDecoration(
+                      gradient: RadialGradient(
+                        center: const Alignment(0, -0.35),
+                        radius: 0.95,
+                        colors: [
+                          (atmosphereColor ?? orbViewModel.atmosphereColor)
+                              .withValues(alpha: isDark ? 0.13 : 0.08),
+                          Colors.transparent,
+                        ],
                       ),
-                      title: Text(
-                        'home.active_server_prefix'.tr(
-                          namedArgs: {'name': activeServer.name},
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+          SafeArea(
+            bottom: false,
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(
+                  maxWidth: BrickSpacing.maxReadableWidth,
+                ),
+                child: Column(
+                  children: [
+                    _buildBrandBar(
+                      context,
+                      theme: theme,
+                      isConnected: isConnected,
+                    ),
+                    Expanded(
+                      child: SingleChildScrollView(
+                        // `extendBody` floats the dock over this scrollable,
+                        // so the bottom inset carries dock + gesture area.
+                        padding: EdgeInsets.fromLTRB(
+                          BrickSpacing.md,
+                          BrickSpacing.lg,
+                          BrickSpacing.md,
+                          MediaQuery.paddingOf(context).bottom +
+                              BrickSpacing.xl,
                         ),
-                        key: const ValueKey<String>('home_active_server_name'),
-                        style: Theme.of(context).textTheme.titleSmall
-                            ?.copyWith(fontWeight: FontWeight.bold),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      subtitle: Text(
-                        '${activeServer.protocolLabel} · '
-                        '${activeServer.endpoint}',
-                        key: const ValueKey<String>(
-                          'home_active_server_endpoint',
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      trailing: FilledButton(
-                        key: const ValueKey<String>(
-                          'home_connect_toggle_button',
-                        ),
-                        onPressed: (isDisconnecting || isChecking)
-                            ? null
-                            : () async {
-                                if (isConnectedOrConnecting) {
-                                  final result = await ref
-                                      .read(
-                                        connectionControllerProvider.notifier,
-                                      )
-                                      .disconnect();
-                                  if (context.mounted &&
-                                      result is! VpnCommandAccepted) {
-                                    AppFeedback.showError(
-                                      context,
-                                      ErrorMapper.mapToUserMessage(result),
-                                    );
-                                  }
-                                } else {
-                                  final result = await ref
-                                      .read(
-                                        connectionControllerProvider.notifier,
-                                      )
-                                      .connect(activeServer.profile);
-                                  if (context.mounted &&
-                                      result is! VpnCommandAccepted) {
-                                    AppFeedback.showError(
-                                      context,
-                                      ErrorMapper.mapToUserMessage(result),
-                                    );
-                                  }
-                                }
-                              },
-                        child: Text(
-                          isConnectedOrConnecting
-                              ? 'connection.disconnect'.tr()
-                              : isDisconnecting
-                              ? 'connection.state_disconnecting'.tr()
-                              : 'connection.connect'.tr(),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Center(
+                              child: BrickPowerOrb(
+                                key: orbKey,
+                                state: orbViewModel.state,
+                                statusLabel: orbViewModel.statusLabel,
+                                actionHint: orbViewModel.actionHint,
+                                semanticLabel: orbSemanticLabel,
+                                onTap: orbOnTap,
+                              ),
+                            ),
+                            const SizedBox(height: BrickSpacing.xl),
+                            _buildServerCard(
+                              context,
+                              status: serversStatus,
+                              activeServer: activeServer,
+                              isConnected: isConnected,
+                            ),
+                            const SizedBox(height: BrickSpacing.sm),
+                            const ThroughputReadout(),
+                            const SizedBox(height: BrickSpacing.sm),
+                            const SessionInfoPanel(),
+                          ],
                         ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                ],
-                FilledButton(
-                  key: const ValueKey<String>('home_add_server_button'),
-                  onPressed: () => context.push('/add-server'),
-                  child: Text('connection.add_server'.tr()),
+                  ],
                 ),
-                const SizedBox(height: 8),
-                OutlinedButton(
-                  key: const ValueKey<String>('home_add_subscription_button'),
-                  onPressed: () => context.push('/add-subscription'),
-                  child: Text('connection.add_subscription'.tr()),
-                ),
-              ],
+              ),
             ),
           ),
-          Expanded(child: _buildList(context, ref, servers)),
         ],
       ),
     );
   }
 
-  /// Renders the saved-server list, or its loading/error/empty states.
-  Widget _buildList(
-    BuildContext context,
-    WidgetRef ref,
-    AsyncValue<List<SavedServer>> servers,
-  ) {
-    return servers.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, stackTrace) =>
-          Center(child: Text('connection.load_failed'.tr())),
-      data: (entries) {
-        if (entries.isEmpty) {
-          return Center(child: Text('connection.no_servers'.tr()));
-        }
-        return ListView(
-          children: [
-            for (final entry in entries)
-              ServerTile(
-                server: entry,
-                onConnect: (profile) async {
-                  final result = await ref
-                      .read(connectionControllerProvider.notifier)
-                      .connect(profile);
-                  if (result is VpnCommandAccepted) {
-                    unawaited(
-                      ref
-                          .read(activeServerIdProvider.notifier)
-                          .selectServer(profile.id),
-                    );
-                  } else if (context.mounted) {
-                    AppFeedback.showError(
-                      context,
-                      ErrorMapper.mapToUserMessage(result),
-                    );
-                  }
-                },
-                onDisconnect: () async {
-                  final result = await ref
-                      .read(connectionControllerProvider.notifier)
-                      .disconnect();
-                  if (context.mounted && result is! VpnCommandAccepted) {
-                    AppFeedback.showError(
-                      context,
-                      ErrorMapper.mapToUserMessage(result),
-                    );
-                  }
-                },
-                onRemove: () {
-                  unawaited(
-                    ref
-                        .read(savedServersProvider.notifier)
-                        .removeServer(entry.id),
-                  );
-                },
-              ),
-          ],
-        );
-      },
+  /// Compact top brand bar: emblem, product title and live state badge.
+  Widget _buildBrandBar(
+    BuildContext context, {
+    required ThemeData theme,
+    required bool isConnected,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        BrickSpacing.md,
+        BrickSpacing.md,
+        BrickSpacing.md,
+        BrickSpacing.xs,
+      ),
+      child: Row(
+        children: [
+          BrickEmblemPlaceholder(size: 26, isConnected: isConnected),
+          const SizedBox(width: BrickSpacing.sm),
+          Expanded(
+            child: Text(
+              'home.title'.tr(),
+              style: theme.textTheme.titleLarge,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          const SizedBox(width: BrickSpacing.xs),
+          // Flexible + scale-down keeps the badge inside the bar when the
+          // system font is enlarged (1.5x / 2.0x).
+          const Flexible(
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              // Directional so the badge hugs the end edge in both LTR and RTL.
+              alignment: AlignmentDirectional.centerEnd,
+              child: ConnectionStateBadge(),
+            ),
+          ),
+        ],
+      ),
     );
+  }
+
+  /// Thumb-zone server selector: loading, error, active server, or the guided
+  /// empty-state card that routes to the Servers tab.
+  Widget _buildServerCard(
+    BuildContext context, {
+    required ({bool isLoading, bool hasError}) status,
+    required SavedServerProfile? activeServer,
+    required bool isConnected,
+  }) {
+    final theme = Theme.of(context);
+    final colors = context.brickColors;
+
+    if (status.isLoading && activeServer == null) {
+      // Skeleton mirrors the active-server card's exact footprint (42dp flag
+      // tile + title/endpoint bars) so nothing shifts when data lands.
+      return const BrickGlassCard(
+        key: ValueKey<String>('home_server_loading_skeleton'),
+        elevated: true,
+        child: Row(
+          children: [
+            BrickSkeletonBox(width: 42, height: 42),
+            SizedBox(width: BrickSpacing.sm),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  BrickSkeletonBox(height: 14),
+                  SizedBox(height: BrickSpacing.xs),
+                  FractionallySizedBox(
+                    widthFactor: 0.6,
+                    alignment: AlignmentDirectional.centerStart,
+                    child: BrickSkeletonBox(height: 12),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (status.hasError && activeServer == null) {
+      return BrickGlassCard(
+        isSelected: true,
+        accentColor: colors.stateError,
+        child: Text('connection.load_failed'.tr()),
+      );
+    }
+
+    final server = activeServer;
+    if (server != null) {
+      final parsed = ServerLocationParser.parse(server.name);
+      return BrickGlassCard(
+        key: const ValueKey<String>('home_active_server_card'),
+        isSelected: isConnected,
+        elevated: true,
+        accentColor: isConnected ? colors.stateConnected : colors.brandBrick,
+        onTap: () => context.go('/servers'),
+        child: Row(
+          children: [
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: colors.surfaceElevated,
+                borderRadius: BorderRadius.circular(BrickRadius.md),
+                border: Border.all(color: colors.glassBorder),
+              ),
+              child: Center(
+                child: Text(
+                  parsed.flagEmoji,
+                  style: const TextStyle(fontSize: 20),
+                ),
+              ),
+            ),
+            const SizedBox(width: BrickSpacing.sm),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'home.active_server_prefix'.tr(
+                            namedArgs: {'name': server.name},
+                          ),
+                          key: const ValueKey<String>(
+                            'home_active_server_name',
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontFamily: BrickTypography.primaryFontFamily,
+                            fontSize: BrickTypography.sizeBody,
+                            fontWeight: FontWeight.w700,
+                            color: colors.textPrimary,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: BrickSpacing.xs),
+                      BrickProtocolPill(
+                        label: server.protocolLabel,
+                        compact: true,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  // `protocol · host:port` is technical data: LTR island so
+                  // Persian RTL never reorders the endpoint.
+                  Directionality(
+                    textDirection: TextDirection.ltr,
+                    child: Text(
+                      '${server.protocolLabel} · ${server.endpoint}',
+                      key: const ValueKey<String>(
+                        'home_active_server_endpoint',
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: BrickTypography.monoLog(color: colors.textMuted),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: BrickSpacing.xs),
+            Icon(
+              Icons.chevron_right_rounded,
+              size: 20,
+              color: colors.textMuted,
+            ),
+          ],
+        ),
+      );
+    }
+
+    return BrickGlassCard(
+      key: const ValueKey<String>('home_empty_server_card'),
+      elevated: true,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.public_rounded, size: 20, color: colors.brandBrick),
+              const SizedBox(width: BrickSpacing.xs),
+              Expanded(
+                child: Text(
+                  'connection.no_servers'.tr(),
+                  style: TextStyle(
+                    fontFamily: BrickTypography.primaryFontFamily,
+                    fontSize: BrickTypography.sizeBody,
+                    fontWeight: FontWeight.w700,
+                    color: colors.textPrimary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: BrickSpacing.xxs),
+          Text(
+            'home.choose_server_subtitle'.tr(),
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: colors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: BrickSpacing.md),
+          FilledButton.icon(
+            key: const ValueKey<String>('home_browse_servers_button'),
+            style: FilledButton.styleFrom(
+              backgroundColor: colors.brandBrick,
+              foregroundColor: colors.onAccent,
+              minimumSize: const Size.fromHeight(BrickSpacing.minTouchTarget),
+            ),
+            onPressed: () => context.go('/servers'),
+            icon: const Icon(Icons.public_rounded, size: 18),
+            label: Text('home.browse_servers'.tr()),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Immutable view model describing exactly how the orb should render.
+@immutable
+final class _OrbViewModel {
+  const _OrbViewModel({
+    required this.state,
+    required this.statusLabel,
+    required this.atmosphereColor,
+    this.actionHint,
+    this.isDisabled = false,
+  });
+
+  final BrickOrbState state;
+  final String statusLabel;
+  final String? actionHint;
+  final Color atmosphereColor;
+  final bool isDisabled;
+}
+
+/// Maps authoritative engine/safety state to the orb view model.
+///
+/// Priority order mirrors the peripheral beacon in `app_shell.dart`: the
+/// kill switch (fail-closed leak protection) outranks everything, then
+/// auto-reconnect, then the engine's own state.
+_OrbViewModel _resolveOrbViewModel({
+  required ConnectionState? connectionState,
+  required bool isChecking,
+  required AutoReconnectState autoReconnect,
+  required KillSwitchState killSwitch,
+  required bool hasActiveServer,
+  required BrickSemanticColors colors,
+}) {
+  final connectHint = hasActiveServer
+      ? 'home.tap_to_connect'.tr()
+      : 'home.select_server_hint'.tr();
+
+  if (killSwitch is KillSwitchBlocking) {
+    return _OrbViewModel(
+      state: BrickOrbState.killSwitch,
+      statusLabel: 'home.orb_status_kill_switch'.tr(),
+      actionHint: 'home.tap_to_unblock'.tr(),
+      atmosphereColor: colors.killSwitchActive,
+    );
+  }
+
+  if (autoReconnect.isReconnecting) {
+    return _OrbViewModel(
+      state: BrickOrbState.reconnecting,
+      statusLabel: 'connection.state_reconnecting'.tr(),
+      actionHint: 'home.tap_to_cancel'.tr(),
+      atmosphereColor: colors.stateConnecting,
+    );
+  }
+
+  if (isChecking) {
+    return _OrbViewModel(
+      state: BrickOrbState.connecting,
+      statusLabel: 'connection.state_checking'.tr(),
+      atmosphereColor: colors.stateConnecting,
+      isDisabled: true,
+    );
+  }
+
+  if (connectionState is Connected) {
+    return _OrbViewModel(
+      state: BrickOrbState.connected,
+      statusLabel: 'connection.state_connected'.tr(),
+      actionHint: 'home.tap_to_disconnect'.tr(),
+      atmosphereColor: colors.stateConnected,
+    );
+  }
+
+  if (connectionState is Connecting) {
+    return _OrbViewModel(
+      state: BrickOrbState.connecting,
+      statusLabel: 'connection.state_connecting'.tr(),
+      actionHint: 'home.tap_to_cancel'.tr(),
+      atmosphereColor: colors.stateConnecting,
+    );
+  }
+
+  if (connectionState is Disconnecting) {
+    return _OrbViewModel(
+      state: BrickOrbState.disconnecting,
+      statusLabel: 'connection.state_disconnecting'.tr(),
+      atmosphereColor: colors.stateDisconnecting,
+      isDisabled: true,
+    );
+  }
+
+  if (connectionState is domain.Error) {
+    return _OrbViewModel(
+      state: BrickOrbState.error,
+      statusLabel: 'connection.state_error'.tr(),
+      actionHint: connectHint,
+      atmosphereColor: colors.stateError,
+    );
+  }
+
+  return _OrbViewModel(
+    state: BrickOrbState.disconnected,
+    statusLabel: 'connection.state_disconnected'.tr(),
+    actionHint: connectHint,
+    atmosphereColor: colors.brandBrick,
+  );
+}
+
+/// Dispatches a connect command and surfaces diagnostics on rejection.
+///
+/// The accepted result is intentionally discarded: acceptance is not
+/// connection (`VpnEngine` Invariant 1).
+Future<void> _connect(
+  BuildContext context,
+  WidgetRef ref,
+  SavedServerProfile server,
+) async {
+  final result = await ref
+      .read(connectionControllerProvider.notifier)
+      .connect(server.profile);
+  if (context.mounted && result is! VpnCommandAccepted) {
+    AppFeedback.showError(context, ErrorMapper.mapToUserMessage(result));
+  }
+}
+
+/// Dispatches a disconnect command (which also cancels reconnect and unblocks
+/// kill-switch lockdown) and surfaces diagnostics on rejection.
+Future<void> _disconnect(BuildContext context, WidgetRef ref) async {
+  final result = await ref
+      .read(connectionControllerProvider.notifier)
+      .disconnect();
+  if (context.mounted && result is! VpnCommandAccepted) {
+    AppFeedback.showError(context, ErrorMapper.mapToUserMessage(result));
   }
 }

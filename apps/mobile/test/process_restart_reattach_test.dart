@@ -18,6 +18,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/core/bootstrap/app_bootstrap.dart';
 import 'package:mobile/core/data/repositories/app_preferences_repository.dart';
 import 'package:mobile/core/logging/log_manager.dart';
+import 'package:mobile/core/providers/app_preferences_provider.dart';
 import 'package:mobile/core/providers/vpn_engine_provider.dart';
 import 'package:mobile/features/connection/domain/entities/saved_server.dart';
 import 'package:mobile/features/connection/presentation/providers/active_server_provider.dart';
@@ -28,8 +29,17 @@ import 'package:mobile/features/connection/presentation/providers/kill_switch_pr
 import 'package:mobile/features/connection/presentation/providers/saved_servers_provider.dart';
 import 'package:mobile/features/connection/presentation/providers/session_duration_provider.dart';
 import 'package:mobile/features/connection/presentation/screens/home_screen.dart';
+import 'package:ui_theme/ui_theme.dart';
 
 import 'localization_test_harness.dart';
+
+/// Formats [duration] exactly the way the session panel labels it (HH:MM:SS).
+String _formatClockDuration(Duration duration) {
+  final hours = duration.inHours.toString().padLeft(2, '0');
+  final minutes = (duration.inMinutes % 60).toString().padLeft(2, '0');
+  final seconds = (duration.inSeconds % 60).toString().padLeft(2, '0');
+  return '$hours:$minutes:$seconds';
+}
 
 Future<ServerProfile> _seedServer(
   FakeServerProfileDataSource ds,
@@ -59,6 +69,47 @@ class _DelayedStatusVpnEngine extends FakeVpnEngine {
   }
 }
 
+/// Pumps exactly one bounded frame pair instead of `pumpAndSettle()`.
+///
+/// The redesigned `HomeScreen` intentionally keeps repeating tickers running
+/// (`BrickPowerOrb` breathing/rotation, `_HomeBeaconIcon` pulse) whenever a
+/// tunnel is active or transitioning, so `pumpAndSettle()` can never settle
+/// there — it throws after its timeout. Bounded pumps advance the state
+/// machine deterministically without waiting for animations to stop.
+Future<void> _settleAnimated(WidgetTester tester) async {
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 400));
+}
+
+/// `pumpConnectionMaterialApp` with bounded pumps.
+///
+/// The localization harness ends in `pumpAndSettle()`, which deadlocks against
+/// the connected orb tickers. The overrides mirror the harness exactly; only
+/// the pump strategy differs, so every persistence assertion is unchanged.
+Future<void> _pumpBoundedHome(
+  WidgetTester tester,
+  Widget app, {
+  required FakeVpnEngine engine,
+  FakeServerProfileDataSource? dataSource,
+  FakeAppPreferencesRepository? preferencesRepository,
+}) async {
+  await tester.pumpWidget(
+    localizedApp(
+      overrides: <Object>[
+        vpnEngineProvider.overrideWithValue(engine),
+        ...repositoryOverride(dataSource),
+        if (preferencesRepository != null)
+          appPreferencesRepositoryProvider.overrideWithValue(
+            preferencesRepository,
+          ),
+      ],
+      child: localizedMaterialApp(home: app),
+    ),
+  );
+  await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+  await _settleAnimated(tester);
+}
+
 void main() {
   setUpAll(initTestLocalization);
 
@@ -83,7 +134,7 @@ void main() {
       final engine = FakeVpnEngine();
 
       // 1. Initial Launch (Session 1)
-      await pumpConnectionMaterialApp(
+      await _pumpBoundedHome(
         tester,
         const HomeScreen(),
         engine: engine,
@@ -100,7 +151,7 @@ void main() {
       final res = await controller.connect(profile);
       expect(res, isA<VpnCommandAccepted>());
       engine.emit(const Connected());
-      await tester.pumpAndSettle();
+      await _settleAnimated(tester);
 
       expect(container.read(connectionStateProvider).value, isA<Connected>());
       expect(container.read(activeServerProvider)?.id, equals(profile.id));
@@ -123,7 +174,7 @@ void main() {
 
       // 2. Simulate UI process kill: unmount & dispose old container
       await tester.pumpWidget(const SizedBox.shrink());
-      await tester.pumpAndSettle();
+      await _settleAnimated(tester);
 
       // Background service remains connected
       expect(engine.lastState, isA<Connected>());
@@ -139,7 +190,7 @@ void main() {
       }
 
       // 3. Relaunch UI (Session 2) with persistent engine & storage
-      await pumpConnectionMaterialApp(
+      await _pumpBoundedHome(
         tester,
         const HomeScreen(),
         engine: engine,
@@ -163,14 +214,31 @@ void main() {
         isTrue,
       );
 
-      // Duration timer resumes ticking for re-attached session,
-      // preserving elapsed time
+      // Duration timer resumes ticking for re-attached session, preserving
+      // elapsed time.
+      //
+      // The session anchor is a real `DateTime.now()`: fakeAsync advances
+      // timers but NOT the wall clock, so under `--concurrency=$(nproc)` host
+      // contention can add a second between seeding the anchor and this pump.
+      // An exact `Duration: 00:00:05` string therefore flaked. Assert the
+      // invariants - the re-attached session kept its recovered seconds, the
+      // three pumped seconds were added live, and the rendered label equals
+      // the provider exactly - which is immune to CPU contention.
+      final durationBeforeResume = container.read(sessionDurationProvider);
       await tester.pump(const Duration(seconds: 3));
+      final durationAfterResume = container.read(sessionDurationProvider);
+      expect(durationAfterResume, greaterThan(durationBeforeResume));
+      expect(durationAfterResume.inSeconds, greaterThanOrEqualTo(5));
+      expect(durationAfterResume.inSeconds, lessThanOrEqualTo(8));
+      final renderedDuration = tester
+          .widgetList<Text>(find.textContaining('Duration: '))
+          .map((text) => text.data)
+          .whereType<String>()
+          .firstWhere((value) => value.startsWith('Duration: '));
       expect(
-        container.read(sessionDurationProvider).inSeconds,
-        greaterThanOrEqualTo(5),
+        renderedDuration,
+        equals('Duration: ${_formatClockDuration(durationAfterResume)}'),
       );
-      expect(find.text('Duration: 00:00:05'), findsOneWidget);
 
       // Two TrafficStats snapshots continue flowing into active session
       final now = DateTime.now();
@@ -213,7 +281,7 @@ void main() {
       await tester.pump(const Duration(seconds: 1));
       expect(engine.startCalls, contains(profile));
       engine.emit(const Connected());
-      await tester.pumpAndSettle();
+      await _settleAnimated(tester);
       expect(container.read(connectionStateProvider).value, isA<Connected>());
       expect(container.read(killSwitchProvider), isA<KillSwitchArmed>());
       expect(container.read(autoReconnectProvider), isA<AutoReconnectIdle>());
@@ -224,7 +292,7 @@ void main() {
         'vless://22222222-3333-4444-5555-666666666666@example.com:443#Osaka%20Node',
       );
       container.invalidate(savedServersProvider);
-      await tester.pumpAndSettle();
+      await _settleAnimated(tester);
       final switchRes = await container
           .read(connectionControllerProvider.notifier)
           .connect(profile2);
@@ -235,7 +303,7 @@ void main() {
       expect(engine.stopCalls, equals(2));
       expect(engine.startCalls, contains(profile2));
       engine.emit(const Connected());
-      await tester.pumpAndSettle();
+      await _settleAnimated(tester);
       expect(container.read(activeServerProvider)?.id, equals(profile2.id));
       expect(find.textContaining('Osaka Node'), findsWidgets);
 
@@ -245,7 +313,7 @@ void main() {
           .disconnect();
       expect(discRes, isA<VpnCommandAccepted>());
       engine.emit(const Disconnected());
-      await tester.pumpAndSettle();
+      await _settleAnimated(tester);
       expect(
         container.read(connectionStateProvider).value,
         isA<Disconnected>(),
@@ -294,7 +362,7 @@ void main() {
 
         // Advance past the 200ms delay so getStatus() completes
         await tester.pump(const Duration(milliseconds: 250));
-        await tester.pumpAndSettle();
+        await _settleAnimated(tester);
 
         // State settles on Connected
         expect(find.text('Connected'), findsWidgets);
@@ -351,8 +419,24 @@ void main() {
         expect(find.text('Tunnel: Connected'), findsOneWidget);
         expect(find.text('Server: Tokyo Node (vless)'), findsOneWidget);
 
-        // Frame-0 assertion: HomeScreen connect button already shows Disconnect
-        expect(find.widgetWithText(FilledButton, 'Disconnect'), findsOneWidget);
+        // Frame-0 assertion: the orb's connect toggle is already in the
+        // Connected state and offers Disconnect (UX Refinement #3 replaced the
+        // legacy FilledButton with BrickPowerOrb).
+        final toggleFinder = find.byKey(
+          const ValueKey<String>('home_connect_toggle_button'),
+        );
+        expect(toggleFinder, findsOneWidget);
+        expect(
+          tester.widget<BrickPowerOrb>(toggleFinder).state,
+          BrickOrbState.connected,
+        );
+        expect(
+          find.descendant(
+            of: toggleFinder,
+            matching: find.text('Tap to disconnect'),
+          ),
+          findsOneWidget,
+        );
 
         await tester.pumpWidget(const SizedBox.shrink());
         prewarmedContainer.dispose();
@@ -381,7 +465,7 @@ void main() {
         );
         final engine = FakeVpnEngine()..emit(const Connected());
 
-        await pumpConnectionMaterialApp(
+        await _pumpBoundedHome(
           tester,
           const HomeScreen(),
           engine: engine,
@@ -442,7 +526,7 @@ void main() {
         );
         final engine = FakeVpnEngine()..lastState = const Disconnected();
 
-        await pumpConnectionMaterialApp(
+        await _pumpBoundedHome(
           tester,
           const HomeScreen(),
           engine: engine,
@@ -470,7 +554,7 @@ void main() {
         final res = await controller.connect(profile);
         expect(res, isA<VpnCommandAccepted>());
         engine.emit(const Connected());
-        await tester.pumpAndSettle();
+        await _settleAnimated(tester);
 
         // 3. New session duration starts at 00:00:00 (NOT 05:00:00)
         expect(container.read(sessionDurationProvider), equals(Duration.zero));
@@ -486,7 +570,7 @@ void main() {
 
         // Clean up UI tree and fake timer
         await tester.pumpWidget(const SizedBox.shrink());
-        await tester.pumpAndSettle();
+        await _settleAnimated(tester);
       },
     );
   });

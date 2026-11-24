@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -7,9 +8,11 @@ import 'package:config_parser/config_parser.dart';
 import 'package:core_domain/core_domain.dart' show ServerProfile;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:mobile/core/data/repositories/app_preferences_repository.dart';
 import 'package:mobile/features/connection/presentation/screens/add_server_screen.dart';
 import 'package:mobile/features/connection/presentation/screens/add_subscription_screen.dart';
+import 'package:mobile/features/connection/presentation/screens/home_screen.dart';
 import 'package:mobile/features/servers/presentation/screens/servers_screen.dart';
 import 'package:mobile/main.dart';
 
@@ -80,27 +83,66 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(ServersScreen), findsOneWidget);
-      expect(find.widgetWithText(AppBar, 'Servers'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey<String>('servers_update_button')),
+        findsOneWidget,
+      );
 
-      // Verify empty state text and icons
-      expect(find.byIcon(Icons.dns_outlined), findsOneWidget);
+      // Verify guided empty state
+      expect(
+        find.byKey(const ValueKey<String>('servers_empty_state')),
+        findsOneWidget,
+      );
       expect(find.text('No servers added yet'), findsOneWidget);
       expect(
         find.text(
-          'Add a server link, scan a QR code, or import a subscription '
-          'to get started.',
+          "Servers sync automatically from Brick VPN's official directory. "
+          'Tap Update Servers to retry.',
         ),
         findsOneWidget,
       );
 
-      // Verify CTA: Add Server button navigates to /add-server
+      // Manual add affordances are intentionally hidden (UX Refinement #3)
       expect(
         find.byKey(const ValueKey<String>('servers_empty_add_server_button')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(
+          const ValueKey<String>('servers_empty_add_subscription_button'),
+        ),
+        findsNothing,
+      );
+
+      // Play-compliant disclosure flow from the empty-state Update Servers CTA
+      expect(
+        find.byKey(const ValueKey<String>('servers_empty_update_button')),
         findsOneWidget,
       );
       await tester.tap(
-        find.byKey(const ValueKey<String>('servers_empty_add_server_button')),
+        find.byKey(const ValueKey<String>('servers_empty_update_button')),
       );
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey<String>('update_servers_disclosure_sheet')),
+        findsOneWidget,
+      );
+      final cancelFinder = find.byKey(
+        const ValueKey<String>('update_servers_disclosure_cancel'),
+      );
+      await tester.ensureVisible(cancelFinder);
+      await tester.pumpAndSettle();
+      await tester.tap(cancelFinder);
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey<String>('update_servers_disclosure_sheet')),
+        findsNothing,
+        reason:
+            'Tapping Cancel MUST dismiss the modal disclosure sheet cleanly',
+      );
+
+      // /add-server route remains reachable despite the hidden affordance
+      unawaited(tester.element(find.byType(ServersScreen)).push('/add-server'));
       await tester.pumpAndSettle();
       expect(find.byType(AddServerScreen), findsOneWidget);
 
@@ -109,56 +151,59 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(ServersScreen), findsOneWidget);
 
-      // Verify CTA: Add Subscription button navigates to /add-subscription
-      expect(
-        find.byKey(
-          const ValueKey<String>('servers_empty_add_subscription_button'),
-        ),
-        findsOneWidget,
-      );
-      await tester.tap(
-        find.byKey(
-          const ValueKey<String>('servers_empty_add_subscription_button'),
-        ),
+      // /add-subscription route remains reachable as well
+      unawaited(
+        tester.element(find.byType(ServersScreen)).push('/add-subscription'),
       );
       await tester.pumpAndSettle();
       expect(find.byType(AddSubscriptionScreen), findsOneWidget);
     });
 
-    testWidgets('AppBar actions navigate to add server and add subscription', (
-      tester,
-    ) async {
-      final engine = FakeVpnEngine();
-      final dataSource = FakeServerProfileDataSource();
-      addTearDown(engine.dispose);
+    testWidgets(
+      'preserved add-server and add-subscription routes are reachable',
+      (tester) async {
+        final engine = FakeVpnEngine();
+        final dataSource = FakeServerProfileDataSource();
+        addTearDown(engine.dispose);
 
-      await pumpConnectionApp(
-        tester,
-        const MyApp(),
-        engine: engine,
-        dataSource: dataSource,
-      );
+        await pumpConnectionApp(
+          tester,
+          const MyApp(),
+          engine: engine,
+          dataSource: dataSource,
+        );
 
-      await tester.tap(find.byKey(const ValueKey<String>('nav_tab_servers')));
-      await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey<String>('nav_tab_servers')));
+        await tester.pumpAndSettle();
 
-      // Tap AppBar Add Server action
-      await tester.tap(
-        find.byKey(const ValueKey<String>('servers_add_server_action')),
-      );
-      await tester.pumpAndSettle();
-      expect(find.byType(AddServerScreen), findsOneWidget);
+        // Manual add affordances stay hidden on ServersScreen
+        expect(
+          find.byKey(const ValueKey<String>('servers_add_server_action')),
+          findsNothing,
+        );
+        expect(
+          find.byKey(const ValueKey<String>('servers_add_subscription_action')),
+          findsNothing,
+        );
 
-      tester.state<NavigatorState>(find.byType(Navigator)).pop();
-      await tester.pumpAndSettle();
+        // Navigate to /add-server via the preserved route
+        unawaited(
+          tester.element(find.byType(ServersScreen)).push('/add-server'),
+        );
+        await tester.pumpAndSettle();
+        expect(find.byType(AddServerScreen), findsOneWidget);
 
-      // Tap AppBar Add Subscription action
-      await tester.tap(
-        find.byKey(const ValueKey<String>('servers_add_subscription_action')),
-      );
-      await tester.pumpAndSettle();
-      expect(find.byType(AddSubscriptionScreen), findsOneWidget);
-    });
+        tester.state<NavigatorState>(find.byType(Navigator)).pop();
+        await tester.pumpAndSettle();
+
+        // Navigate to /add-subscription via the preserved route
+        unawaited(
+          tester.element(find.byType(ServersScreen)).push('/add-subscription'),
+        );
+        await tester.pumpAndSettle();
+        expect(find.byType(AddSubscriptionScreen), findsOneWidget);
+      },
+    );
 
     testWidgets(
       'reactive update: adding manual server updates ServersScreen dynamically',
@@ -179,9 +224,9 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.text('No servers added yet'), findsOneWidget);
 
-        // Tap Add Server action from AppBar
-        await tester.tap(
-          find.byKey(const ValueKey<String>('servers_add_server_action')),
+        // Navigate to /add-server via the preserved route
+        unawaited(
+          tester.element(find.byType(ServersScreen)).push('/add-server'),
         );
         await tester.pumpAndSettle();
         expect(find.byType(AddServerScreen), findsOneWidget);
@@ -199,11 +244,33 @@ void main() {
         // Popped back to ServersScreen — must reactively display the new server
         expect(find.byType(ServersScreen), findsOneWidget);
         expect(find.text('No servers added yet'), findsNothing);
-        expect(find.text('Standalone Servers'), findsOneWidget);
-        expect(find.text('Standalone1'), findsOneWidget);
-        expect(find.text('VLESS'), findsOneWidget);
-        expect(find.text('standalone.example.com:443'), findsOneWidget);
-        expect(find.text('Standalone'), findsOneWidget);
+        expect(
+          find.byKey(const ValueKey<String>('country_group_ZZ')),
+          findsOneWidget,
+        );
+        final addedTile = find.byKey(
+          ValueKey<String>('server_tile_${dataSource.records.first.id}'),
+        );
+        expect(addedTile, findsOneWidget);
+        expect(
+          find.descendant(of: addedTile, matching: find.text('Standalone1')),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(of: addedTile, matching: find.text('VLESS')),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(
+            of: addedTile,
+            matching: find.text('standalone.example.com:443'),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(of: addedTile, matching: find.text('Standalone')),
+          findsOneWidget,
+        );
       },
     );
 
@@ -239,9 +306,7 @@ void main() {
         );
 
         // Add 1 standalone server first
-        await tester.tap(
-          find.byKey(const ValueKey<String>('home_add_server_button')),
-        );
+        unawaited(tester.element(find.byType(HomeScreen)).push('/add-server'));
         await tester.pumpAndSettle();
         await tester.enterText(
           find.byKey(const ValueKey<String>('add_server_uri_field')),
@@ -253,8 +318,8 @@ void main() {
         await tester.pumpAndSettle();
 
         // Import 1 subscription with 2 servers
-        await tester.tap(
-          find.byKey(const ValueKey<String>('home_add_subscription_button')),
+        unawaited(
+          tester.element(find.byType(HomeScreen)).push('/add-subscription'),
         );
         await tester.pumpAndSettle();
         await tester.enterText(
@@ -276,21 +341,34 @@ void main() {
 
         expect(find.byType(ServersScreen), findsOneWidget);
 
-        // 1. Standalone section verification
-        expect(find.text('Standalone Servers'), findsOneWidget);
-        expect(find.text('Standalone1'), findsOneWidget);
-        expect(find.text('Standalone'), findsOneWidget);
+        // 1. Standalone tile verification inside the country group
+        final zzGroup = find.byKey(const ValueKey<String>('country_group_ZZ'));
+        expect(zzGroup, findsOneWidget);
+        expect(
+          find.descendant(of: zzGroup, matching: find.text('Standalone1')),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(of: zzGroup, matching: find.text('Standalone')),
+          findsOneWidget,
+        );
 
-        // 2. Subscription section verification
+        // 2. Subscription tiles plus the linked feed strip
+        expect(
+          find.descendant(
+            of: zzGroup,
+            matching: find.text('Pro Nodes Plan - sub1.example.com:443'),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(
+            of: zzGroup,
+            matching: find.text('Pro Nodes Plan - sub2.example.com:443'),
+          ),
+          findsOneWidget,
+        );
         expect(find.text('Pro Nodes Plan'), findsAtLeast(1));
-        expect(
-          find.text('Pro Nodes Plan - sub1.example.com:443'),
-          findsOneWidget,
-        );
-        expect(
-          find.text('Pro Nodes Plan - sub2.example.com:443'),
-          findsOneWidget,
-        );
 
         // 3. Zero-secret leak guarantee: secret token and URL never rendered
         expect(find.textContaining(secretToken), findsNothing);
@@ -313,9 +391,7 @@ void main() {
       );
 
       // Add a server
-      await tester.tap(
-        find.byKey(const ValueKey<String>('home_add_server_button')),
-      );
+      unawaited(tester.element(find.byType(HomeScreen)).push('/add-server'));
       await tester.pumpAndSettle();
       await tester.enterText(
         find.byKey(const ValueKey<String>('add_server_uri_field')),
@@ -329,7 +405,15 @@ void main() {
       // Go to Servers screen
       await tester.tap(find.byKey(const ValueKey<String>('nav_tab_servers')));
       await tester.pumpAndSettle();
-      expect(find.text('Standalone1'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(
+            ValueKey<String>('server_tile_${dataSource.records.first.id}'),
+          ),
+          matching: find.text('Standalone1'),
+        ),
+        findsOneWidget,
+      );
 
       // Find and tap the remove button on the server tile
       final serverId = dataSource.records.first.id;
@@ -439,9 +523,7 @@ void main() {
         );
 
         // Add 1 standalone server
-        await tester.tap(
-          find.byKey(const ValueKey<String>('home_add_server_button')),
-        );
+        unawaited(tester.element(find.byType(HomeScreen)).push('/add-server'));
         await tester.pumpAndSettle();
         await tester.enterText(
           find.byKey(const ValueKey<String>('add_server_uri_field')),
@@ -454,7 +536,15 @@ void main() {
 
         await tester.tap(find.byKey(const ValueKey<String>('nav_tab_servers')));
         await tester.pumpAndSettle();
-        expect(find.text('Standalone1'), findsOneWidget);
+        expect(
+          find.descendant(
+            of: find.byKey(
+              ValueKey<String>('server_tile_${dataSource.records.first.id}'),
+            ),
+            matching: find.text('Standalone1'),
+          ),
+          findsOneWidget,
+        );
 
         final serverId = dataSource.records.first.id;
         final deleteKey = ValueKey<String>('server_delete_$serverId');
@@ -477,7 +567,15 @@ void main() {
           find.byKey(const ValueKey<String>('confirm_delete_dialog')),
           findsNothing,
         );
-        expect(find.text('Standalone1'), findsOneWidget);
+        expect(
+          find.descendant(
+            of: find.byKey(
+              ValueKey<String>('server_tile_${dataSource.records.first.id}'),
+            ),
+            matching: find.text('Standalone1'),
+          ),
+          findsOneWidget,
+        );
 
         // 3. Tap delete again -> dialog appears
         await tester.tap(find.byKey(deleteKey));
@@ -522,9 +620,7 @@ void main() {
         );
 
         // Add 1 standalone server
-        await tester.tap(
-          find.byKey(const ValueKey<String>('home_add_server_button')),
-        );
+        unawaited(tester.element(find.byType(HomeScreen)).push('/add-server'));
         await tester.pumpAndSettle();
         await tester.enterText(
           find.byKey(const ValueKey<String>('add_server_uri_field')),
@@ -536,8 +632,8 @@ void main() {
         await tester.pumpAndSettle();
 
         // Add 1 subscription
-        await tester.tap(
-          find.byKey(const ValueKey<String>('home_add_subscription_button')),
+        unawaited(
+          tester.element(find.byType(HomeScreen)).push('/add-subscription'),
         );
         await tester.pumpAndSettle();
         await tester.enterText(
@@ -555,6 +651,9 @@ void main() {
 
         // Go to Servers screen
         await tester.tap(find.byKey(const ValueKey<String>('nav_tab_servers')));
+        await tester.pumpAndSettle();
+        // Let the import success snackbar expire before tapping tile actions
+        await tester.pump(const Duration(seconds: 5));
         await tester.pumpAndSettle();
 
         final standaloneId = dataSource.records.first.id;
@@ -645,9 +744,27 @@ void main() {
         );
 
         // Tile reactively reflects updated name and new protocol
-        expect(find.text('Renamed Standalone'), findsOneWidget);
-        expect(find.text('TROJAN'), findsOneWidget);
-        expect(find.text('newtrojan.example.com:443'), findsOneWidget);
+        final editedTile = find.byKey(
+          ValueKey<String>('server_tile_$standaloneId'),
+        );
+        expect(
+          find.descendant(
+            of: editedTile,
+            matching: find.text('Renamed Standalone'),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(of: editedTile, matching: find.text('TROJAN')),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(
+            of: editedTile,
+            matching: find.text('newtrojan.example.com:443'),
+          ),
+          findsOneWidget,
+        );
       },
     );
 
@@ -680,8 +797,8 @@ void main() {
         );
 
         // Import 1 subscription
-        await tester.tap(
-          find.byKey(const ValueKey<String>('home_add_subscription_button')),
+        unawaited(
+          tester.element(find.byType(HomeScreen)).push('/add-subscription'),
         );
         await tester.pumpAndSettle();
         await tester.enterText(
@@ -700,8 +817,11 @@ void main() {
         // Switch to Servers screen
         await tester.tap(find.byKey(const ValueKey<String>('nav_tab_servers')));
         await tester.pumpAndSettle();
+        // Let the import success snackbar expire before tapping tile actions
+        await tester.pump(const Duration(seconds: 5));
+        await tester.pumpAndSettle();
 
-        expect(find.text('Standalone Servers'), findsNothing);
+        expect(find.text('Standalone'), findsNothing);
         expect(find.text('SubGroup'), findsAtLeast(1));
 
         final subServerId = dataSource.savedProfiles.first.id;
@@ -714,14 +834,24 @@ void main() {
         await tester.tap(duplicateButton);
         await tester.pumpAndSettle();
 
-        // Standalone section now exists with the duplicate server!
-        expect(find.text('Standalone Servers'), findsOneWidget);
+        // The duplicated standalone server now appears alongside the feed one
+        expect(find.text('Standalone'), findsOneWidget);
+        expect(
+          find.byKey(const ValueKey<String>('country_group_ZZ')),
+          findsOneWidget,
+        );
         expect(
           find.text('SubGroup - sub1.example.com:443 (Copy)'),
           findsOneWidget,
         );
         // Original subscription server still exists in its group
-        expect(find.text('SubGroup - sub1.example.com:443'), findsOneWidget);
+        expect(
+          find.descendant(
+            of: find.byKey(ValueKey<String>('server_tile_$subServerId')),
+            matching: find.text('SubGroup - sub1.example.com:443'),
+          ),
+          findsOneWidget,
+        );
       },
     );
 
@@ -760,8 +890,8 @@ void main() {
         );
 
         // Import subscription initially with _subVless1
-        await tester.tap(
-          find.byKey(const ValueKey<String>('home_add_subscription_button')),
+        unawaited(
+          tester.element(find.byType(HomeScreen)).push('/add-subscription'),
         );
         await tester.pumpAndSettle();
         await tester.enterText(
@@ -783,7 +913,16 @@ void main() {
         final subId = dataSource.subscriptions.first.id;
         final refreshKey = ValueKey<String>('subscription_refresh_$subId');
         expect(find.byKey(refreshKey), findsOneWidget);
-        expect(find.text('Plan Alpha - sub1.example.com:443'), findsOneWidget);
+        final planAlphaTile = find.byKey(
+          ValueKey<String>('server_tile_${dataSource.savedProfiles.first.id}'),
+        );
+        expect(
+          find.descendant(
+            of: planAlphaTile,
+            matching: find.text('Plan Alpha - sub1.example.com:443'),
+          ),
+          findsOneWidget,
+        );
 
         // 1. Simulate network failure during refresh
         simulateNetworkError = true;
@@ -792,7 +931,13 @@ void main() {
 
         // Error feedback displayed and existing server preserved untouched!
         expect(find.byType(SnackBar), findsOneWidget);
-        expect(find.text('Plan Alpha - sub1.example.com:443'), findsOneWidget);
+        expect(
+          find.descendant(
+            of: planAlphaTile,
+            matching: find.text('Plan Alpha - sub1.example.com:443'),
+          ),
+          findsOneWidget,
+        );
 
         // Dismiss SnackBar
         tester.binding.scheduleFrame();
@@ -811,7 +956,17 @@ void main() {
 
         // Old server sub1 replaced by new server sub2!
         expect(find.text('Plan Alpha - sub1.example.com:443'), findsNothing);
-        expect(find.text('Plan Alpha - sub2.example.com:443'), findsOneWidget);
+        expect(
+          find.descendant(
+            of: find.byKey(
+              ValueKey<String>(
+                'server_tile_${dataSource.savedProfiles.first.id}',
+              ),
+            ),
+            matching: find.text('Plan Alpha - sub2.example.com:443'),
+          ),
+          findsOneWidget,
+        );
       },
     );
 
@@ -844,8 +999,8 @@ void main() {
         );
 
         // Import subscription with 2 servers
-        await tester.tap(
-          find.byKey(const ValueKey<String>('home_add_subscription_button')),
+        unawaited(
+          tester.element(find.byType(HomeScreen)).push('/add-subscription'),
         );
         await tester.pumpAndSettle();
         await tester.enterText(
@@ -865,12 +1020,23 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(find.text('Cascade Plan'), findsAtLeast(1));
+        final cascadeSub1Tile = find.byKey(
+          ValueKey<String>('server_tile_${dataSource.savedProfiles[0].id}'),
+        );
         expect(
-          find.text('Cascade Plan - sub1.example.com:443'),
+          find.descendant(
+            of: cascadeSub1Tile,
+            matching: find.text('Cascade Plan - sub1.example.com:443'),
+          ),
           findsOneWidget,
         );
         expect(
-          find.text('Cascade Plan - sub2.example.com:443'),
+          find.descendant(
+            of: find.byKey(
+              ValueKey<String>('server_tile_${dataSource.savedProfiles[1].id}'),
+            ),
+            matching: find.text('Cascade Plan - sub2.example.com:443'),
+          ),
           findsOneWidget,
         );
 
@@ -917,9 +1083,7 @@ void main() {
         );
 
         // Add 1 standalone server
-        await tester.tap(
-          find.byKey(const ValueKey<String>('home_add_server_button')),
-        );
+        unawaited(tester.element(find.byType(HomeScreen)).push('/add-server'));
         await tester.pumpAndSettle();
         await tester.enterText(
           find.byKey(const ValueKey<String>('add_server_uri_field')),
@@ -980,9 +1144,7 @@ void main() {
         );
 
         // Add 1 standalone server
-        await tester.tap(
-          find.byKey(const ValueKey<String>('home_add_server_button')),
-        );
+        unawaited(tester.element(find.byType(HomeScreen)).push('/add-server'));
         await tester.pumpAndSettle();
         await tester.enterText(
           find.byKey(const ValueKey<String>('add_server_uri_field')),
@@ -1041,9 +1203,7 @@ void main() {
         );
 
         // Add server 1
-        await tester.tap(
-          find.byKey(const ValueKey<String>('home_add_server_button')),
-        );
+        unawaited(tester.element(find.byType(HomeScreen)).push('/add-server'));
         await tester.pumpAndSettle();
         await tester.enterText(
           find.byKey(const ValueKey<String>('add_server_uri_field')),
@@ -1097,9 +1257,7 @@ void main() {
         );
 
         // Add server 1
-        await tester.tap(
-          find.byKey(const ValueKey<String>('home_add_server_button')),
-        );
+        unawaited(tester.element(find.byType(HomeScreen)).push('/add-server'));
         await tester.pumpAndSettle();
         await tester.enterText(
           find.byKey(const ValueKey<String>('add_server_uri_field')),
@@ -1159,9 +1317,7 @@ void main() {
         );
 
         // Add server 1
-        await tester.tap(
-          find.byKey(const ValueKey<String>('home_add_server_button')),
-        );
+        unawaited(tester.element(find.byType(HomeScreen)).push('/add-server'));
         await tester.pumpAndSettle();
         await tester.enterText(
           find.byKey(const ValueKey<String>('add_server_uri_field')),
@@ -1242,9 +1398,7 @@ void main() {
         );
 
         // Add server 1
-        await tester.tap(
-          find.byKey(const ValueKey<String>('home_add_server_button')),
-        );
+        unawaited(tester.element(find.byType(HomeScreen)).push('/add-server'));
         await tester.pumpAndSettle();
         await tester.enterText(
           find.byKey(const ValueKey<String>('add_server_uri_field')),
@@ -1280,9 +1434,12 @@ void main() {
         // Active server card shows server 2
         expect(find.text('Active: Standalone1 (Copy)'), findsOneWidget);
 
-        // Tap Connect
-        await tester.tap(find.text('Connect').first);
-        await tester.pumpAndSettle();
+        // Tap the dashboard orb
+        await tester.tap(
+          find.byKey(const ValueKey<String>('home_connect_toggle_button')),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
 
         // Engine starts with server 2's profile
         expect(engine.startCalls, hasLength(1));

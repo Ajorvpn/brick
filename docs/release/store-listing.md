@@ -17,9 +17,16 @@ This document contains the official Google Play Console store listing metadata, 
 *(Character count: 78 / 80 limit)*
 
 ### Full Description
-Brick VPN is a lightweight, high-performance, and privacy-focused Android VPN client engineered for self-hosted proxy and VPN infrastructure. Built on the robust, embedded Sing-box universal proxy core, Brick VPN provides modern censorship-resistant transport protocols with zero telemetry, zero advertisements, and zero tracking.
+Brick VPN is a lightweight, high-performance, privacy-focused, and fully open-source Android VPN client. It ships a built-in 
+official free server directory, synchronized over HTTPS with a CDN mirror as failover, so the app is usable right after install 
+with no account, no configuration and no server hunting. Built on the robust, embedded Sing-box universal proxy core, Brick VPN 
+provides modern censorship-resistant transport protocols with zero advertisements, zero trackers, and diagnostics that stay off 
+unless you turn them on.
 
-NOTE: Brick VPN is a client software application ('Bring Your Own Server'). It does NOT bundle, sell, or operate commercial proxy servers. Users must connect to their own self-hosted servers or enter third-party subscription URLs.
+NOTE: Brick VPN is open source under GPL-3.0-or-later. On first launch the built-in directory downloads automatically over HTTPS 
+from the project's public collection repository, is cached encrypted on your device, and is kept intact whenever the mirrors are 
+unreachable. Install, wait a moment for the sync, pick any country, and connect. The developer does not sell or resell proxy 
+bandwidth.
 
 ---
 
@@ -35,11 +42,10 @@ KEY FEATURES & PROTOCOL SUPPORT
   - Hysteria2 (HY2) UDP high-speed congestion control
   - TUIC (v5) QUIC-based proxying
 
-• Flexible Server & Subscription Management:
-  - Manual Import: Quick-paste standard protocol URIs directly into the app.
-  - Optical QR Code Scanner: Fast, on-device QR scanning powered by Google ML Kit.
-  - Subscription Feeds: Synchronize HTTPS subscription endpoints with resilient partial-success parsing.
-  - Cascade Deletion: Cleanly delete individual profiles or entire subscription groups with one tap.
+• Built-In Official Free Server Directory:
+  - Synchronizes automatically on launch and at most every 30 minutes over HTTPS, with a CDN mirror as failover.
+  - Groups every server by country and city with flags, and searches the whole list instantly.
+  - Caches the directory on-device with Android Keystore encryption, and keeps it intact when the mirrors are unreachable.
 
 • Enterprise-Grade Resilience & Security:
   - Fail-Closed Kill Switch: Enforces strict firewall lockdown on Android to prevent unencrypted packet leakage if the VPN tunnel drops.
@@ -48,11 +54,15 @@ KEY FEATURES & PROTOCOL SUPPORT
   - Hardware-Backed Keystore Encryption: Sensitive credentials (passwords, private keys, preshared keys) are encrypted at rest using AES-256-GCM backed by Android Keystore.
   - Three-Surface Log Redaction: Live UI viewer, clipboard export, and on-disk diagnostic logs automatically redact IPs, domain names, passwords, and UUIDs to protect your privacy.
 
-• 100% Free & Open-Source:
-  - Licensed under GNU General Public License v3.0 or later (GPL-3.0-or-later).
-  - Zero analytics, zero ad SDKs, zero third-party telemetry, and zero user account registration required.
+• Free to Start, Optional Pro Later:
+  - Free to start with no account required — install, let the built-in directory sync, and connect.
+  - An optional Brick Pro plan is planned for future releases for users who want Pro features.
+  - Zero ads, zero ad SDKs, zero third-party trackers, and zero browsing/traffic logs on every plan (Free and Pro).
+  - Anonymous server-health diagnostics are off by default; if you enable them, only a hashed server ID, reachability, latency, coarse network type, and an hour-bucketed timestamp are ever sent.
+  - Licensed under GNU General Public License v3.0 or later (GPL-3.0-or-later), with the complete client source published in the 
+spirit of Bring Your Own Server.
 
-*(Character count: 2411 / 4000 limit)*
+*(Character count: 3239 / 4000 limit)*
 
 ---
 

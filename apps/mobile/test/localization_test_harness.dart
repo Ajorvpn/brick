@@ -27,8 +27,9 @@ import 'package:mobile/features/connection/domain/repositories/server_profile_re
 import 'package:mobile/features/connection/domain/usecases/build_server_profile.dart';
 import 'package:mobile/features/connection/presentation/providers/camera_permission_provider.dart';
 import 'package:mobile/features/servers/domain/entities/subscription_metadata.dart';
+import 'package:mobile/features/servers/presentation/providers/built_in_directory_sync_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:shared_utils/shared_utils.dart' show Err, Ok;
+import 'package:shared_utils/shared_utils.dart' show Err, Ok, Result;
 
 /// Initializes easy_localization's device-locale storage for a test file.
 ///
@@ -392,6 +393,16 @@ class FakeCameraPermissionService implements CameraPermissionService {
   Future<bool> openSettings() async => openSettingsResult;
 }
 
+/// Deterministic offline fetcher for the built-in server directory.
+///
+/// Every widget test installs this override, so no test can ever reach the
+/// network, hang on a socket, or depend on a live GitHub feed.
+Future<Result<String, ConfigParseError>> offlineDirectoryFetcher(
+  Uri uri,
+) async => const Err<String, ConfigParseError>(
+  NetworkFailureError('network access is disabled in widget tests'),
+);
+
 /// Builds a [ServerProfileRepository] over [dataSource].
 ServerProfileRepository buildRepository(
   FakeServerProfileDataSource dataSource,
@@ -436,6 +447,7 @@ List<Object> repositoryOverride([
   connectivitySourceProvider.overrideWithValue(
     connectivitySource ?? FakeConnectivitySource(),
   ),
+  builtInFeedFetcherProvider.overrideWithValue(offlineDirectoryFetcher),
 ];
 
 /// Pumps [app] with a `ProviderScope` that overrides the engine, the
@@ -474,6 +486,8 @@ Future<void> pumpConnectionApp(
           appPreferencesRepositoryProvider.overrideWithValue(
             preferencesRepository,
           ),
+        // Hermetic by default: the built-in directory never fetches for real.
+        builtInFeedFetcherProvider.overrideWithValue(offlineDirectoryFetcher),
       ],
       child: app,
     ),
@@ -510,6 +524,33 @@ Future<void> pumpConnectionMaterialApp(
 /// The translations that [TestAssetLoader] serves, for drift assertions.
 Map<String, dynamic> testEnglishTranslations() => const {
   'app_title': 'Brick VPN',
+  'onboarding': {
+    'skip': 'Skip',
+    'back': 'Back',
+    'next': 'Next',
+    'get_started': 'Get Started',
+    'step_indicator': 'Step {current} of {total}',
+    'step1_title': 'Private by Design',
+    'step1_body':
+        'Brick VPN is open-source, free of ads and trackers, and keeps your '
+        'server profiles encrypted locally on your phone.',
+    'step1_point1': 'Zero traffic logs; anonymous diagnostics off by default',
+    'step1_point2': 'Android Keystore encryption for saved profiles',
+    'step2_title': 'Your Servers, Your Control',
+    'step2_body':
+        'Brick VPN downloads its official free server directory '
+        'automatically over HTTPS. Browse servers by country and city, and '
+        'updates happen on their own — no account required.',
+    'step2_point1': 'Free to start — no account required',
+    'step2_point2': 'Supports modern encrypted tunnel protocols',
+    'step3_title': 'Android VPN Permission',
+    'step3_body':
+        'The first time you tap Connect, Android will ask for permission to '
+        'create a VPN connection. This lets Brick VPN route your traffic '
+        'through an encrypted tunnel.',
+    'step3_point1': 'Shown by Android once for your protection',
+    'step3_point2': 'You can disconnect or revoke access anytime',
+  },
   'navigation': {
     'home': 'Home',
     'servers': 'Servers',
@@ -521,8 +562,8 @@ Map<String, dynamic> testEnglishTranslations() => const {
     'placeholder': 'Server list will appear here',
     'empty_title': 'No servers added yet',
     'empty_subtitle':
-        'Add a server link, scan a QR code, or import a subscription to '
-        'get started.',
+        "Servers sync automatically from Brick VPN's official directory. Tap "
+        'Update Servers to retry.',
     'standalone_section': 'Standalone Servers',
     'subscription_section': 'Subscription Servers',
     'standalone_badge': 'Standalone',
@@ -549,6 +590,36 @@ Map<String, dynamic> testEnglishTranslations() => const {
     'storage_error': 'Failed to save server changes to local storage',
     'read_only_error':
         'Subscription servers are read-only. Duplicate as standalone to edit.',
+    'update_servers': 'Update Servers',
+    'updating_servers': 'Updating...',
+    'search_hint': 'Search country, city, or protocol...',
+    'no_matches_title': 'No matching servers',
+    'clear_search': 'Clear search',
+    'active_spotlight_label': 'Active Server',
+    'other_locations': 'Other Locations',
+    'cities_and_servers': '{cities} cities · {servers} servers',
+    'server_count': '{count} servers',
+    'server_count_one': '1 server',
+    'disclosure_title': 'Sync Server Directory',
+    'disclosure_body':
+        'Brick VPN can fetch encrypted server configurations from a remote '
+        'feed when you request an update. No personal data or browsing '
+        'history is ever sent; anonymous server-health diagnostics are off '
+        'by default.',
+    'disclosure_point_encrypted':
+        'All tunnels use end-to-end encrypted protocols',
+    'disclosure_point_zero_telemetry':
+        'Zero ads, zero trackers; diagnostics off by default',
+    'disclosure_point_local_storage':
+        'Saved profiles are encrypted locally on-device',
+    'disclosure_accept': 'Continue & Sync',
+    'disclosure_cancel': 'Not Now',
+    'sync_in_progress': 'Updating server directory...',
+    'sync_success': 'Server directory updated — {count} servers',
+    'sync_failed_offline':
+        "Couldn't reach the server directory. Check your connection and try "
+        'again.',
+    'sync_cached_notice': 'Showing servers saved on this device.',
   },
   'home': {
     'title': 'Brick VPN',
@@ -556,6 +627,15 @@ Map<String, dynamic> testEnglishTranslations() => const {
     'go_to_settings': 'Go to Settings',
     'active_server': 'Active Server',
     'active_server_prefix': 'Active: {name}',
+    'tap_to_connect': 'Tap to connect',
+    'tap_to_disconnect': 'Tap to disconnect',
+    'tap_to_cancel': 'Tap to cancel',
+    'tap_to_unblock': 'Tap to unblock',
+    'select_server_hint': 'Choose server',
+    'choose_server_subtitle':
+        'Pick a location from the Servers tab to start a secure tunnel.',
+    'browse_servers': 'Browse Servers',
+    'orb_status_kill_switch': 'Traffic Blocked',
   },
   'settings': {
     'title': 'Settings',
@@ -567,7 +647,7 @@ Map<String, dynamic> testEnglishTranslations() => const {
     'theme_light': 'Light',
     'theme_dark': 'Dark',
     'lang_en': 'English',
-    'lang_de': 'Deutsch',
+    'lang_fa': 'فارسی',
     'live_logs': 'Live Logs',
     'live_logs_subtitle': 'Real-time diagnostic logs',
     'auto_reconnect': 'Auto-Reconnect',
@@ -580,6 +660,33 @@ Map<String, dynamic> testEnglishTranslations() => const {
     'battery_optimization_unrestricted':
         'Unrestricted (recommended for stable VPN)',
     'no_logs': 'No log entries yet',
+    'section_connection': 'Connection & Resilience',
+    'section_appearance': 'Appearance & Language',
+    'section_diagnostics_about': 'Diagnostics & About',
+    'about_version': 'App Version',
+    'privacy_policy': 'Privacy Policy',
+    'anonymous_probe': 'Anonymous Server Health Diagnostics',
+    'anonymous_probe_subtitle':
+        'Off by default. Sends only anonymous server reachability, latency, '
+        'coarse network class, and an hour-bucketed timestamp — never IP '
+        'addresses, browsing, or device IDs.',
+    'privacy_policy_subtitle':
+        'No ads, no trackers, diagnostics off by default',
+    'privacy_policy_body':
+        'Brick VPN collects no personal data, browsing history, DNS queries, '
+        'or analytics on any plan. The Free plan needs no account. Anonymous '
+        'server health diagnostics are off by default; if you turn them on, '
+        'only a hashed server identifier, reachability, latency, coarse '
+        'network class, and an hour-bucketed timestamp leave your device. If '
+        'an optional Brick Pro plan launches later, only a minimal account '
+        'identifier and subscription entitlement status would be stored, and '
+        'this policy would be updated before then. Server configurations stay '
+        'encrypted on your device '
+        'using Android Keystore.',
+    'open_source_license': 'Open-Source License',
+    'open_source_license_subtitle': 'GNU GPL v3.0 or later — view attributions',
+    'view_licenses': 'View Open-Source Notices',
+    'close': 'Close',
   },
   'logs': {
     'title': 'Logs',
@@ -705,6 +812,9 @@ Widget localizedMaterialApp({Widget? home}) {
     builder: (context) => MaterialApp(
       localizationsDelegates: context.localizationDelegates,
       supportedLocales: context.supportedLocales,
+      // Mirrors `MyApp`, which pins the resolved locale to easy_localization's
+      // so `fa` actually renders right-to-left in tests.
+      locale: context.locale,
       home: home,
     ),
   );
@@ -732,7 +842,7 @@ Widget localizedApp({
   Locale startLocale = const Locale('en'),
 }) {
   return EasyLocalization(
-    supportedLocales: const <Locale>[Locale('en'), Locale('de')],
+    supportedLocales: const <Locale>[Locale('en'), Locale('fa')],
     path: 'assets/translations',
     startLocale: startLocale,
     fallbackLocale: const Locale('en'),

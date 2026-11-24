@@ -24,9 +24,9 @@ void main() {
       );
 
       expect(find.byType(HomeScreen), findsOneWidget);
-      // HomeScreen shows the AppBar title plus the empty-state message; it
-      // does not render `home.label`.
-      expect(find.widgetWithText(AppBar, 'Brick VPN'), findsOneWidget);
+      // HomeScreen renders its product title in the compact brand bar instead
+      // of an AppBar, plus the guided empty-state message.
+      expect(find.text('Brick VPN'), findsOneWidget);
       expect(find.text('No saved servers yet'), findsOneWidget);
       expect(find.byType(SettingsScreen), findsNothing);
     });
@@ -42,7 +42,10 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(ServersScreen), findsOneWidget);
-      expect(find.widgetWithText(AppBar, 'Servers'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey<String>('servers_update_button')),
+        findsOneWidget,
+      );
       expect(find.byType(HomeScreen), findsNothing);
     });
 

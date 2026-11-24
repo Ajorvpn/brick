@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:mobile/features/connection/presentation/screens/add_server_screen.dart';
 import 'package:mobile/features/connection/presentation/screens/home_screen.dart';
 import 'package:mobile/features/connection/presentation/screens/qr_scan_screen.dart';
@@ -78,7 +81,7 @@ void main() {
         expect(dataSource.records, isEmpty);
 
         // Navigate from HomeScreen to AddServerScreen
-        await tester.tap(find.text('Add Server'));
+        unawaited(tester.element(find.byType(HomeScreen)).push('/add-server'));
         await tester.pumpAndSettle();
         expect(find.byType(AddServerScreen), findsOneWidget);
 
@@ -134,7 +137,7 @@ void main() {
         expect(dataSource.records, isEmpty);
 
         // Navigate from HomeScreen to AddServerScreen
-        await tester.tap(find.text('Add Server'));
+        unawaited(tester.element(find.byType(HomeScreen)).push('/add-server'));
         await tester.pumpAndSettle();
         expect(find.byType(AddServerScreen), findsOneWidget);
 
@@ -183,7 +186,7 @@ void main() {
           scannerBuilder: mockScanner,
         );
 
-        await tester.tap(find.text('Add Server'));
+        unawaited(tester.element(find.byType(HomeScreen)).push('/add-server'));
         await tester.pumpAndSettle();
         await tester.tap(
           find.byKey(const ValueKey<String>('add_server_scan_qr_button')),
@@ -231,7 +234,7 @@ void main() {
           scannerBuilder: mockScanner,
         );
 
-        await tester.tap(find.text('Add Server'));
+        unawaited(tester.element(find.byType(HomeScreen)).push('/add-server'));
         await tester.pumpAndSettle();
         await tester.tap(
           find.byKey(const ValueKey<String>('add_server_scan_qr_button')),
@@ -283,7 +286,7 @@ void main() {
         scannerBuilder: mockScanner,
       );
 
-      await tester.tap(find.text('Add Server'));
+      unawaited(tester.element(find.byType(HomeScreen)).push('/add-server'));
       await tester.pumpAndSettle();
       await tester.tap(
         find.byKey(const ValueKey<String>('add_server_scan_qr_button')),
@@ -464,7 +467,7 @@ void main() {
         scannerBuilder: (context, onDetect) => const SizedBox(),
       );
 
-      await tester.tap(find.text('Add Server'));
+      unawaited(tester.element(find.byType(HomeScreen)).push('/add-server'));
       await tester.pumpAndSettle();
       await tester.tap(
         find.byKey(const ValueKey<String>('add_server_scan_qr_button')),

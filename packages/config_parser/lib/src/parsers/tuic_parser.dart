@@ -124,7 +124,7 @@ Result<OutboundConfig, ConfigParseError> parseTuicUri(String uri) {
         // TUIC is QUIC-over-TLS; TLS is always on.
         enabled: true,
         serverName: (sni != null && sni.isNotEmpty) ? sni : host,
-        alpn: (alpn != null && alpn.isNotEmpty) ? alpn.split(',') : null,
+        alpn: parseAlpnQueryValue(alpn),
       ),
       // `disable_sni` exists in the sing-box TLS schema but has no field on
       // the domain `TlsSettings` type. `core_domain` is frozen for this task,

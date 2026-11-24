@@ -131,6 +131,8 @@ void main() {
         expect(find.byType(SettingsScreen), findsOneWidget);
 
         // Tap Live Logs tile
+        await tester.ensureVisible(find.widgetWithText(ListTile, 'Live Logs'));
+        await tester.pumpAndSettle();
         await tester.tap(find.widgetWithText(ListTile, 'Live Logs'));
         await tester.pumpAndSettle();
 

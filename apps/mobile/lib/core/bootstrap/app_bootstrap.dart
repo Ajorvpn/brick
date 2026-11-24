@@ -50,15 +50,35 @@ class AppBootstrap {
   ///    [FakeAppPreferencesRepository] with safe defaults rather than crashing
   ///    on boot.
   ///
+  ///    **Concurrency (Product Alignment #2):** steps 2, 3 and 4 are
+  ///    independent I/O domains, so they are dispatched together and awaited
+  ///    once via [Future.wait] instead of one-after-another. Cold-start
+  ///    pre-frame cost therefore drops from `localization + preferences +
+  ///    getStatus()` to `max(...)`.
+  ///
   /// 4. **Riverpod Provider Container Assembly (`ProviderContainer`)**
   ///    Assembles the root container with all production overrides
   ///    ([appPreferencesRepositoryProvider] and [vpnEngineProvider]).
   ///
   /// 5. **Cold-Boot VPN Resync & Theme Warm-up**
-  ///    Eagerly evaluates [themeModeProvider] and [connectionStateProvider].
-  ///    Per P4-T1, reading [connectionStateProvider] queries the native
-  ///    `VpnEngine.getStatus()` truth immediately on startup to prevent
-  ///    background/cold-boot state desync before the navigation shell renders.
+  ///    Eagerly evaluates [themeModeProvider], [connectionControllerProvider]
+  ///    and *starts* [connectionStateProvider] without awaiting it. Per P4-T1
+  ///    the stream probes the native `VpnEngine.getStatus()` truth on startup,
+  ///    and [initialConnectionStateProvider] already carries the same probe's
+  ///    result so Frame 0 renders the true state.
+  ///
+  ///    **No pre-frame blocking (Product Alignment #2):** neither
+  ///    `connectionStateProvider` nor `savedServersProvider` is awaited before
+  ///    `runApp()`. Awaiting `connectionStateProvider.future` never resolves
+  ///    from the pre-warmed emission, so it burned its entire 500 ms timeout on
+  ///    every cold start while contributing nothing the first frame could
+  ///    display. Awaiting `savedServersProvider.future` blocked the first frame
+  ///    on disk reads plus Android Keystore decryption for the same reason.
+  ///    Both providers are *started* (read into the container cascade) and
+  ///    allowed to resolve after `runApp()`: `initialConnectionStateProvider`
+  ///    already carries the probe's result so Frame 0 shows the true tunnel
+  ///    state, and HomeScreen renders `BrickSkeletonBox` placeholders until the
+  ///    decrypted server list lands.
   ///
   /// 6. **Container Return**
   ///    Returns the fully warmed [ProviderContainer] to the caller for
@@ -83,23 +103,40 @@ class AppBootstrap {
     }
 
     // -------------------------------------------------------------------------
-    // Step 2: Initialize localization engine.
-    // Loads persisted locale from disk before widgets or formatting are ready.
+    // Engine handle resolution is synchronous and side-effect free, so it is
+    // hoisted here: the native status probe can then join the parallel cohort
+    // below instead of queueing behind localization and disk reads.
     // -------------------------------------------------------------------------
-    if (ensureLocalization) {
-      await EasyLocalization.ensureInitialized();
-    }
+    final engine =
+        vpnEngineOverride ?? (Platform.isAndroid ? AndroidVpnEngine() : null);
+
+    AppPreferencesRepository? preferencesRepo;
+    ConnectionState initialStatus = const Disconnected();
 
     // -------------------------------------------------------------------------
-    // Step 3: Initialize non-secret preferences with graceful degradation.
-    // Preferences must be available before theme and container initialization.
-    // Wrapped in try-catch: if persistent storage throws, degrade to safe
-    // in-memory defaults instead of crashing on launch.
+    // Steps 2, 3 and 4 are independent, so they are STARTED together and only
+    // awaited once (Product Alignment #2 — parallel cold-start bootstrap).
+    // Serialising them added their latencies together; awaiting the same set
+    // concurrently costs only the slowest leg.
+    //
+    // Step 2: localization — persisted locale must be ready before widgets.
+    // Step 3: preferences — needed before theme + container assembly, with
+    //         graceful degradation to an in-memory repository on any failure
+    //         (disk corruption, missing channel, permission denied).
+    // Step 4: native VPN status — bounded by a strict short timeout so a slow
+    //         platform channel can never hold the first frame hostage; the
+    //         result pre-warms `initialConnectionStateProvider` so Frame 0
+    //         already renders the true state (no "Disconnected" flash).
     // -------------------------------------------------------------------------
-    AppPreferencesRepository preferencesRepo;
-    if (preferencesRepositoryOverride != null) {
-      preferencesRepo = preferencesRepositoryOverride;
-    } else {
+    final localizationFuture = ensureLocalization
+        ? EasyLocalization.ensureInitialized()
+        : Future<void>.value();
+
+    final preferencesFuture = () async {
+      if (preferencesRepositoryOverride != null) {
+        preferencesRepo = preferencesRepositoryOverride;
+        return;
+      }
       try {
         final prefs = await (preferencesLoader != null
             ? preferencesLoader()
@@ -113,15 +150,12 @@ class AppBootstrap {
         );
         preferencesRepo = FakeAppPreferencesRepository();
       }
-    }
+    }();
 
-    // -------------------------------------------------------------------------
-    // Step 4: Probe native engine status on startup to pre-warm initial state.
-    // -------------------------------------------------------------------------
-    final engine =
-        vpnEngineOverride ?? (Platform.isAndroid ? AndroidVpnEngine() : null);
-    ConnectionState initialStatus = const Disconnected();
-    if (engine != null) {
+    final statusFuture = () async {
+      if (engine == null) {
+        return;
+      }
       try {
         initialStatus = await engine.getStatus().timeout(
           const Duration(milliseconds: 500),
@@ -130,7 +164,16 @@ class AppBootstrap {
       } on Object {
         initialStatus = const Disconnected();
       }
-    }
+    }();
+
+    await Future.wait<void>([
+      localizationFuture,
+      preferencesFuture,
+      statusFuture,
+    ]);
+
+    final resolvedPreferencesRepo =
+        preferencesRepo ?? FakeAppPreferencesRepository();
 
     // -------------------------------------------------------------------------
     // Step 5: Assemble root Riverpod ProviderContainer.
@@ -146,7 +189,7 @@ class AppBootstrap {
         ProviderContainer(
             overrides: [
               appPreferencesRepositoryProvider.overrideWithValue(
-                preferencesRepo,
+                resolvedPreferencesRepo,
               ),
               initialConnectionStateProvider.overrideWithValue(initialStatus),
               if (serverProfileRepositoryOverride != null)
@@ -157,20 +200,15 @@ class AppBootstrap {
             ],
           )
           ..read(themeModeProvider)
-          ..read(connectionControllerProvider);
-
-    try {
-      await Future.wait([
-        container
-            .read(connectionStateProvider.future)
-            .timeout(const Duration(milliseconds: 500)),
-        container
-            .read(savedServersProvider.future)
-            .timeout(const Duration(milliseconds: 500)),
-      ]);
-    } on Object {
-      // Gracefully absorb warm-up timeout/error; initialStatus already injected.
-    }
+          ..read(connectionControllerProvider)
+          // Start the state stream now so the native probe and lifecycle
+          // observer are live before the shell mounts; do NOT await it.
+          ..read(connectionStateProvider)
+          // Kick off the disk/Keystore-backed server list eagerly too, but
+          // never await it: HomeScreen paints `BrickSkeletonBox` placeholders
+          // until the decrypted list lands, so blocking here would only add
+          // pre-frame latency for a frame that is designed to show skeletons.
+          ..read(savedServersProvider);
 
     return container;
   }

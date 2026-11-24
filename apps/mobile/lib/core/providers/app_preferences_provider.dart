@@ -40,14 +40,17 @@ class LocaleNotifier extends _$LocaleNotifier {
   @override
   Locale? build() {
     final repo = ref.watch(appPreferencesRepositoryProvider);
-    return repo.getLocale();
+    // Normalized so a legacy stored code (`de`) falls back to `en` instead of
+    // asking easy_localization for a bundle that no longer exists.
+    return normalizeAppLocale(repo.getLocale());
   }
 
   /// Updates and persists the selected [locale], or `null` for system default.
   Future<void> setLocale(Locale? locale) async {
-    state = locale;
+    final normalized = normalizeAppLocale(locale);
+    state = normalized;
     final repo = ref.read(appPreferencesRepositoryProvider);
-    await repo.setLocale(locale);
+    await repo.setLocale(normalized);
   }
 }
 
@@ -93,4 +96,55 @@ class KillSwitchEnabledNotifier extends Notifier<bool> {
 final killSwitchEnabledProvider =
     NotifierProvider<KillSwitchEnabledNotifier, bool>(
       KillSwitchEnabledNotifier.new,
+    );
+
+/// Manages and persists whether the first-run onboarding was completed.
+///
+/// Deliberately a plain [Notifier] rather than a `@Riverpod` annotation so no
+/// code generation is required; it mirrors [AutoReconnectEnabledNotifier].
+class OnboardingCompletedNotifier extends Notifier<bool> {
+  @override
+  bool build() {
+    final repo = ref.watch(appPreferencesRepositoryProvider);
+    return repo.hasCompletedOnboarding();
+  }
+
+  /// Marks onboarding as completed in state and in storage.
+  Future<void> markCompleted() async {
+    state = true;
+    final repo = ref.read(appPreferencesRepositoryProvider);
+    await repo.setOnboardingCompleted(completed: true);
+  }
+}
+
+/// Provides whether the first-run onboarding flow was completed.
+final onboardingCompletedProvider =
+    NotifierProvider<OnboardingCompletedNotifier, bool>(
+      OnboardingCompletedNotifier.new,
+    );
+
+/// Manages and persists the opt-in for anonymous server-health diagnostics.
+///
+/// Mirrors [KillSwitchEnabledNotifier]: the default is `false`, so diagnostics
+/// stay strictly opt-in, and flipping the switch writes through to storage
+/// immediately.
+class AnonymousProbeReportingEnabledNotifier extends Notifier<bool> {
+  @override
+  bool build() {
+    final repo = ref.watch(appPreferencesRepositoryProvider);
+    return repo.isAnonymousProbeReportingEnabled();
+  }
+
+  /// Updates and persists the preference.
+  Future<void> setEnabled({required bool enabled}) async {
+    state = enabled;
+    final repo = ref.read(appPreferencesRepositoryProvider);
+    await repo.setAnonymousProbeReportingEnabled(enabled: enabled);
+  }
+}
+
+/// Provides whether anonymous server-health diagnostics are enabled.
+final anonymousProbeReportingEnabledProvider =
+    NotifierProvider<AnonymousProbeReportingEnabledNotifier, bool>(
+      AnonymousProbeReportingEnabledNotifier.new,
     );

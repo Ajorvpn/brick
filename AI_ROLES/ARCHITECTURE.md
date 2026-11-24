@@ -2072,21 +2072,626 @@ Consolidates the bottom shell navigation into an architectural, floating **3-Tab
      - `Error` -> Crimson solid beacon (`colors.stateError`).
      - `Disconnected` -> Inactive (`const SizedBox.shrink()`).
 
+#### Chunk 2C — Hierarchical Country -> City/State Server Browser & Play-Compliant Update Servers UI
+
+##### Purpose & Scope
+Replaces the placeholder server list with the full "Obsidian Glass" hierarchical browser in `apps/mobile/lib/features/servers/`, introduces a Play-compliant opt-in remote feed disclosure flow, and keeps every Phase 5–9 server-management behaviour (edit, duplicate, delete, refresh, cascade delete, active-selection persistence, credential redaction) intact.
+
+##### Core Architectural Pillars
+1. **Pure-Dart Location Inference (`server_location_group.dart`):**
+   - **`ServerLocationParser`:** Derives `countryCode` (ISO-2), canonical English `countryName`, `flagEmoji`, and optional `cityOrState` from an untrusted server remark. Recognizes Unicode regional-indicator flags, full country names, ISO-2 codes/aliases (`UK`, `USA`, `UAE`), strips protocol/premium tokens, counters, and latency suffixes; unrecognized remarks fall back to `ZZ` / `Other Locations`.
+   - **`ServerLocationGrouper.group(servers, searchQuery:)`:** Builds an immutable `Country -> City/State -> Servers` tree, filters case-insensitively across name/protocol/endpoint/country/city when searching, sorts countries alphabetically with `ZZ` last and cities alphabetically with city-less servers last, and exposes `totalServerCount` per country for header counts.
+2. **Verified Presentation Tiles (`server_profile_tile.dart`):**
+   - **`ServerProfileTile`:** Selection ring, monospace endpoint, source badge (standalone vs. subscription name), protocol pill, and Edit/Duplicate/Delete actions. Every action enforces `BrickSpacing.minTouchTarget` (48 x 48 dp); `onEdit` is supplied only for standalone servers, preserving the read-only subscription contract.
+   - **`BrokenServerTile`:** Crimson-accented, credential-free recovery row carrying only the safe `ConfigParseError.message` reason.
+3. **Play-Compliant Update Servers Disclosure (`update_servers_disclosure_sheet.dart`):**
+   - `UpdateServersDisclosureSheet.show(context)` returns `true` only when the user taps `update_servers_disclosure_accept`; the sheet states the remote-fetch purpose, zero-telemetry promise, and local-only encrypted storage before any network directory sync, and uses `colors.onAccent` (never `Colors.white`) for WCAG AA contrast on the brand fill.
+4. **Redesigned `ServersScreen` (`ConsumerStatefulWidget`):**
+   - Custom Obsidian header (emblem, title, monospace total-count pill, 48dp `Update Servers` tactile pill) replaces the stock `AppBar`; manual Add Server / Add Subscription buttons are hidden per Human-Approved UX Refinement #3 while `/add-server` and `/add-subscription` routes remain fully reachable.
+   - Instant search clears/filters the tree, reports `servers_no_matches_state` with a clear-search recovery action, and forces matched countries expanded while search is active.
+   - Active server spotlight (with connection-aware accent from `connectionStateProvider`), subscription feed strip (refresh + cascade delete), smart default expansion (active country + all countries when `<= 3`), and broken-server recovery section.
+   - Local UI state only: `_searchController`, `_searchQuery`, `_expandedCountryCodes`, `_initializedExpansion`; all persistence continues through `serverManagementControllerProvider` and existing Riverpod providers.
+   - Layout is clamped to `BrickSpacing.maxReadableWidth` (600dp), uses only the 4-size / 3-weight typography scale, and was verified at 360x640 and 412x915 in dark and light mode.
+
+### 13.3 P11-T3 — Screen-by-Screen Redesign Pass: Connection, Stats, and Logs
+
+#### Purpose & Scope
+Applies the "Obsidian Glass & Brick Ember" language to the app's most state-driven, highest-visibility surfaces: the primary connect/disconnect orb, live telemetry, session information, and the diagnostic log viewer. The underlying state machine, stream wiring, redaction logic, and persistence contracts are untouched — this is strictly a presentation-layer pass. Every behaviour added here is a direct function of the authoritative `connectionStateProvider` / `killSwitchProvider` / `autoReconnectProvider` streams, never local optimistic state.
+
+#### Core Architectural Pillars
+1. **`BrickPowerOrb` (the primary connect/disconnect surface):**
+   - Single source of truth: the orb only renders the state emitted by the engine stream (Invariant 1). It never infers `connected` from a successful `start()` acknowledgement.
+   - Deterministic priority order for display state: `KillSwitchBlocking` > `autoReconnect.isReconnecting` > authoritative `connectionState`, so a fail-closed kill switch always outranks a stale tunnel state and an in-flight recovery is never masked by the last emitted tunnel state.
+   - Distinct visual treatment per state (`disconnected`, `connecting`, `connected`, `reconnecting`, `disconnecting`, `error`, `killSwitch`) with the rotation ticker confined to transitional states (connecting/reconnecting/disconnecting) and the ambient breathing ticker confined to peak safety states (connected/killSwitch), all stopped on state change and disposed on unmount.
+   - Tap affordances are state-derived: `onTap` is `null` while disconnecting, and the semantic label / action hint are resolved in the same priority order so screen readers hear exactly what a tap will do.
+2. **`BrickTelemetryCard`, `ConnectionStateBadge`, `ThroughputReadout`, `SessionInfoPanel`:**
+   - Telemetry renders exclusively from the 1 Hz `trafficStats` stream; text uses `BrickTypography.monoMetric*` which enforces `FontFeature.tabularFigures()` so counters never jitter horizontally.
+   - A stats-stream failure is contained in its own failure domain and degrades to an explicit unavailable readout instead of blanking connection state (Invariant 2).
+   - Each widget watches only the provider slice it displays, preserving the fine-grained rebuild isolation established in `P6-T2`: 1 Hz stats rebuild the telemetry card, not the orb or the screen chrome.
+3. **Redesigned `HomeScreen`:**
+   - Custom Obsidian header (no `AppBar`), atmosphere glow rendered as a `BoxDecoration.gradient` only (never mixed with `color`), the orb as the single primary action, and an active-server card that routes to `/servers` (manual add-server / add-subscription affordances were removed from the dashboard per Human-Approved UX Refinement #3 while their routes remain reachable).
+   - `orbSemanticLabel` resolves in kill-switch-first priority so the accessibility label always matches the action the tap performs.
+4. **Redesigned `LiveLogsScreen`:**
+   - Preserves 100% of the behavioural contract: `ListView.builder` virtualization (300+ entries stay lazily mounted), auto-scroll pause at `distanceToBottom > 48.0` and resume at `<= 12.0`, the non-dismissible (`barrierDismissible: false`) privacy warning dialog, and the fresh `ref.read(structuredLogEntriesProvider)` snapshot taken *after* the user confirms the copy warning.
+   - All 8 semantic `ValueKey`s and the `AppBar` title contract are retained so `app_shell_test.dart` and `phase6_e2e_journey_test.dart` pass unchanged.
+   - Obsidian chrome: monospace entry-count badge in the title, `48x48dp` copy/clear actions, glass empty state with `Icons.terminal_rounded`, a per-level semantic left rail, and a level pill using `bgAlpha = isDark ? 0.14 : 0.07` / `borderAlpha = isDark ? 0.36 : 0.28` to keep the composite contrast at WCAG AA (matching the verified `BrickProtocolPill` recipe).
+   - Typography is 100% `BrickTypography.monoLog` (12sp + `FontFeature.tabularFigures()`); zero raw `'monospace'` families, zero `10sp`/`11sp`/`13sp`, zero `FontWeight.w600`. Brand fills (`logs_copy_confirm_button`, `logs_jump_to_latest_button`) use `colors.onAccent`, never `Colors.white`.
+   - Level hues: `fatal`/`error` = soft crimson `#FCA5A5` (dark) / deep crimson `#B91C1C` (light); `warning` = solar amber `#FBBF24` (dark) / `colors.stateConnecting` (light); `info` = `colors.brandBrick`; `debug`/`trace` = `colors.textMuted`.
+
+### 13.4 P11-T4 — Screen-by-Screen Redesign Pass: Settings, Preferences, About, and First-Run Onboarding
+
+#### Purpose & Scope
+Completes the Phase 11 presentation pass on the two remaining user-facing surfaces: the settings/preferences hub (now including About, Privacy Policy and open-source attribution) and a calm three-step first-run onboarding flow. No provider contracts, secret-storage boundaries or existing navigation branches were changed; the pass is presentation-layer plus one `None`-sensitivity preference and a router gate.
+
+#### Redesigned `SettingsScreen`
+- Three Obsidian Glass cards rather than a flat `ListView`: **Connection & Resilience** (auto-reconnect, kill switch, battery optimization), **Appearance & Language** (theme, language), and **Diagnostics & About** (Live Logs, Privacy Policy, Open-Source License, App Version), each opened by a `BrickSectionHeader`.
+- Spacing is true 8-point: 8dp between a section header and its card, 24dp between sections. Zero `dense: true` on any `ListTile`/`SwitchListTile`, so every row keeps its 48dp+ tap target (`app_shell_test` / `live_logs_screen_test` required `ensureVisible` only because the taller rows push the Logs tile below the fold at 360x640).
+- Every legacy `ValueKey` and provider binding is preserved (`settings_kill_switch_tile`, `settings_battery_optimization_tile`, plus the new `settings_theme_tile`, `settings_language_tile`, `settings_privacy_policy_tile`, `settings_license_tile`, `settings_version_tile`), and `AppBar(title: Text('settings.title'.tr()))` is kept so existing assertions pass unchanged.
+- Safe back action: `context.canPop() ? context.pop() : context.go('/')`, with a 48dp minimum button size.
+- Theme and language selection use `SimpleDialog` + `SimpleDialogOption`; each option is wrapped in a `ConstrainedBox(minHeight: 48)` and shows an `Icons.check_rounded` (18dp, `colors.brandBrick`) trailing marker on the active choice.
+- Privacy Policy opens a root-navigator (`useRootNavigator: true`) bottom sheet that is `isScrollControlled`, bottom-aligned via `Align(alignment: bottomCenter, heightFactor: 1.0)`, wraps in `SafeArea(top: false)` + `SingleChildScrollView`, shows a 36x4 drag handle, and closes with a `FilledButton` whose foreground is `colors.onAccent` (never `Colors.white`).
+- Open-Source License renders a `GPL-3.0-or-later` attribution dialog and invokes `showLicensePage(useRootNavigator: true)` from a 48dp `FilledButton` (`settings_view_licenses_button`, using `colors.brandBrick` / `colors.onAccent`), alongside a 48dp `OutlinedButton` close action.
+- The app version is shown in a monospace (`BrickTypography.monoLog`) pill badge.
+
+#### First-Run Onboarding (`OnboardingScreen`)
+- `apps/mobile/lib/features/onboarding/presentation/screens/onboarding_screen.dart` — a `ConsumerStatefulWidget` hosting a 3-page `PageView` (Private by Design / Your Servers, Your Control / Android VPN Permission) with a gradient-only ambient glow (`DecoratedBox(key: onboarding_atmosphere_glow)` with `RadialGradient` and NO `color:`), 80dp tinted glass step squircles, a mono step badge (`Step {current} of {total}`), a `BrickGlassCard(elevated: true)` trust list per step, an animated 3-dot progress indicator using `BrickMotion.standard` / `BrickMotion.curveStandard`, and 48dp `Skip` / `Back` / `Next` / `Get Started` controls. Every page is wrapped in `SingleChildScrollView` so 360x640 never overflows.
+- Completion is double-tap guarded (`_isCompleting`) and resets the guard on a storage failure so the controls can never stay permanently locked.
+- Persistence: `AppPreferencesRepository.hasCompletedOnboarding()` / `setOnboardingCompleted({required bool completed})`. The production implementation stores a `None`-sensitivity boolean under `brick.preferences.onboarding_completed` and returns `?? false`, so a real first install sees onboarding exactly once. `FakeAppPreferencesRepository` defaults `initialOnboardingCompleted` to `true`, which is what keeps every pre-existing widget/E2E test booting straight into the shell.
+- Riverpod: `onboardingCompletedProvider` is a plain `NotifierProvider<OnboardingCompletedNotifier, bool>` (no code generation, no `.g.dart` churn), mirroring `autoReconnectEnabledProvider` / `killSwitchEnabledProvider`.
+- Routing: `appRouter` gained a top-level `/onboarding` route (`name: 'onboarding'`) plus a `redirect` that reads `ref.read(onboardingCompletedProvider)` — deliberately never `ref.watch`, which would rebuild and destroy the `keepAlive` router singleton asserted by `app_router_test.dart`. The redirect sends an incomplete first run to `/onboarding` and bounces a completed user away from `/onboarding` back to `/`; all existing shell branches (`/`, `/servers`, `/settings`, `/settings/logs`) and standalone routes (`/logs`, `/add-server`, `/add-subscription`) are untouched.
+- Localization: 17 `onboarding.*` keys added to `en.json`, `fa.json` and `testEnglishTranslations()` with verified EN/FA parity and a single trailing newline. (Originally shipped as German `de`; reconsidered in Alignment #1B — see Section 13.8.)
+
+#### Verification Posture
+Automated: `p11_t4_settings_screen_test.dart` (5 tests) and `p11_t4_onboarding_test.dart` (6 tests: persistence/restart, first-run redirect + 3-step walkthrough + back navigation, skip + re-entry bypass, gradient/onAccent/48dp/typography guard, 360x640 & 412x915 dark/light across all steps, EN/FA parity + Persian render), plus a single-batched 18-suite Phase 11 + core regression run (122 tests) and `packages/ui_theme` (15 tests). **Not verified:** live physical-device first-run visual walkthrough — Chunk 4C's ADB leg reported `ADB_STATUS=no_device_detected`, so no APK build, install, PID or logcat result is claimed and human visual sign-off remains pending.
+
+### 13.5 P11-T5 — Accessibility Pass
+
+#### Purpose & Scope
+A dedicated accessibility remediation pass across the five redesigned Phase 11 surfaces plus the app shell: frosted-dock geometry, large-text scaling, WCAG AA contrast, TalkBack semantics, WCAG 2.1 SC 2.3.3 reduced motion, and the bundled SIL OFL-1.1 typography assets. Presentation-layer only — no provider contracts, routing branches or storage semantics were changed.
+
+#### Real Frosted Glass Dock
+- `AppShell` now builds `Scaffold(extendBody: true)` and the opaque outer `DecoratedBox(color: colors.background)` that used to sit behind `_ObsidianGlassDock` was removed, so the dock's surface/sheen layers and its `BackdropFilter` blur scrolled content directly instead of a flat backdrop. Zero `Opacity` widgets are involved; the sheen remains a separate `DecoratedBox` so no `BoxDecoration` ever carries `color` and `gradient` together.
+- Because content now runs underneath the dock, every scrolling surface reserves a dock-aware bottom inset, and the exact constants differ per surface: `HomeScreen`, `ServersScreen` (populated list) and `SettingsScreen` use `MediaQuery.paddingOf(context).bottom + BrickSpacing.xl`; `ServersScreen`'s empty state uses `MediaQuery.paddingOf(context).bottom + BrickSpacing.lg`; and `LiveLogsScreen` uses `bottomInset + BrickSpacing.section` on its `ListView.builder` and plain `bottomInset` on its `logs_jump_to_latest_button` `FloatingActionButton.extended`, where `bottomInset = MediaQuery.paddingOf(context).bottom`, so the pill clears the dock inside the shell and stays at a `0.0` offset when the screen is opened standalone at `/logs`.
+
+#### 1.5x / 2.0x Large-Text Scaling
+Automated audit at `360 x 640` with `TextScaler.linear(1.5)` and `TextScaler.linear(2.0)` across `HomeScreen`, `ServersScreen`, `SettingsScreen`, `LiveLogsScreen`, `OnboardingScreen` and the `AppShell` dock, asserting zero `RenderFlex` overflow without weakening any assertion or inflating the viewport. Real defects fixed:
+- `BrickSectionHeader` (the single root cause of every grouped-header overflow) — the fixed-width title `Text` plus a trailing `Spacer()` became `Expanded(Row(Flexible(title with maxLines: 1 + ellipsis), count pill))`, with `trailing` still pinned right. Typography untouched (`sizeLabel` 12sp floor, `w500`, `letterSpacing: 0.8`).
+- `HomeScreen` — the brand-bar badge is wrapped in `Flexible` + `FittedBox(scaleDown)`.
+- `ServersScreen` — the update pill is wrapped in `Flexible`.
+- `SessionInfoPanel` — the duration pill is `Flexible` + `FittedBox(scaleDown)`.
+- `LiveLogsScreen` — the entry metadata row became a `Wrap(spacing: xs, runSpacing: xxs)`, so badge/time/source flow onto a second line instead of truncating.
+
+#### WCAG AA Contrast Hardening
+Light-mode log level pills moved off translucent `brandBrick` onto explicit deep hues — `#92400E` (warning), `#9A3412` (info), `#B91C1C` (error). Recomputed composited ratios are `5.89:1` and `6.04:1` for warning/info (previously `4.25:1` and `4.32:1`, i.e. failing). Dark mode keeps `brandBrick`, which already passes.
+
+#### TalkBack Semantics
+A semantics-tree audit covers every screen and every dock tab: tabs announce their label, selected state and tap action; the power orb announces its action; and the purely decorative onboarding 3-dot progress indicator and 80dp step squircle are now wrapped in `ExcludeSemantics`, so the mono `Step {current} of {total}` label is the only spoken source of that information.
+
+#### WCAG 2.1 SC 2.3.3 — Reduced Motion
+- `BrickPowerOrb` and `BrickStatusDot` read `MediaQuery.disableAnimationsOf(context)` in `didChangeDependencies`. When Android's "Remove animations" / "Reduce motion" setting is on, both widgets **stop and reset** their controllers (not merely pause), so no ticker survives and no mid-rotation frame is frozen.
+- The orb passes `isBusy: false` and `pulsing: false` under reduced motion, so connecting/reconnecting/disconnecting render a crisp static 240-degree arc with a static status dot instead of a spinning sweep, and `AnimatedScale` / `AnimatedSwitcher` use `Duration.zero`.
+- `OnboardingScreen._goToPage` calls `_pageController.jumpToPage(index)` under reduced motion instead of `animateToPage`.
+
+#### Bundled SIL OFL-1.1 Typography (Invariant 37)
+- `apps/mobile/assets/fonts/` ships `InterVariable.ttf` (879,708 B) and three static JetBrains Mono instances (`Regular`/`Medium`/`Bold`, ~25 KB each) produced with `pyftsubset` over the Latin-1, punctuation, arrow and box-drawing ranges while retaining the `tnum`/`zero`/`lnum` OpenType features so `FontFeature.tabularFigures()` keeps working. Total payload: **955,376 B**, well under the 5 MB ceiling.
+- `apps/mobile/pubspec.yaml` registers the families as `Inter` and `JetBrains Mono` — the exact strings in `BrickTypography.primaryFontFamily` / `monoFontFamily` — with weights 400/500/700 for the mono family. Nothing is downloaded at runtime.
+- `BrickTypography.textTheme` now attaches explicit `FontVariation('wght', 400/500/700)` to every one of the fifteen styles, so the single variable Inter file renders true Regular/Medium/Bold optical weights on both Skia and Impeller instead of synthesized bolding.
+- License compliance is auditable in-repo: `OFL-Inter.txt` and `OFL-JetBrainsMono.txt` ship beside the fonts, copied from the distribution notices.
+
+#### Verification Posture
+Automated: `apps/mobile/test/p11_t5_accessibility_audit_test.dart` (5 tests: frosted-dock geometry guard, Home/Onboarding and Servers/Settings/LiveLogs large-text sweeps, TalkBack semantics audit, pill contrast math), `apps/mobile/test/p11_t5_fonts_and_reduced_motion_test.dart` (4 tests: bundled assets/sfnt magic/pubspec wiring/OFL notices, optical weights and tabular figures, app-wide reduced-motion `pumpAndSettle()`, onboarding instant page jump), and Test 6 in `packages/ui_theme/test/brick_connection_widgets_test.dart` (zero active tickers under reduced motion, toggled both ways), on top of a single-batched 21-suite Phase 11 + core regression run, with format and analyze clean. **Not verified:** the live ADB leg reported `ADB_STATUS=no_device_detected` (empty `adb devices` list), so no APK build/install, running PID or logcat result is claimed; the manual TalkBack walkthrough on a physical device remains the single open acceptance criterion for `P11-T5`.
+
+### 13.6 P11-T6 — Micro-interactions, Animation, and Perceived-Performance Polish
+
+#### Optical-weight unification: `BrickTypography.uiStyle`
+- `InterVariable.ttf` has no static per-weight siblings, so a bare `TextStyle(fontWeight: ...)` renders the default 400 instance for every weight. `BrickTypography.uiStyle({fontSize, fontWeight, color, height, letterSpacing})` resolves `regularWeight` / `mediumWeight` / `boldWeight` (`FontVariation('wght', 400/500/700)`) from the requested `FontWeight` and is now the only sanctioned way to build a bespoke `Inter` label.
+- Adopted in `BrickSectionHeader`, `BrickTelemetryCard` and both `BrickPowerOrb` labels (hint + status), preserving the exact 12sp/18sp sizes, `w500`/`w700` weights and `0.8` tracking. `BrickTypography.textTheme` already carried the same variations (Section 13.5), so the whole tree now renders genuine optical weights.
+
+#### `BrickSkeletonBox` — perceived-performance placeholders
+- A `SingleTickerProviderStateMixin` controller (1400 ms) sweeps a translucent `LinearGradient` sheen across a **separate** child `DecoratedBox`, so the solid `surfaceElevated` + 1 px `glassBorder` base and the gradient never share one `BoxDecoration`.
+- WCAG 2.1 SC 2.3.3: `MediaQuery.disableAnimationsOf(context)` is read in `didChangeDependencies`; when on, the controller is stopped **and reset** and the sheen layer is not built at all, leaving zero active tickers.
+- The box is wrapped in `ExcludeSemantics`, so TalkBack never announces empty shimmer rectangles.
+- `HomeScreen`'s loading card (`home_server_loading_skeleton`) reproduces the active-server footprint (42 dp flag tile, 14 dp title bar, 12 dp endpoint bar at 60% width) and `ServersScreen`'s browser (`servers_loading_skeleton`) reproduces the 48 dp search field plus three country-card rows, so neither screen shifts on first data. Both replaced their raw `CircularProgressIndicator` placeholders; no existing test depended on those spinners.
+
+#### Tactile haptics (acknowledgement, never state inference)
+- `BrickPowerOrb` tap: `HapticFeedback.mediumImpact`; `BrickGlassCard`, `AppShell` dock branch change, `ServersScreen` country disclosure + server selection, `SettingsScreen` auto-reconnect / kill-switch toggles and `OnboardingScreen` completion: `HapticFeedback.selectionClick`.
+- Every tick fires on the **gesture** only. The orb's haptic runs before `widget.onTap!()`, and `VpnEngine` Invariant 1 still holds: a tap dispatches a command and never renders `Connected`. Re-tapping the already-active dock tab fires nothing (no state change occurs).
+
+#### Calm motion, all gated on reduced motion
+- `HomeScreen`'s atmosphere layer became a `TweenAnimationBuilder<Color?>(ColorTween(end: orbViewModel.atmosphereColor))` at `BrickMotion.stateTransition`; the builder still returns the keyed, **gradient-only** `DecoratedBox`, so `color` is always `null`. It reads only the orb view model, so the 1 Hz traffic/duration tickers (isolated in `ThroughputReadout` / `SessionInfoPanel`, Section 8.2 / `P6-T2`) never rebuild it; `p11_t6_micro_interactions_test.dart` Test 2 asserts the `BrickPowerOrb` widget instance stays identical across five `TrafficStats` ticks.
+- `BrickPowerOrb`'s glass ring became an `AnimatedContainer` so the state-accent border and drop shadow lerp instead of snapping; the keyed fill layer stays gradient-free.
+- `BrickGlassCard` press scale uses `Duration.zero` under reduced motion and now dispatches `selectionClick` from its own interactive `onTap` wrapper.
+- `ServersScreen` wraps each country body in `AnimatedSize(alignment: topCenter)` and gives `AnimatedRotation` the same duration; `AppShell`'s capsule + underline `AnimatedContainer`s and `OnboardingScreen`'s 3-dot indicator read `MediaQuery.disableAnimationsOf(context)` and collapse to `Duration.zero`. The dock still contains zero `Opacity` widgets.
+
+#### Verification Posture
+Automated: `packages/ui_theme/test/brick_micro_interactions_test.dart` (3 tests: `uiStyle` optical weights, skeleton shimmer + decoration split + clean disposal + zero-ticker reduced motion, haptic dispatch on orb/card and silence on a disabled orb) and `apps/mobile/test/p11_t6_micro_interactions_test.dart` (4 tests: loading skeletons in both motion modes, atmosphere/Invariant 1/1 Hz isolation, accordion + dock + settings haptics, 360x640 and 412x915 dark/light overflow sweep), plus `p11_t5_fonts_and_reduced_motion_test.dart` Test 4 now asserting the `ExcludeSemantics` wrappers. `p11_t6_micro_interactions_test.dart` Test 1 covers **both** motion modes: live shimmer with `disableAnimations: false` (bounded frames, non-zero `transientCallbackCount`) and the settled, zero-ticker reduced-motion state with `disableAnimations: true`. Batched run: `packages/ui_theme` 19 tests and 22 mobile suites 152 tests, format and analyze clean. **Not verified:** the live ADB leg reported `ADB_STATUS=no_device_detected`, so no APK build/install, running PID, logcat result or on-device 60 fps measurement is claimed; physical smoothness sign-off remains open.
+
+### 13.7 P11-T7 — Phase 11 Closeout and Definition-of-Done Pass
+
+#### Frozen Phase 11 UI/UX contract
+Phase 11 is closed as a **design-system contract**, not as a feature. The following are frozen and machine-checked by `apps/mobile/test/phase11_ui_ux_closeout_test.dart`:
+- **Primitives and screens:** the seven `packages/ui_theme` widgets (`BrickGlassCard`, `BrickProtocolPill`, `BrickStatusDot`, `BrickSectionHeader`, `BrickPowerOrb`, `BrickTelemetryCard`, `BrickSkeletonBox`) plus `OnboardingScreen` stay on disk, non-empty, and SPDX-tagged `GPL-3.0-or-later`.
+- **Typography:** only `w400`/`w500`/`w700`, no `FontWeight.w600`, no raw `fontFamily: 'monospace'`; families registered in `pubspec.yaml` are byte-identical to `BrickTypography.primaryFontFamily` / `monoFontFamily`; no `google_fonts` (Invariant 37); bundled `.ttf` payload stays under 5 MB (currently 955,376 B) with both OFL notices present.
+- **Color discipline:** no `Colors.orange`, no `color` + `gradient` in one `BoxDecoration`, no `Colors.white` on `brandBrick` fills, and zero `Opacity(` widgets inside `app_shell.dart`.
+- **Dock geometry:** `Scaffold(extendBody: true)` with real content behind the `BackdropFilter`, and per-surface dock-aware bottom insets on every scrolling screen.
+- **State truth and performance:** `VpnEngine` Invariant 1 (a tap never renders `Connected`), `P6-T2` 1 Hz rebuild isolation (Section 8.2) with telemetry-only rebuilds, skeleton placeholders instead of spinners, and gesture-only haptics.
+- **Accessibility:** every animated primitive reads `MediaQuery.disableAnimationsOf(context)` (WCAG 2.1 SC 2.3.3), every text/accent pair is WCAG AA, every state accent clears SC 1.4.11 (>= 3.0:1), and decorative onboarding chrome is `ExcludeSemantics`.
+- **Localization:** full recursive EN ↔ FA key parity with non-empty leaves and exactly one trailing newline per file (Persian `fa` renders RTL; German `de` is retired).
+- **Governance:** the first-run gate reads (`ref.read`) rather than watches `onboardingCompletedProvider`; `ARCHITECTURE.md` sections 13.3–13.7 exist with no unresolved section placeholders; `ROADMAP.md` keeps `P11-T1` `Completed ✅`, `P11-T2`–`P11-T6` `Ready for Human Review`, and `P11-T7` at its honest status.
+
+#### Closeout artifacts
+- `docs/design/phase11-ui-ux-closeout-report.md` — the `DEFINITION_OF_DONE.md`-template report covering `P11-T1`–`P11-T7`, the design-system contract matrix, the measured monorepo ledger, the test-alignment remediation record, the human physical-device checklist, and the Phase 12 handoff statement.
+- `apps/mobile/test/phase11_ui_ux_closeout_test.dart` — 6 deterministic contract tests (deliverables/SPDX, bundled fonts and Invariant 37, EN↔FA parity, screen source guards, reduced-motion + optical typography, governance truth rules).
+
+#### Monorepo verification (2026-11-22, Chunk 7)
+- `packages/*` — all 6 packages analyze clean and pass: `core_domain` 132, `config_parser` 398, `core_vpn_engine` 50, `shared_utils` 25, `ui_theme` 19, `vpn_engine_android` 20 = **644 tests, 0 failures**.
+- `apps/mobile` — `flutter analyze` clean; the entire `test/` tree runs **437 passed / 0 failed** under `--concurrency=$(nproc)`, including `phase8_e2e_security_journey_test.dart`, which is green both in isolation and inside the concurrent whole-tree run.
+
+#### Test-alignment record (human-confirmed: keep production UI frozen)
+The first closeout run surfaced 30 failing legacy tests (401/30). They were **stale test expectations, not product regressions**, and the human-confirmed decision was to align the tests rather than restore manual buttons:
+- **Hidden manual add buttons.** Per Human-Approved UX Refinement #3 (Chunk 2C and §13.3), the manual `Add Server` / `Add Subscription` buttons are intentionally hidden while `/add-server` and `/add-subscription` remain fully reachable. `servers_screen_test.dart`, `add_subscription_screen_test.dart`, `connection_flow_test.dart` and `phase5_e2e_journey_test.dart` were already aligned; five suites (`add_server_screen_test`, `qr_scan_screen_test`, `lifecycle_resync_test`, `process_restart_reattach_test`, `legacy_chaos_regression_suite_test`) were missed in Chunk 3B-3 and were re-pointed here at `unawaited(tester.element(find.byType(HomeScreen)).push('/add-server'))` and at the `home_connect_toggle_button` orb toggle.
+- **Non-settling tickers.** `pumpAndSettle()` cannot settle against the orb's intentional breathing/rotation tickers while connected or transitional, so those suites now use bounded `tester.pump()` pairs (local `_pumpBoundedHome` / `_settleAnimated` helpers that mirror the localization harness overrides exactly). `phase8_e2e_security_journey_test.dart` needed no change: it was starved by the five hung suites, not defective.
+- **Zero production files changed** in the remediation; every functional, security, redaction and resilience assertion is intact.
+
+#### Posture
+`P11-T7` is `Ready for Human Review`, capped there — only the human may close a phase. No on-device APK/install/PID/logcat claim is made (`ADB_STATUS=no_device_detected`); the physical-device walkthrough in the closeout report Section 5 is the remaining gate.
 
 
+### 13.8 Product Alignment #1 — Free Tier + Future Optional Brick Pro (Play Billing & GPL-3.0-or-later Dual-Channel Contract)
+
+**Status:** Product-policy contract, human-directed (Post-Phase-11 Product Alignment #1). Descriptive only: no login, billing, paywall, or upgrade UI exists in the current build.
+
+#### Free tier contract
+- The Free plan remains usable immediately after install with **zero account, zero sign-up, zero payment details**; `onboarding.step2_point1` states "Free to start — no account required" in EN and its Persian equivalent in FA.
+- Optional accounts apply **solely** to a future, opt-in `Brick Pro` plan. The only planned account-scoped data is a minimal account identifier and subscription entitlement status.
+- The in-app privacy sheet (`settings.privacy_policy_body`) and `docs/privacy-policy.md` disclose the Free/Pro split, and both are updated before any Pro plan is activated.
+
+#### Google Play Payments Policy invariant
+- The Google Play flavor (`play`) MUST use **Google Play Billing exclusively**. Zero external checkout URLs, zero third-party payment gateways, and zero out-of-app payment links may exist inside a Play-distributed build.
+- No placeholder or stubbed Pro button may ship: a Pro entry point appears only once a compliant Billing integration exists, because broken purchase UI and external payment links both violate Play policy.
+
+#### GPL-3.0-or-later licensing invariant
+- Client source stays **GPL-3.0-or-later**, which fully permits commercial Pro subscriptions.
+- Any future proprietary Play Billing integration MUST be isolated behind a build-flavor boundary (`play` vs `direct`/`foss`), so the pure FOSS/direct build compiles with zero proprietary SDKs and remains reproducible from public source.
+
+#### Permanent cross-plan invariants
+- Zero ads, zero ad SDKs, zero third-party trackers/analytics SDKs, zero data brokerage, and zero browsing/destination/DNS/traffic logging apply **identically to Free and Pro**.
+- `play_store_vpn_policy_compliance_test.dart` enforces the automation side: no ad/tracker/analytics/billing SDK in build configs or sources, no external payment URL or checkout string in `apps/mobile/lib/` or `apps/mobile/assets/translations/`, and no rigid "no account ever" absolute left in the onboarding or privacy-policy strings.
+
+#### Alignment #1B — locale set is `en` + `fa` (RTL), German retired
+
+- **Locale set:** `supportedLocales` is `[Locale('en'), Locale('fa')]` with `fallbackLocale: Locale('en')`; `apps/mobile/assets/translations/de.json` is deleted and Persian ships as `fa.json` with 100% recursive key parity, non-empty leaves, verbatim `{placeholder}` tokens and exactly one trailing newline.
+- **Legacy preference safety:** `normalizeAppLocale` (`app_preferences_repository.dart`) and `LocaleNotifier` map any stored code outside `kSupportedLanguageCodes` — including a persisted legacy `de` — to `en`, so an in-place upgrade never asks easy_localization for a missing bundle and never crashes.
+- **RTL discipline:** Persian UI chrome (onboarding, cards, dialogs, settings, navigation) renders right-to-left from the locale; technical surfaces are explicit **LTR islands** wrapped in `Directionality(textDirection: TextDirection.ltr, …)` — `LiveLogsScreen` entry rows (timestamps, level pills, redacted endpoints), the `host:port` endpoint in `ServerProfileTile` and `HomeScreen`, and the mono readouts in `ThroughputReadout` / `SessionInfoPanel` (`00:00:00`, `MiB/s`, `KiB`). `AddServerScreen` and `AddSubscriptionScreen` set `textDirection: TextDirection.ltr` on their URI/URL fields.
+- **Invariant 37 intact:** no `google_fonts`, no runtime font download; Persian glyphs come from Android's built-in system font via `BrickTypography.primaryFontFallbacks`.
+- **Enforcement:** `phase11_ui_ux_closeout_test.dart` Test 3 (EN↔FA parity, placeholder parity, trailing newlines, `de.json` absent), `play_store_vpn_policy_compliance_test.dart` (English `rigidAbsolutes` including `zero account`, Persian `rigidAbsolutesFa`, EN/FA parity, `de.json` absent), `p11_t5_accessibility_audit_test.dart` Test 6 (Persian RTL render at 360x640 with `TextScaler.linear(1.5)` in dark and light across five screens, zero overflow, zero raw keys, log rows asserted LTR), and `app_preferences_repository_test.dart` (legacy `de` → `en` fallback).
+
+### 13.9 Product Alignment #2 & #3 — Cold-Start Parallelization & Measured Release Artifact Footprint
+
+#### Cold-start bootstrap (Item #2)
+
+Measured pre-`runApp()` blocking work in `AppBootstrap.init()` was serialised: `EasyLocalization.ensureInitialized()` → 
+`SharedPreferences.getInstance()` → `vpnEngine.getStatus()`, each adding its latency to the last.
+
+- **Parallel cohort:** localization, preferences and the native status probe are now dispatched together and awaited once via 
+`Future.wait`, so pre-frame cost is `max(leg...)` rather than `sum(leg...)`. The `VpnEngine` handle is resolved synchronously 
+before the cohort so the native probe joins it instead of queueing behind disk I/O.
+- **Eliminated 500 ms cold-start tax:** `AppBootstrap.init()` used to `await connectionStateProvider.future.timeout(500ms)`. 
+That future never resolves from the pre-warmed emission (the stream is kept alive and the first frame is served from 
+`initialConnectionStateProvider`), so it burned its **full 500 ms timeout on every launch**. It is now *started* (read into the 
+container cascade) and not awaited — same live probe and lifecycle observer before the shell mounts, zero pre-frame wait.
+- **Preserved invariants:** `WidgetsFlutterBinding.ensureInitialized()` still runs first; edge-to-edge `SystemChrome` styling is 
+untouched; `initialConnectionStateProvider` is still pre-warmed from `getStatus()` (bounded by a 500 ms timeout) so Frame 0 
+renders `Connected` with no `"Disconnected"` flash (`process_restart_reattach_test.dart` Test 2 still green); a thrown or slow 
+native probe degrades to `Disconnected`; a throwing `SharedPreferences.getInstance()` still degrades to 
+`FakeAppPreferencesRepository` and is logged.
+- **Eliminated the second 500 ms tax:** `savedServersProvider.future` was still awaited (bounded at 500 ms) while its storage read 
+— JSON file I/O plus Android Keystore decryption of each saved profile — ran on the startup path. `HomeScreen` renders 
+`BrickSkeletonBox` placeholders while the list is unresolved, so that wait bought nothing the first frame could show. It is now 
+kicked off eagerly via `..read(savedServersProvider)` beside `..read(connectionStateProvider)` and never awaited: up to 
+1,000 ms of serial/blocking pre-frame timeouts (500 ms + 500 ms) are gone while both providers still start before the shell 
+mounts.
+- **Deferred work:** no log-file I/O, Keystore server-profile decryption or battery-optimization query runs before `runApp()`; 
+the decrypted server list simply lands after the first frame.
+- **Concurrency proof:** `app_bootstrap_test.dart` injects a 120 ms `getStatus()` and a 120 ms preferences loader, then asserts 
+`AppBootstrap.init()` wall time is `< 210 ms` (serial waiting would be ≥ 240 ms). A second deterministic test injects a `ServerProfileRepository` whose 
+`loadServers()` takes 250 ms and asserts `init()` still returns in `< 120 ms`, that `savedServersProvider` is still loading at that 
+point, and that it later resolves to the stored profile — proof the disk/Keystore read is off the pre-frame path.
+
+#### Release artifact footprint (Item #3)
+
+All five artifacts built locally in release mode with R8/minify + resource shrinking enabled (`isMinifyEnabled = true`, 
+`isShrinkResources = true`), no signing changes:
+
+| Artifact | Bytes | MiB |
+| --- | ---: | ---: |
+| `app-arm64-v8a-release.apk` | 47,932,682 | 45.71 |
+| `app-armeabi-v7a-release.apk` | 42,852,226 | 40.87 |
+| `app-x86_64-release.apk` | 51,586,310 | 49.20 |
+| `app-release.apk` (universal) | 133,507,576 | 127.32 |
+| `app-release.aab` (Play) | 109,983,018 | 104.89 |
+
+Top compressed contributors inside `app-arm64-v8a-release.apk` (compressed bytes):
+
+| Entry | Compressed | Uncompressed |
+| --- | ---: | ---: |
+| `lib/arm64-v8a/libgojni.so` | 19,338,704 | 19,338,704 |
+| `lib/arm64-v8a/libflutter.so` | 11,747,864 | 11,747,864 |
+| `lib/arm64-v8a/libapp.so` | 7,209,864 | 7,209,864 |
+| `lib/arm64-v8a/libbarhopper_v3.so` | 4,946,720 | 4,946,720 |
+| `classes.dex` | 2,348,198 | 6,046,064 |
+| `assets/flutter_assets/assets/fonts/InterVariable.ttf` | 461,328 | 879,708 |
+| `assets/mlkit_barcode_models/barcode_ssd_mobilenet_v1_dmp25_quant.tflite` | 390,456 | 390,456 |
+| `resources.arsc` | 313,500 | 313,500 |
+| `assets/mlkit_barcode_models/oned_feature_extractor_mobile.tflite` | 276,552 | 276,552 |
+| `assets/mlkit_barcode_models/oned_auto_regressor_mobile.tflite` | 213,880 | 213,880 |
+| `lib/arm64-v8a/libdartjni.so` | 131,248 | 131,248 |
+| `assets/flutter_assets/NOTICES.Z` | 128,312 | 129,425 |
+
+- The dominant cost is the sing-box core (`libgojni.so`, ~40% of the arm64 APK) plus engine/Dart baseline (`libflutter.so` + 
+`libapp.so`). Icon fonts are fully tree-shaken (`MaterialIcons-Regular.otf` 1,645,184 → 9,516 bytes; `CupertinoIcons.ttf` 
+257,628 → 848 bytes).
+- `libbarhopper_v3.so` (4,946,720 bytes) plus the three MLKit `.tflite` models (390,456 + 276,552 + 213,880 bytes) total 
+**5,827,608 bytes (~5.83 MB / 5.56 MiB)**; adding `libimage_processing_util_jni.so` brings it to **5,860,136 bytes (~5.86 MB)**. 
+All of it is pulled in by the QR-scan feature and is the largest addressable reduction path if APK size becomes a target.
+- **Packaging note:** native `.so` files are stored **uncompressed** inside the raw APKs (`useLegacyPackaging = false`, the 
+default, so Android can memory-map them), so their APK byte cost equals their on-disk size; Google Play instead delivers 
+compressed per-ABI splits generated from the `.aab`, so installed download sizes are smaller than these APK totals.
+- Build note: the release build initially failed on a stale, git-ignored `GeneratedPluginRegistrant.java` that listed the 
+dev-only `integration_test` plugin. The file is regenerated by the Flutter tool, so removing that generated file (no source, 
+Gradle or `pubspec.yaml` change) restored reproducible release builds.
+
+#### Live device cold-start benchmark (measured 2026-11-24)
+
+Measured on `RZ8M53WPMPF` (`SM-A205F`, Android) once USB debugging was authorized, using the canonical 
+`flutter build apk --release --split-per-abi` `arm64-v8a` artifact: **48,015,354 bytes (~45.79 MiB)**. After a complete wipe 
+(`am force-stop`, `pm clear`, `uninstall`) and a fresh install, three `am start -W` cold starts reported `TotalTime` **824 ms**, 
+**838 ms** and **847 ms**, and a post-`pm clear` fresh-state launch reported **913 ms**. `LOGCAT_ERROR_COUNT=0`: no `FATAL 
+EXCEPTION`, `RenderFlex overflowed`, `FlutterError` or raw `Localization key` line in any of those launches.
+
+A packaging trap surfaced during that pass and is recorded because it fails silently rather than loudly: if the generated 
+`android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java` is absent and the build is run with `--no-pub`, 
+plugin injection is skipped and the APK ships with **no registered plugins**. The first `SharedPreferences` pigeon call then 
+throws `channel-error`, `AppBootstrap.init()` never completes and the window stays `DRAW_PENDING` — `am start -W` reports 
+`Status: timeout` after a ~10 s hang instead of any `TotalTime`. Building through the normal pub path regenerates the registrant 
+(7 plugins, no `integration_test`) and restores the 824–913 ms launches above.
+
+### 13.10 Product Alignment #4 — Anonymous Opt-In Server-Probe Diagnostics & Play Data Safety Contract
+
+**Status:** Foundation implemented, **off by default**. No collector URL is compiled into any build (`BRICK_PROBE_ENDPOINT` is empty), 
+so the shipped posture is zero outbound diagnostic traffic even if a user flips the switch.
+
+#### Why this exists, and what it deliberately is not
+
+Subscription quality depends on knowing whether listed servers are reachable. The honest way to learn that is a tiny, 
+opt-in, anonymous reachability report — not an analytics SDK. Brick VPN adds **zero third-party SDKs**: the reporter is
+first-party Dart (`dart:io` `HttpClient`) and its payload is a fixed five-key allowlist.
+
+#### The 5-key payload allowlist (`core/telemetry/server_probe_report.dart`)
+
+| Key | Type | Rule |
+| --- | --- | --- |
+| `node_hash` | `String` | First 16 lowercase hex chars of SHA-256 over `protocol\|host\|port`. Irreversible; the raw host, IP, UUID, password, private key and server remark are never stored or sent. |
+| `ok` | `bool` | Reachability result. |
+| `latency_ms` | `int?` | Clamped to `0..30000`; forced `null` when `ok` is `false`. |
+| `network_type` | `String` | `wifi` / `cellular` / `other` only. No IP, SSID, BSSID, IMEI, device or user identifier. |
+| `hour_utc` | `String` | UTC timestamp truncated to the hour (`YYYY-MM-DDTHH:00:00Z`) to defeat cross-request timing correlation. |
+
+`ServerProbeReport.create` applies the clamp and the hour truncation at construction, so no caller can widen the payload; 
+`toJson()` emits exactly those five keys. SHA-256 is a self-contained FIPS 180-4 implementation in the same file, verified in 
+tests against an independent `sha256sum` digest — `package:crypto` was deliberately not added, because one truncated digest is 
+not worth a permanent dependency.
+
+#### Four gates before any byte leaves the device (`core/telemetry/server_probe_reporter.dart`)
+
+1. **Opt-in:** `submit()` returns `0` immediately unless `isAnonymousProbeReportingEnabled()` is `true`, and when it is off the 
+report is not even buffered.
+2. **Endpoint security:** `isSecureEndpoint()` requires `https`, a non-empty host, empty userinfo, and rejects `localhost`, 
+`.localhost`, `.local`, loopback (`127.*`, `::1`), private (`10.*`, `172.16-31.*`, `192.168.*`), link-local (`169.254.*`, 
+`fe80::/10`) and unique-local (`fc00::/7`) literals. An unusable endpoint means no buffering at all.
+3. **Rate limit + batch cap:** one flush per `minFlushInterval` (default 60 s) and at most `maxBatchSize` (20) reports per 
+request; the queue is ring-capped at the same 20, so offline memory stays bounded. Attempts, not just successes, consume the 
+interval, so a failing collector is never hammered.
+4. **Fire-and-forget resilience:** a hard 3-second timeout, `Content-Type: application/json` plus `Accept` only (no device or 
+app-fingerprint headers), and every path wrapped in `try / on Object`. Blocked, censored, offline or malformed responses return 
+`0`, never throw, and never log the endpoint. The reporter is exposed as `serverProbeReporterProvider` and is never read from 
+`AppBootstrap.init()`, so cold start is untouched.
+
+The transport is hardened against the ways a diagnostics upload can betray the contract: `followRedirects = false` / 
+`maxRedirects = 0` (a `302` could otherwise downgrade to cleartext or reach internal space past `isSecureEndpoint()`), 
+`client.userAgent = null` (dart:io would otherwise send `Dart/3.x (dart:io)`), and **only a `2xx` counts as delivered**, so a 
+`403`/`429`/`502` DPI block page keeps the batch queued instead of draining it. `_isBlockedAddress` unwraps `::ffff:0:0/96` 
+IPv4-mapped literals and additionally rejects IPv4 CGNAT (`100.64.0.0/10`), IPv4 multicast/reserved (`>= 224.*`) and IPv6 
+multicast (`ff00::/8`). `ServerProbeReport.create` rejects any `node_hash` that is not `^[0-9a-f]{16}$`, `computeNodeHash` 
+canonicalizes the protocol as well as the host, and flipping the switch off clears the in-memory queue at the next gate check.
+
+#### Opt-in preference and UI surface
+
+- `AppPreferencesRepository` gains `isAnonymousProbeReportingEnabled()` (default **`false`**, key 
+`brick.preferences.anonymous_probe_reporting_enabled`) and `setAnonymousProbeReportingEnabled`, in both the 
+`SharedPreferences` and fake implementations.
+- `anonymousProbeReportingEnabledProvider` mirrors `killSwitchEnabledProvider`.
+- `Settings > Diagnostics & About` hosts `settings_anonymous_probe_tile` (a `SwitchListTile`) with a selection-tick haptic, EN 
+and FA (RTL) copy stating that it is off by default and never touches IP addresses, browsing, or device IDs.
+
+#### Google Play Data Safety mapping (honest, not zero)
+
+Because a diagnostics path now exists, the questionnaire can no longer claim "no data collected". The declared posture is: one 
+category, **App info and performance > Diagnostics**, **optional** (off by default), **not linked to identity**, **not shared 
+with third parties**, **encrypted in transit (HTTPS)**. The permanent invariants are unchanged and enforced: zero ads, zero ad 
+SDKs, zero third-party trackers/analytics SDKs, zero browsing/DNS/destination/traffic logging, and zero device/user identifiers. 
+`docs/privacy-policy.md` §3.1, `docs/release/play-store-vpn-compliance.md` §4–§5, the submission guide and the store listing all 
+state the same facts, and translation/marketing copy no longer claims "zero telemetry" unconditionally.
+
+#### Verification
+
+`apps/mobile/test/server_probe_telemetry_test.dart` proves the default-off preference (fake + persisted + provider), the exact 
+five-key JSON, latency clamping, forced-null-on-failure, hour truncation, a 16-char lowercase hex digest matching an independent 
+reference, and that the reporter sends nothing when opted out, unconfigured, cleartext, or pointed at a private address, while 
+enforcing the 60 s / 20-report limits and swallowing transport errors and the 3-second timeout. 
+`play_store_vpn_policy_compliance_test.dart` adds the Item #4 compliance test (opt-in default, zero prohibited analytics SDKs, 
+mandatory Data Safety disclosure in both the privacy policy and the compliance document) on top of every pre-existing ad, tracker, 
+payment and EN/FA parity guard. Item #5 is implemented in Section 13.11 below.
+
+### 13.11 Product Alignment #5 — Built-In Official Free Server Directory Sync, Cache-First Auto-Update & Play Policy 
+Alignment
+
+**Status:** Implemented. Diagnostics-independent; no new package, no new permission, no new secret.
+
+#### The verified feed (`features/servers/domain/built_in_feed_config.dart`)
+
+The collector repository `Ajorvpn/brick-sub-collector` publishes its generated subscription to the **`sub` branch** (not `main`), 
+refreshed every 12 hours by `.github/workflows/update.yml`. Verified live before coding; the paths are not guessed:
+
+| Role | URL | Verified |
+| --- | --- | --- |
+| Primary | `https://raw.githubusercontent.com/Ajorvpn/brick-sub-collector/sub/sub.txt` | HTTP 200, 10,556 bytes, Base64 of 34 nodes (`ss`, `vless`, `vmess`, `trojan`) |
+| Mirror | `https://cdn.jsdelivr.net/gh/Ajorvpn/brick-sub-collector@sub/sub.txt` | HTTP 200, byte-identical |
+
+`resolveBuiltInFeedUrls()` returns the ordered list, overridable at build time with `--dart-define=BRICK_SUB_URLS=<https>,<https>` so 
+a future server or Pro rollout needs zero code edits. Every candidate must be absolute `https` with no embedded credentials and a 
+host that is not a literal loopback/private/CGNAT/link-local/multicast address (including `::ffff:0:0/96` mapped IPv4). An 
+override whose entries are all rejected falls back to the compiled defaults rather than shipping an app with no directory.
+
+#### Fetch and parse (`data/services/built_in_directory_sync_service.dart`)
+
+Fetching reuses the hardened `SubscriptionFetcher` (HTTPS-only on every redirect hop, 200-only, incremental 2 MiB cap, 10 s 
+deadline, no `badCertificateCallback`). A private capturing transport forwards each response chunk unchanged while retaining the 
+final body, so the sync can pair every URI line with its own `#fragment` — the only place the feed carries country metadata — 
+without a second, unchecked request. The body is decoded with `decodeSubscriptionBody` (Base64 or plain) and each line is parsed 
+with `parseSubscription`, so unsupported or malformed lines are counted and skipped, never fatal, and never logged with their 
+credentials.
+
+#### Cache-first atomicity, single-flight and throttle
+
+- A mirror only wins when it yields **at least one** valid `sing-box` server. Every mirror failing, timing out, or parsing to zero 
+returns `DirectorySyncFailure` and writes **nothing**: the encrypted cache survives a total outage unchanged.
+- A successful sync calls `replaceSubscriptionProfiles` for exactly `brick_official_directory`, so standalone servers and other 
+subscriptions are untouched, then records `lastDirectorySyncAt`.
+- `activeServerId` is preserved; it moves to the first synced server only when it was empty or pointed at a directory server that 
+rotated out of the feed.
+- Concurrent callers share one in-flight future (single-flight). `syncIfNeeded()` runs when nothing is cached, when no timestamp 
+exists, or when the last success is at least 30 minutes old; `forceSync()` always runs.
+
+#### UI wiring and cold start
+
+`AppShell` triggers `syncIfNeeded()` from `initState`'s **post-frame** callback — never from `AppBootstrap.init()` — so the first 
+frame still renders from the encrypted cache with zero network. `ServersScreen` shows a calm inline banner: progress only while a 
+sync is running, an offline/retry line only when the list is completely empty, and a muted cached-copy note otherwise. `Update 
+Servers` now runs `forceSync()` (replacing the Phase 11 "No remote feed configured yet" placeholder), showing the Play-compliant 
+`UpdateServersDisclosureSheet` once before the first manual sync. No manual add-server / add-subscription affordance is exposed; 
+the legacy `/add-server` and `/add-subscription` routes stay untouched.
+
+#### Test isolation
+
+The remote fetcher is the `builtInFeedFetcherProvider` seam. `localization_test_harness.dart` overrides it with a deterministic 
+offline fetcher in every shared pump helper, so no widget test can reach the network, flake, or hang.
+
+#### Policy alignment
+
+`docs/privacy-policy.md` §1 and §3, `docs/release/store-listing.md`, `docs/release/play-store-vpn-compliance.md` and 
+`docs/release/play-store-submission-guide.md` now state the honest model: a built-in official free directory fetched over HTTPS 
+with mirror failover, encrypted local caching and no manual import affordance in this release, so the listing advertises nothing 
+the build cannot do. Every permanent invariant is unchanged — zero ads, zero trackers, zero traffic/browsing/DNS logging, diagnostics off by default, no account for 
+the Free plan, GPL-3.0-or-later dual-channel contract.
+
+#### Verification
+
+`apps/mobile/test/built_in_directory_sync_test.dart` proves Base64 and plain parsing with mixed valid/invalid lines, mirror 
+failover, cache preservation on total failure and on a zero-server payload, single-flight coalescing, the 30-minute throttle 
+versus `forceSync`, active-server preservation, `BRICK_SUB_URLS` SSRF/non-HTTPS rejection, and the grouped EN rendering of the 
+synced directory. `test/app_preferences_repository_test.dart` covers the new timestamp/disclosure round trip.
+
+#### Strict-review fixes (F1–F5)
+
+| Fix | Defect | Resolution |
+| --- | --- | --- |
+| F1 | `_persist()` wrote the fallback `activeServerId` to storage, but the controller only invalidated `savedServersProvider`, so a fresh install kept `activeServerIdProvider == null` in memory until restart | `onDirectoryChanged` now also invalidates `activeServerIdProvider` |
+| F2 | The official directory rendered as a user-owned feed card, with a second refresh path (bypassing mirror failover and the 30-minute timestamp) and a delete action that could remove the built-in directory | `_buildSubscriptionFeeds` receives only the entries whose id differs from `kBuiltInDirectorySubscriptionId` |
+| F3 | `kBuiltInFeedTimeout` was documented but never applied, so a TCP-blackholed mirror could hold the sync open indefinitely; a persist failure also re-downloaded into the same broken store | `BuiltInDirectorySyncService` takes `feedTimeout` and wraps each attempt in `.timeout()`; a persist failure returns `DirectorySyncFailure` immediately instead of `continue` |
+| F4 | The Play listing advertised manual import, QR scanning and subscription feeds, none of which this build exposes | The bullet group is now `Built-In Official Free Server Directory` (auto HTTPS sync, mirror failover, country/city grouping, instant search, Keystore-encrypted cache); the privacy policy no longer claims a manual subscription UI. Full description is 2,996 / 4,000 characters |
+| F5 | Directional `Alignment.centerLeft`, `EdgeInsets.only(left:)` and `Border(left:)` in the loading skeleton and country body | `AlignmentDirectional.centerStart`, `EdgeInsetsDirectional.only(start:)`, `BorderDirectional(start:)` |
+
+Regression coverage added to `built_in_directory_sync_test.dart`: F1 via a real `ProviderContainer` (active id present immediately after `forceSync`, no container recreation), F2 (no `subscription_refresh_/delete_brick_official_directory` keys, country groups still rendered), F3 (a `Completer`-backed hanging primary cut off at a 50 ms `feedTimeout`, failing over to the mirror), and F5 (Persian `Locale('fa')` at 360×640 with `TextScaler.linear(1.5)`: `TextDirection.rtl` banner, zero `RenderFlex` overflow, zero raw localization keys).
+
+#### Live device benchmark (`RZ8M53WPMPF`, Samsung SM-A205F, release arm64-v8a, 2026-11-24)
+
+Measured after a complete wipe (`pm clear` + `uninstall`) and a fresh install of `app-arm64-v8a-release.apk` (48,015,354 bytes), 
+three `am start -W` cold starts: **824 ms, 838 ms, 847 ms** `TotalTime`, then a final clean-state launch at **913 ms** with zero 
+`FATAL EXCEPTION` / `RenderFlex overflowed` / `FlutterError` / `Localization key` logcat lines.
+
+A build pitfall surfaced and is recorded here because it produces a **blank app, not a build error**: building with `--no-pub` 
+skips plugin injection, so `android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java` is not regenerated. The 
+APK then launches with no registered plugins — the first `SharedPreferences` pigeon call throws `channel-error`, the bootstrap 
+future never completes, and the window stays in `DRAW_PENDING` (`am start -W` reports `Status: timeout`). Always build the release 
+APK through the pub path so the registrant exists.
 
 
+### 13.12 Post-P11 Hotfix — sing-box v1.10.7 Route/DNS Schema Fix & Live On-Device Connect/Disconnect Verification
 
+**Status:** Fixed and verified end-to-end on the physical device. No dependency, permission, manifest or Dart change.
 
+#### Root cause
 
+Every Connect attempt reached libbox and then failed at config decode:
 
+```
+E LibboxTunnelEngine: libbox start failed: proxyerror: decode config: route.rules[0].action: json: unknown field "action"
+E BrickVpnService: start failed: proxyerror: decode config: route.rules[0].action: json: unknown field "action"
+```
 
+`PigeonVpnApiImpl.buildConfigJson()` emitted the sing-box **1.11+** rule-action schema (`{"protocol": "dns", "action":
+"hijack-dns"}`), but the vendored `packages/vpn_engine_android/android/libs/libbox.aar` is **v1.10.7**: its `libgojni.so`
+contains zero occurrences of `hijack-dns` and zero of `rule_action`. v1.10.7's JSON decoder is strict, so the unknown field
+aborted the whole config and `Libbox.newService()` never started. The TUN was already established at that point, which is why
+the UI showed `VPN engine encountered an internal error` and the auto-reconnect budget burned through five attempts.
 
+#### The three surgical fixes (all inside `packages/vpn_engine_android`)
 
+1. **v1.10.7-compliant DNS hijack** (`PigeonVpnApiImpl.kt`): a `{"type": "dns", "tag": "dns-out"}` special outbound is emitted
+   after `direct-out`, and the route rule became the classic form `{"protocol": "dns", "outbound": "dns-out"}`. No `action`
+   key survives anywhere in the generated config. `tun-in` now sets `sniff: true` on the non-block path, because v1.10.7 only
+   matches `protocol: "dns"` for packets the inbound actually sniffed; the Gate A block config stays lean (no sniff, no rules).
+   The DNS block (`dns-direct` bootstrap, `dns-remote` DoH `https://1.1.1.1/dns-query` detoured through the proxy outbound,
+   `rules[0].server = dns-direct`, `final = dns-remote`, `strategy = prefer_ipv4`) and `route.auto_detect_interface` /
+   `route.final` are untouched.
+2. **No leaked TUN on a failed start** (`BrickVpnService.kt`): the `catch (t: Throwable)` in `runStartSequence` still logs the
+   specific reason, still fails the session, and still establishes the lockdown TUN when lockdown is on — but when lockdown is
+   off it now calls `closeTunOnce()`, so a failed engine start can no longer leave `tun0` open until the process dies.
+3. **Native start failures reach the in-app log** (`LibboxTunnelEngine.kt`): the error line is emitted to `onLogReceived` and
+   `globalLogConsumer` (each wrapped in `runCatching`) before the exception is rethrown, so `LiveLogsScreen` surfaces the real
+   libbox error instead of only the Dart-side symptom, and a throwing sink cannot mask the rethrow.
 
+#### Regression guards
 
+`PigeonVpnApiImplTest` now asserts the v1.10.7 shape for `buildConfigJson(realOutbound, isBlock = false)`: `dns-out` exists as
+`{type: dns, tag: dns-out}`, `route.rules[0]` is `{protocol: dns, outbound: dns-out}` and **must not** contain `action`,
+`inbounds[0].sniff == true`, `dns-remote` still resolves through DoH with `detour == outboundTag`, and the block config has no
+route rules and no sniff. `./gradlew testDebugUnitTest` is green.
 
+#### Live verification on `RZ8M53WPMPF` (SM-A205F, Android 10 / API 29)
 
+Release APK rebuilt through the pub path (registrant regenerated, 7 plugins, no `integration_test`): 48,015,354 bytes. After
+`am force-stop` + `pm clear` + `uninstall` + fresh install: `am start -W` cold start `Status: ok`, `LaunchState: COLD`,
+`TotalTime: 1597 ms` (first launch with dexopt). Onboarding skipped, the built-in directory synced and auto-selected a server,
+then Connect was tapped:
 
+| Step | Observed |
+| --- | --- |
+| Android consent | `com.android.vpndialogs` `Connection request` shown once, `OK` accepted |
+| 4 s after Connect | `Connected`, `Tunnel: Connected`, `Duration: 00:00:08`, `3.4 KiB up / 2.5 KiB down`, no error SnackBar |
+| 3 s later (stability) | still `Connected`, `Duration: 00:00:32`, `9.5 KiB up / 6.6 KiB down` |
+| After Disconnect | `Disconnected`, `Tunnel: Disconnected`, `Duration: 00:00:00` |
 
+`logcat` counts for that run: `libbox service started` = 1, `state -> Running` = 1, `libbox service closed` = 1, `TUN descriptor
+closed` = 1, `state -> Stopped` = 1, and `unknown field` = `decode config` = `start failed` = `FATAL EXCEPTION` = `FlutterError`
+= 0. The engine logged real proxied traffic (`outbound/shadowsocks[proxy]: outbound connection ...`), so the tunnel carried data,
+not just state.
 
+#### Residual observation (not a regression)
+
+libbox logs sparse `dns: exchange failed ... i/o timeout` lines for NTP/`mtalk.google.com` A-queries while real TCP flows
+succeed through the same outbound, i.e. the upstream Shadowsocks endpoint does not relay UDP for those lookups; the tunnel and
+DNS-over-TCP path remain healthy. Recorded so a future UDP-relay review starts from evidence rather than a guess.
+
+### 13.13 Post-P11 Hotfix #2 — Eliminate ConnectivityResult.vpn Self-Handoff Reconnect Storm & Atomic Multi-Server Switching
+
+**Symptom.** With the P11 release build on `SM-A205F`, every Connect *after the first one* collapsed into an endless
+`connect → disconnect → reconnect` oscillation: the orb flipped to `Reconnecting (attempt 1/5)...`, `Duration` reset to
+`00:00:00`, and native logged `service created` / `onStartCommand: start` / `state -> Running` / `onStartCommand:
+ACTION_STOP` / `onDestroy` in a ~1.0 s loop (33 cycles measured in one 4-minute window, `start failed` = 0). Selecting a
+different server while connected made it worse: `HomeScreen` immediately rendered the NEW node as `Active` while the OLD
+tunnel kept carrying traffic.
+
+**Root cause 1 (the storm) — `connectivity_plus` reports our own tunnel.**
+`connectivity_plus` v6 surfaces Android's VPN interface as `ConnectivityResult.vpn`. Bringing our tunnel up therefore
+changes the emission from `[wifi]` to `[wifi, vpn]`. `AutoReconnectNotifier._processDebouncedConnectivity()` compared the
+raw result *lists* (`prev.length != results.length || !prev.every(results.contains)`), decided that was an "interface
+handoff", and called `engine.stop()` — ~340–380 ms after `state -> Running` (300 ms debounce + dispatch), in every cycle.
+The resulting `Disconnected` arrived while `_userSessionActive` was still true, so `_handleUnexpectedDrop()` scheduled a
+reconnect, which started the tunnel again, which recreated `tun0`, which produced another `vpn` emission. `_currentAttempt`
+was reset to 0 on each `Connected`, so `maxRetries = 5` was never consumed and the state was pinned at "attempt 1/5"
+forever. The handoff branch also ignored `isAutoReconnectEnabled()`, so disabling Auto-Reconnect in Settings could not
+stop it.
+
+**Root cause 2 (the switch) — three independent races.**
+(a) `ServersScreen` only wrote `activeServerIdProvider`; nothing told the tunnel, so the UI and the engine disagreed.
+(b) `VpnEngine.stop()` returns `Accepted` as soon as native enters `Stopping`; `ConnectionController.connect()` then called
+`prepare()` + `start()` in that window and `VpnStateMachine.start()` correctly answers `RejectedBusy` for `Stopping`
+(`VpnStateMachine.kt` `start()`), so a valid switch could fail. (c) `BrickVpnService.requestStop()` ended with a bare
+`stopSelf()`, so a teardown finishing just after a newer `ACTION_START` destroyed the new session's service.
+
+**Fixes.**
+1. `_physicalTransports()` set helper (ignores `none` and `vpn`); `interfaceChanged` now uses `setEquals` on the physical
+   sets, so `[wifi] → [wifi, vpn]`, `[wifi, vpn] → [wifi]` and `[wifi, vpn] → [wifi, vpn]` are all non-events while
+   `[wifi, vpn] → [mobile, vpn]` is still a real handoff. The handoff restart is now gated on `isAutoReconnectEnabled()`.
+2. `_waitUntilStopped(engine)` in both `ConnectionController` and `AutoReconnectNotifier`: awaits
+   `Disconnected`/`Error` on `engine.connectionState` (3 s cap, exceptions absorbed) before `prepare()`/`start()`. It
+   returns immediately when the engine is already resting, or when no teardown has been *published* (`Disconnecting` not
+   observed) — blocking there would wedge hand-driven engines, and the native layer now serializes that case itself.
+3. `ConnectionController.connect()` treats a live reconnect loop (`autoReconnect.isReconnecting`) as an active session and
+   stops it before starting the new profile; `ServersScreen` dispatches that switch when a session is live and the tapped
+   node differs, then persists the selection unconditionally.
+4. `BrickVpnService` tracks `latestStartId` and calls `stopSelf(startId)` (logged as `stopSelf(startId=N)`), so an older
+   teardown can no longer kill a newer start; `requestStart()` detects `RejectedBusy` while `Stopping`, waits (bounded
+   3 s, 10 ms poll) for the resting state and retries once, publishing the `START` verdict only after the retry.
+
+**Regression tests** — `apps/mobile/test/reconnect_and_server_switch_regression_test.dart` (6 tests, all green):
+T1 `[wifi] → [wifi, vpn] → [wifi]` keeps `stopCalls == 0` and `AutoReconnectIdle`; T2 a real `wifi → mobile` handoff still
+stops exactly once; T3 with `initialAutoReconnectEnabled: false` a physical handoff never stops the tunnel; T4 a
+teardown-racing engine (rejects `start()` while `Disconnecting`, emits `Disconnected` after 80 ms) is switched cleanly with
+zero busy rejections; T5a tapping a different tile while `Connected` performs the live switch (`stopCalls == 1`,
+`startCalls.last == B`); T5b tapping while `Disconnected` only selects.
+
+**Measured on device (SM-A205F, release APK, 5 live cycles, logcat cleared before cycle 1).**
+Cycles: SS Germany 01 → live switch VLESS Germany 02 → live switch SS UK 03 → disconnect + VLESS US 07 → rapid
+disconnect + VLESS Germany 03 → clean disconnect. Every dump showed `Connected`, `Tunnel: Connected`, `Duration ≥ 00:00:07`
+and no `Reconnecting`; the final dump was `Disconnected`. Whole-window counts: `service created` = 5,
+`onStartCommand: start` = 5, `onStartCommand: ACTION_STOP` = 5, `state -> Running` = 5, `TUN descriptor acquired` = 5,
+`TUN descriptor closed` = 5, `stopSelf(startId=N)` = 5, and `Interface handoff detected while connected` = `Scheduling
+reconnect` = `start failed` = `libbox start failed` = `Job was cancelled` = `RejectedBusy` = `FATAL EXCEPTION` =
+`FlutterError` = 0. App-process `E/` and `W/` lines = 0; the in-app Live Logs screen showed **0 entries** (no diagnostic
+was ever recorded, because no handoff and no reconnect happened). Cold start after fresh install: `TotalTime: 1713 ms`.
+
+#### Edge-case hardening (J1–J4)
+
+A line-by-line review of the §13.13 hotfix plus the live 34-node feed audit found four residual edge defects. All four are
+closed here, each with a deterministic regression test.
+
+**J1 — physical bearer memory across an intermediate `[vpn]` emission.**
+`_processDebouncedConnectivity()` derived "previous bearer" from the last *raw* emission. When Wi-Fi dropped while
+`tun0` was still up, Android reported `[vpn]` alone; storing that wiped the remembered `{wifi}`, so the following
+`[mobile, vpn]` compared `{}` against `{mobile}` and the handoff was silently missed. Separately, `isOffline` only
+recognised `none`, so a `[vpn]`-only emission counted as online and burned the retry budget against a dead uplink. The
+coordinator now keeps `_lastPhysicalTransports` (seeded in `build()` and `onUserInitiatedConnect()`, refreshed only when an
+emission carries a physical bearer), and `_isEffectivelyOffline()` treats "no physical transports at all" as offline in
+the debounce handler, `_handleUnexpectedDrop()` and `_scheduleReconnect()`. Returning online to a *different* bearer while
+the tunnel survived now runs the handoff restart instead of falling into `_scheduleReconnect()`, which would have bailed
+out because the tunnel was still `Connected`.
+
+**J2 — live-switch errors and busy double-taps can no longer desync the UI.**
+`ServersScreen` dispatched `connect()` without awaiting it and persisted the selection unconditionally, so a rejected
+switch (`InvalidConfig`, permission loss) or a `RejectedBusy` from a rapid double tap left Home showing a node the tunnel
+never reached. `_handleSelectServer()` now writes the preference *after* a `VpnCommandAccepted`, ignores a tap that lands
+while `isBusy` (leaving both the selection and the tunnel untouched), and surfaces every non-accepted result through
+`AppFeedback.showError(context, ErrorMapper.mapToUserMessage(result))`. The disconnected path is unchanged: selection
+only, never an automatic connect.
+
+**J3 — double-percent-encoded ALPN (the proven feed defect).**
+`Uri.queryParameters` decodes exactly one layer, so the live `SHAPE 6` node's `alpn=http%252F1.1` reached sing-box as the
+literal `["http%2F1.1"]` and its TLS handshake could not negotiate. `parseAlpnQueryValue()` (shared in
+`uri_parsing_support.dart`, used by the VLESS/Trojan/VMess TLS builder plus Hysteria2 and TUIC) now decodes up to two
+further passes, stopping as soon as the value stops changing — which is also how malformed escapes such as `%ZZ` degrade
+without throwing — then splits on commas and trims.
+
+**J4 — the `Duration: 00:00:05` wall-clock flake.**
+`process_restart_reattach_test` seeds its re-attach anchor from a real `DateTime.now()` while fakeAsync advances only
+timers, so under `--concurrency=$(nproc)` host contention could add a second and break an exact string match. The test now
+asserts the invariants instead: the re-attached session keeps its recovered seconds (>= 5), the three pumped seconds were
+added live (strictly increasing), the value stays inside the honest 5–8 s window, and the rendered label equals the
+formatted provider value exactly.
+
+**Verification.** `dart format` clean; `packages/config_parser` analyze and its full test suite green, including the new
+`alpn_query_decoding_test.dart`; `flutter analyze` reports no issues; the regression suite is 10/10 (T1–T7) and the ten
+targeted mobile suites pass with `--concurrency=$(nproc)`; the canonical `--release --split-per-abi` build installs and
+launches on `SM-A205F` with zero `FATAL EXCEPTION` / `FlutterError` / overflow lines in logcat.

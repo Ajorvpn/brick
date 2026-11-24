@@ -4292,7 +4292,7 @@ This task is explicitly more subjective than almost anything earlier in the road
 
 ### P11-T2 — Screen-by-Screen Redesign Pass: Core Navigation and Server Management
 
-**Status:** In Progress (Chunk 2B of 3)
+**Status:** Ready for Human Review
 **Depends On:** P11-T1
 
 **Objective:**
@@ -4311,11 +4311,11 @@ Apply the design system from P11-T1 to replace all deliberately-minimal placehol
   - Settings/preferences screens — handled in P11-T4.
 
 **Acceptance Criteria:**
-- [ ] All listed screens/flows are visually and interactively redesigned per the P11-T1 design system, verified by manual walkthrough and screenshots included in the report.
-- [ ] No functional regression versus the pre-redesign behavior — every acceptance criterion from the original Phase 5 tasks for these flows still holds true after the redesign (re-verified explicitly, not assumed).
-- [ ] Real launcher icon and splash screen are implemented and visible on a real/emulated device.
-- [ ] Basic responsiveness verified across at least two different screen sizes/densities.
-- [ ] Report follows the `DEFINITION_OF_DONE.md` template.
+- [ ] All listed screens/flows are visually and interactively redesigned per the P11-T1 design system, verified by manual walkthrough and screenshots included in the report. (Pending Human Visual Sign-Off on physical device)
+- [x] No functional regression versus the pre-redesign behavior — every acceptance criterion from the original Phase 5 tasks for these flows still holds true after the redesign (re-verified explicitly, not assumed).
+- [ ] Real launcher icon and splash screen are implemented and visible on a real/emulated device. (Pending ADB device authorization & live install)
+- [x] Basic responsiveness verified across at least two different screen sizes/densities.
+- [x] Report follows the `DEFINITION_OF_DONE.md` template.
 
 **Notes for Agent:**
 This is a redesign, not a rewrite — the underlying state management, repository wiring, and validation logic from Phase 5 must remain functionally intact. Treat every original Phase 5 acceptance criterion as a regression-test checklist you must re-confirm after your visual/structural changes, since UI restructuring is a common source of accidentally broken event wiring or lost edge-case handling.
@@ -4324,7 +4324,7 @@ This is a redesign, not a rewrite — the underlying state management, repositor
 
 ### P11-T3 — Screen-by-Screen Redesign Pass: Connection, Stats, and Logs
 
-**Status:** Not Started
+**Status:** Ready for Human Review
 **Depends On:** P11-T2
 
 **Objective:**
@@ -4340,10 +4340,10 @@ Apply the design system to the app's most state-driven and highest-visibility sc
   - Any change to the underlying state machine, stream architecture, or redaction logic — this task is strictly visual/interaction-layer.
 
 **Acceptance Criteria:**
-- [ ] Every connection state has a distinct, clear, well-designed visual representation, verified by manually walking through all states (including inducing an error state and a reconnecting state) and confirming each is visually unambiguous.
-- [ ] No functional regression versus pre-redesign behavior for stats accuracy, log correctness/redaction, kill-switch behavior, or auto-reconnect behavior — explicitly re-verified against the relevant original Phase 6/7 acceptance criteria.
-- [ ] If a live graph/visualization was added, it is verified to not introduce meaningful performance overhead (reusing the fine-grained-rebuild verification approach from P6-T2).
-- [ ] Report follows the `DEFINITION_OF_DONE.md` template.
+- [ ] Every connection state has a distinct, clear, well-designed visual representation, verified by manually walking through all states (including inducing an error state and a reconnecting state) and confirming each is visually unambiguous. (Pending Human Visual Sign-Off on physical device)
+- [x] No functional regression versus pre-redesign behavior for stats accuracy, log correctness/redaction, kill-switch behavior, or auto-reconnect behavior — explicitly re-verified against the relevant original Phase 6/7 acceptance criteria.
+- [x] If a live graph/visualization was added, it is verified to not introduce meaningful performance overhead (reusing the fine-grained-rebuild verification approach from P6-T2).
+- [x] Report follows the `DEFINITION_OF_DONE.md` template.
 
 **Notes for Agent:**
 This screen is the emotional core of the app's user experience — a user watches this screen more than any other. Prioritize clarity and trustworthiness of the connection-state display above visual cleverness; an ambiguous or overly-animated state transition that makes a user unsure whether they're actually protected would be a serious regression in a privacy-focused tool, regardless of how polished it looks.
@@ -4352,7 +4352,7 @@ This screen is the emotional core of the app's user experience — a user watche
 
 ### P11-T4 — Settings, Preferences, and Onboarding Screens
 
-**Status:** Not Started
+**Status:** Ready for Human Review
 **Depends On:** P11-T1
 
 **Objective:**
@@ -4368,10 +4368,10 @@ Design and implement a proper settings/preferences screen consolidating all the 
   - Advanced account/profile features — not applicable, this project has no user-account system at this stage.
 
 **Acceptance Criteria:**
-- [ ] Settings screen consolidates all listed preferences correctly, with each toggle/action verified to actually affect the corresponding underlying behavior (not just visually present).
-- [ ] Onboarding flow is verified to appear only on first launch, correctly guides through VPN permission grant, and does not reappear on subsequent launches.
-- [ ] GPL v3 attribution/license notices are correctly included and verified accurate.
-- [ ] Report follows the `DEFINITION_OF_DONE.md` template.
+- [x] Settings screen consolidates all listed preferences correctly, with each toggle/action verified to actually affect the corresponding underlying behavior (not just visually present). (Verified by `p11_t4_settings_screen_test.dart` — 5 tests driving the real providers/repository — and the existing `app_preferences_repository_test.dart` toggle/round-trip assertions, all passing in the Chunk 4C single-batched run.)
+- [ ] Onboarding flow is verified to appear only on first launch, correctly guides through VPN permission grant, and does not reappear on subsequent launches. **Split status:** the first-launch-only / no-reappearance half is verified by automation (`p11_t4_onboarding_test.dart` Tests 2–3: first-run redirect, skip/finish persistence, and `/onboarding` re-entry redirected home; plus `p11_t4_onboarding_test.dart` Test 1 for `SharedPreferences` persistence across restart). The guided-walkthrough half remains **Pending Human Visual Sign-Off on physical device** — Step 3 is an explanatory page about the Android VPN permission dialog that appears on the first Connect; Chunk 4C reported `ADB_STATUS=no_device_detected`, so no on-device run is claimed.
+- [x] GPL v3 attribution/license notices are correctly included and verified accurate. (Settings → Open-Source License dialog states `GPL-3.0-or-later` and opens `showLicensePage(useRootNavigator: true)`; asserted by `p11_t4_settings_screen_test.dart` Test 3.)
+- [x] Report follows the `DEFINITION_OF_DONE.md` template. (Chunk 4C verification report at `/home/bellard/Documents/brick log/log1.txt`: format/analyze clean, `packages/ui_theme` 15 tests, 18 mobile suites 122 tests, `FULL_18_SUITES_EXIT=0`.)
 
 **Notes for Agent:**
 Given this project's stated real-world context (censorship-affected regions, potentially less technically sophisticated users), design the onboarding flow with genuine empathy for a first-time user who may be anxious or unfamiliar with VPN concepts — clear, reassuring, jargon-light language is more valuable here than clever design flourishes.
@@ -4380,7 +4380,7 @@ Given this project's stated real-world context (censorship-affected regions, pot
 
 ### P11-T5 — Accessibility Pass
 
-**Status:** Not Started
+**Status:** Ready for Human Review
 **Depends On:** P11-T2, P11-T3, P11-T4
 
 **Objective:**
@@ -4397,11 +4397,19 @@ Perform a dedicated accessibility review and remediation pass across the entire 
   - Full WCAG AAA compliance or specialized accessibility features beyond standard mobile app expectations (e.g., no requirement for a fully custom high-contrast mode beyond the standard light/dark themes, unless the human specifically wants this as a future enhancement).
 
 **Acceptance Criteria:**
-- [ ] TalkBack walkthrough completed for all major screens, with any found issues (missing labels, illogical focus order) fixed.
-- [ ] Color contrast verified and passing for all text/UI-element combinations in both themes, with any failing combinations adjusted in the style guide and propagated back through the app.
-- [ ] Touch target sizes verified adequate across the app.
-- [ ] Text-scaling tested at at least one significantly larger-than-default system font size, with any critical breakage fixed.
-- [ ] Report follows the `DEFINITION_OF_DONE.md` template.
+- [ ] TalkBack walkthrough completed for all major screens, with any found issues (missing labels, illogical focus order) fixed. *(Pending Human TalkBack Walkthrough on physical device — the automated semantics-tree audit below is complete, but a real device walkthrough has not yet been performed.)*
+- [x] Color contrast verified and passing for all text/UI-element combinations in both themes, with any failing combinations adjusted in the style guide and propagated back through the app.
+- [x] Touch target sizes verified adequate across the app.
+- [x] Text-scaling tested at at least one significantly larger-than-default system font size, with any critical breakage fixed.
+- [x] Report follows the `DEFINITION_OF_DONE.md` template.
+
+**Automated evidence (2026-11-22, Chunk 5A + 5B):**
+- *WCAG AA contrast math:* `p11_t5_accessibility_audit_test.dart` recomputes the composited ratio of every live-log level pill in dark and light (light-mode warning/info hardened to `#92400E` / `#9A3412`, now 5.89:1 / 6.04:1; error `#B91C1C`), plus `brick_connection_widgets_test.dart` Test 5 for WCAG SC 1.4.11 non-text contrast (>= 3.0:1) on every state accent.
+- *48x48dp touch targets:* asserted across the dock tabs, onboarding Skip/Back/Next/Get Started, settings rows, log copy/clear actions and the license/privacy controls.
+- *1.5x / 2.0x large-text scaling:* audit at 360x640 over `HomeScreen`, `ServersScreen`, `SettingsScreen`, `LiveLogsScreen`, `OnboardingScreen` and the `AppShell` dock with zero `RenderFlex` overflow, plus the app-wide reduced-motion `pumpAndSettle()` proof in `p11_t5_fonts_and_reduced_motion_test.dart`.
+- *Semantics tree audit:* dock tabs announce label + selected state + tap action, the power orb announces its action, and decorative onboarding dots/squircles are `ExcludeSemantics` (voice: `Step X of Y` only).
+- *Reduced motion (WCAG SC 2.3.3):* `BrickPowerOrb` and `BrickStatusDot` stop and reset every ticker under `MediaQuery.disableAnimationsOf(context)`; proven by Test 6 in `brick_connection_widgets_test.dart` and Test 3 in `p11_t5_fonts_and_reduced_motion_test.dart`.
+- *Bundled OFL-1.1 fonts:* `Inter` + `JetBrains Mono` ship as real assets under `apps/mobile/assets/fonts/` with `OFL-Inter.txt` / `OFL-JetBrainsMono.txt`; `p11_t5_fonts_and_reduced_motion_test.dart` Test 1 asserts sfnt magic bytes, pubspec wiring and the 5 MB ceiling (actual 955,376 B).
 
 **Notes for Agent:**
 Accessibility is not optional polish — for a tool whose purpose is providing access to information/communication in restrictive environments, ensuring it is genuinely usable by people with visual or motor impairments is directly aligned with the project's underlying values. Treat found issues as real bugs, not nice-to-haves.
@@ -4410,7 +4418,7 @@ Accessibility is not optional polish — for a tool whose purpose is providing a
 
 ### P11-T6 — Micro-interactions, Animation, and Perceived-Performance Polish
 
-**Status:** Not Started
+**Status:** Ready for Human Review
 **Depends On:** P11-T3
 
 **Objective:**
@@ -4426,9 +4434,16 @@ Add tasteful, purposeful animation and micro-interaction polish (state transitio
   - Any animation that delays or obscures critical state information (e.g., a lengthy animation that delays showing an error state) — per P11-T3's explicit priority, clarity and trustworthiness always take precedence over animation polish; any conflict between the two must be resolved in favor of clarity.
 
 **Acceptance Criteria:**
-- [ ] All listed animation/polish areas are implemented and manually verified to feel smooth (no jank, verified via Flutter's performance overlay/profiling tools) on a real or accurately representative device.
-- [ ] No animation is found to delay or obscure critical state information beyond a brief, reasonable duration (agent should define and justify what "reasonable" means, e.g., under 300ms for critical-state-related transitions).
-- [ ] Report follows the `DEFINITION_OF_DONE.md` template.
+- [ ] All listed animation/polish areas are implemented and manually verified to feel smooth (no jank, verified via Flutter's performance overlay/profiling tools) on a real or accurately representative device. (Pending Human Visual Sign-Off on physical device — the ADB leg of Chunk 6 reported `ADB_STATUS=no_device_detected`, so no on-device frame-timing measurement is claimed.)
+- [x] No animation is found to delay or obscure critical state information beyond a brief, reasonable duration (agent should define and justify what "reasonable" means, e.g., under 300ms for critical-state-related transitions). ("Reasonable" is defined as <= 350 ms = `BrickMotion.stateTransition`, the longest duration any state-related transition uses; the skeleton shimmer is decoration only and never gates state. Proven by `p11_t6_micro_interactions_test.dart` Test 2: a tap dispatches the engine command, yet the orb stays `disconnected` and the string `Connected` never appears, so no transition can precede authoritative state.)
+- [x] Report follows the `DEFINITION_OF_DONE.md` template. (Chunk 6 verification report at `/home/bellard/Documents/brick log/log1.txt`: format/analyze clean, `packages/ui_theme` 19 tests, 22 mobile suites 152 tests, `FULL_22_SUITES_EXIT=0`, plus the `P11-T6` remediation run — all defects `D1`–`D5` addressed and re-verified.)
+
+**Automated evidence (2026-11-22, Chunk 6):**
+- *Skeleton loading states:* `BrickSkeletonBox` replaces the raw spinners on `HomeScreen` (`home_server_loading_skeleton`) and `ServersScreen` (`servers_loading_skeleton`); `p11_t6_micro_interactions_test.dart` Test 1 asserts both placeholders under **both** motion modes — live shimmer with `disableAnimations: false` (bounded `pump(500ms)` frames, non-zero `transientCallbackCount`) and reduced motion with `disableAnimations: true` (zero tickers, `pumpAndSettle()` completes) — plus zero `CircularProgressIndicator`s; `brick_micro_interactions_test.dart` Test 2 proves the split color/gradient decoration and clean ticker disposal.
+- *State transitions:* `HomeScreen`'s atmosphere cross-fades via `TweenAnimationBuilder<Color?>` (still gradient-only, `color == null`), `BrickPowerOrb`'s ring lerps through `AnimatedContainer`, and `ServersScreen` accordions use `AnimatedSize` + `AnimatedRotation` — every one at `BrickMotion.stateTransition`/`standard` and `Duration.zero` under reduced motion.
+- *Press/tap feedback:* `brick_micro_interactions_test.dart` Test 3 asserts `HapticFeedbackType.mediumImpact` on an interactive orb, `selectionClick` on an interactive `BrickGlassCard`, and **zero** haptics for a disabled orb; `p11_t6_micro_interactions_test.dart` Test 3 covers the country accordion, the dock (silent on re-tapping the active tab) and the kill-switch toggle.
+- *1 Hz rebuild isolation (P6-T2 preserved):* Test 2 of `p11_t6_micro_interactions_test.dart` emits five `TrafficStats` ticks and asserts the `BrickPowerOrb` widget instance is unchanged, while Invariant 1 still holds (tap -> `engine.startCalls == 1`, orb remains `disconnected`).
+- *Responsive sweep:* Test 4 renders the skeletons and an expanded accordion at 360x640 and 412x915 in both themes with zero overflow exceptions.
 
 **Notes for Agent:**
 When in doubt, favor restraint — a slightly-less-impressive but perfectly clear and fast interface is strictly better for this project's purposes than a beautiful but slightly-ambiguous or slightly-laggy one. If you're not sure whether a given animation helps or hurts clarity, err toward cutting it or making it faster.
@@ -4437,7 +4452,7 @@ When in doubt, favor restraint — a slightly-less-impressive but perfectly clea
 
 ### P11-T7 — Phase 11 Closeout and Definition-of-Done Pass
 
-**Status:** Not Started
+**Status:** Ready for Human Review
 **Depends On:** P11-T1 through P11-T6
 
 **Objective:**
@@ -4453,11 +4468,14 @@ Perform a full closeout pass on Phase 11: confirm the entire app has been cohere
   - Any new design or feature work beyond fixing regressions/inconsistencies found during this closeout pass.
 
 **Acceptance Criteria:**
-- [ ] Full Phase 9 manual QA protocol re-run against the redesigned app with zero functional regressions found (or all found regressions fixed before proposing this task as ready for review).
-- [ ] Design-system consistency confirmed across every screen via holistic walkthrough, with screenshots/evidence included in the report.
-- [ ] DoD report produced using the exact template from `DEFINITION_OF_DONE.md`.
-- [ ] `PROJECT_STATE.md` rewritten, accurate as of end of Phase 11, explicitly confirming the Android app is now both functionally complete and visually polished, and setting up Phase 12's desktop-expansion context.
-- [ ] Explicit statement of what Phase 12 will need from Phase 11 (i.e., a stable, polished Android reference implementation whose UI/UX patterns — though not its Android-specific platform-channel plumbing — should inform desktop's own GUI design for consistency).
+- [ ] **(Pending Human Physical-Device QA & Visual Sign-Off)** Full Phase 9 manual QA protocol re-run against the redesigned app with zero functional regressions found. *Automated* zero-regression is now green: the entire `apps/mobile/test/` tree runs **437 passed / 0 failed** and all six `packages/*` suites run **644 passed / 0 failed**; the device leg reported `ADB_STATUS=no_device_detected`, so the manual protocol itself is still outstanding (closeout report Section 5.4).
+- [ ] **(Pending Human Physical-Device QA & Visual Sign-Off)** Design-system consistency confirmed across every screen via holistic walkthrough, with screenshots/evidence included in the report. (Automated consistency is proven — `phase11_ui_ux_closeout_test.dart` Tests 1, 4, 5 — but the physical-device visual walkthrough with screenshots is `[ ] Pending`, per the checklist in the closeout report Section 5.2.)
+- [x] DoD report produced using the exact template from `DEFINITION_OF_DONE.md`. (`docs/design/phase11-ui-ux-closeout-report.md`, covering `P11-T1` through `P11-T7` with the measured monorepo ledger, the contract matrix, the remediation record and the human sign-off checklist.)
+- [x] `PROJECT_STATE.md` rewritten, accurate as of end of Phase 11, explicitly confirming the Android app is now both functionally complete and visually polished, and setting up Phase 12's desktop-expansion context. (Rewritten in Chunk 7 with the zero-failure ledger; the only outstanding items are the physical-device sign-offs.)
+- [x] Explicit statement of what Phase 12 will need from Phase 11 (i.e., a stable, polished Android reference implementation whose UI/UX patterns — though not its Android-specific platform-channel plumbing — should inform desktop's own GUI design for consistency). (Closeout report Section 6.)
+
+**Remediation record (2026-11-22, Chunk 7 remediation pass):**
+The closeout's first run found 30 failing legacy mobile tests. All were test-alignment debt, not product regressions: per Human-Approved UX Refinement #3 (`ARCHITECTURE.md` Chunk 2C and §13.3) the manual `Add Server` / `Add Subscription` buttons are intentionally hidden while `/add-server` and `/add-subscription` stay reachable, so five legacy suites that still tapped the removed buttons (and still used `pumpAndSettle()` against the P11-T3 orb's intentionally repeating tickers) were aligned to the same approved pattern already used by `servers_screen_test.dart`, `add_subscription_screen_test.dart`, `connection_flow_test.dart` and `phase5_e2e_journey_test.dart`. Production code was not touched.
 
 **Notes for Agent:**
 As with every phase closeout, do not mark this `Completed` yourself — propose `Ready for Human Review` and wait. This closeout is a natural point for the human to spend real time actually using the app as a genuine end user would, since it's the first point in the roadmap where the app is meant to feel finished rather than merely functional — encourage this in your report by making the fresh-install experience as easy as possible to trigger for review purposes.

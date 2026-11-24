@@ -144,6 +144,10 @@ class PigeonVpnApiImpl(
                 .put("address", JSONArray().put("10.111.222.1/24"))
                 .put("mtu", 9000)
                 .put("auto_route", true)
+                // sing-box v1.10.7 only matches `protocol: "dns"` in route
+                // rules for packets the inbound has sniffed; without this the
+                // TUN traffic reaches the proxy outbound as raw UDP:53.
+                .apply { if (!isBlock) put("sniff", true) }
                 .put("strict_route", true),
         )
         root.put("inbounds", inbounds)
@@ -157,6 +161,8 @@ class PigeonVpnApiImpl(
             val primaryOutbound = JSONObject(outbound).put("tag", outboundTag)
             outbounds.put(primaryOutbound)
             outbounds.put(JSONObject().put("type", "direct").put("tag", "direct-out"))
+            // v1.10.7's DNS special outbound: the target of the hijack rule.
+            outbounds.put(JSONObject().put("type", "dns").put("tag", "dns-out"))
             root.put("outbounds", outbounds)
 
             val dnsServers = JSONArray()
@@ -189,11 +195,16 @@ class PigeonVpnApiImpl(
                 .put("strategy", "prefer_ipv4")
             root.put("dns", dnsObj)
 
+            // v1.10.7 schema ONLY: `action` (sing-box 1.11+ rule actions) is
+            // rejected by the pinned libbox.aar with
+            // `decode config: route.rules[0].action: json: unknown field
+            // "action"`, so DNS hijacking is expressed the classic way: send
+            // sniffed DNS to the `dns-out` special outbound.
             val routeRules = JSONArray()
             routeRules.put(
                 JSONObject()
                     .put("protocol", "dns")
-                    .put("action", "hijack-dns"),
+                    .put("outbound", "dns-out"),
             )
             root.put(
                 "route",

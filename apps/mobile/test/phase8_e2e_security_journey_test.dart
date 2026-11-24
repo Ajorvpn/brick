@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import 'dart:async';
+
 import 'dart:convert';
 import 'dart:io';
 
@@ -171,9 +173,7 @@ void main() {
 
         // 1. Navigate from Home to Add Server screen
         expect(find.byType(HomeScreen), findsOneWidget);
-        await tester.tap(
-          find.byKey(const ValueKey<String>('home_add_server_button')),
-        );
+        unawaited(tester.element(find.byType(HomeScreen)).push('/add-server'));
         await tester.pumpAndSettle();
         expect(find.byType(AddServerScreen), findsOneWidget);
 
@@ -226,7 +226,8 @@ void main() {
         await tester.tap(find.byType(BackButton));
         await tester.pumpAndSettle();
         expect(find.byType(HomeScreen), findsOneWidget);
-        expect(find.text('VLESSRealityNode'), findsWidgets);
+        // The dashboard names the active server in its selector card.
+        expect(find.textContaining('VLESSRealityNode'), findsWidgets);
 
         // =====================================================================
         // STAGE B: P8-T1 Field-Level Encrypted Storage at Rest & Sanitization
@@ -302,8 +303,12 @@ void main() {
         await tester.tap(toggleBtn);
         await tester.pump();
         fakeEngine.emit(const Connected());
-        await tester.pumpAndSettle();
-        expect(find.widgetWithText(FilledButton, 'Disconnect'), findsOneWidget);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+        expect(
+          find.descendant(of: toggleBtn, matching: find.text('Connected')),
+          findsOneWidget,
+        );
         expect(
           fakeEngine.startCalls.map((p) => p.id),
           contains('vless-node-1'),

@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import 'package:easy_localization/easy_localization.dart';
+// `intl` (re-exported by easy_localization) also defines a `TextDirection`
+// whose constants are `LTR`/`RTL`; hide it so this file resolves Flutter's
+// `dart:ui` `TextDirection` (with `.ltr`/`.rtl`) instead.
+import 'package:easy_localization/easy_localization.dart' hide TextDirection;
 import 'package:flutter/material.dart';
 import 'package:mobile/features/connection/domain/entities/saved_server.dart';
 import 'package:ui_theme/ui_theme.dart';
@@ -123,11 +126,18 @@ class ServerProfileTile extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(
-                        server.endpoint,
-                        style: BrickTypography.monoLog(color: colors.textMuted),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                      // `host:port` is technical data: LTR island so Persian
+                      // RTL never reorders the endpoint.
+                      Directionality(
+                        textDirection: TextDirection.ltr,
+                        child: Text(
+                          server.endpoint,
+                          style: BrickTypography.monoLog(
+                            color: colors.textMuted,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                       const SizedBox(height: 4),
                       Container(

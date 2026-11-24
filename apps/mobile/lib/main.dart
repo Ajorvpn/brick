@@ -24,7 +24,8 @@ Future<void> main() async {
   // string — shares one locale.
   runApp(
     EasyLocalization(
-      supportedLocales: const <Locale>[Locale('en'), Locale('de')],
+      // Brick VPN ships in English and Persian (the latter renders RTL).
+      supportedLocales: const <Locale>[Locale('en'), Locale('fa')],
       path: 'assets/translations',
       fallbackLocale: const Locale('en'),
       child: UncontrolledProviderScope(

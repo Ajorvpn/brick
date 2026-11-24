@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -8,6 +9,7 @@ import 'package:core_domain/core_domain.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:mobile/features/connection/presentation/screens/add_subscription_screen.dart';
 import 'package:mobile/features/connection/presentation/screens/home_screen.dart';
 import 'package:mobile/features/servers/domain/entities/subscription_metadata.dart';
@@ -100,8 +102,8 @@ void main() {
       expect(dataSource.savedProfiles, isEmpty);
 
       // Navigate from Home to Add Subscription
-      await tester.tap(
-        find.byKey(const ValueKey<String>('home_add_subscription_button')),
+      unawaited(
+        tester.element(find.byType(HomeScreen)).push('/add-subscription'),
       );
       await tester.pumpAndSettle();
       expect(find.byType(AddSubscriptionScreen), findsOneWidget);
@@ -173,8 +175,8 @@ void main() {
         subscriptionFetcher: fetcher,
       );
 
-      await tester.tap(
-        find.byKey(const ValueKey<String>('home_add_subscription_button')),
+      unawaited(
+        tester.element(find.byType(HomeScreen)).push('/add-subscription'),
       );
       await tester.pumpAndSettle();
 
@@ -232,8 +234,8 @@ void main() {
         subscriptionFetcher: fetcher,
       );
 
-      await tester.tap(
-        find.byKey(const ValueKey<String>('home_add_subscription_button')),
+      unawaited(
+        tester.element(find.byType(HomeScreen)).push('/add-subscription'),
       );
       await tester.pumpAndSettle();
 
@@ -279,8 +281,8 @@ void main() {
           subscriptionFetcher: fetcher,
         );
 
-        await tester.tap(
-          find.byKey(const ValueKey<String>('home_add_subscription_button')),
+        unawaited(
+          tester.element(find.byType(HomeScreen)).push('/add-subscription'),
         );
         await tester.pumpAndSettle();
 
@@ -332,8 +334,8 @@ void main() {
         subscriptionFetcher: fetcher,
       );
 
-      await tester.tap(
-        find.byKey(const ValueKey<String>('home_add_subscription_button')),
+      unawaited(
+        tester.element(find.byType(HomeScreen)).push('/add-subscription'),
       );
       await tester.pumpAndSettle();
 
@@ -375,8 +377,8 @@ void main() {
         dataSource: dataSource,
       );
 
-      await tester.tap(
-        find.byKey(const ValueKey<String>('home_add_subscription_button')),
+      unawaited(
+        tester.element(find.byType(HomeScreen)).push('/add-subscription'),
       );
       await tester.pumpAndSettle();
 
@@ -404,8 +406,8 @@ void main() {
         dataSource: dataSource,
       );
 
-      await tester.tap(
-        find.byKey(const ValueKey<String>('home_add_subscription_button')),
+      unawaited(
+        tester.element(find.byType(HomeScreen)).push('/add-subscription'),
       );
       await tester.pumpAndSettle();
 
@@ -458,8 +460,8 @@ void main() {
         dataSource: dataSource,
       );
 
-      await tester.tap(
-        find.byKey(const ValueKey<String>('home_add_subscription_button')),
+      unawaited(
+        tester.element(find.byType(HomeScreen)).push('/add-subscription'),
       );
       await tester.pumpAndSettle();
 
@@ -498,8 +500,8 @@ void main() {
           repository: _FailingStorageRepository(dataSource),
         );
 
-        await tester.tap(
-          find.byKey(const ValueKey<String>('home_add_subscription_button')),
+        unawaited(
+          tester.element(find.byType(HomeScreen)).push('/add-subscription'),
         );
         await tester.pumpAndSettle();
 

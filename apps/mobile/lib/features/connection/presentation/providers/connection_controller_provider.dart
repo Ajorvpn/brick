@@ -8,6 +8,7 @@ import 'package:core_domain/core_domain.dart'
         Connecting,
         ConnectionState,
         Disconnected,
+        Disconnecting,
         Error,
         ServerProfile;
 import 'package:core_vpn_engine/core_vpn_engine.dart';
@@ -112,13 +113,25 @@ class ConnectionController extends _$ConnectionController {
       final currentState =
           ref.read(connectionStateProvider).value ??
           ref.read(initialConnectionStateProvider);
-      if (currentState is Connected || currentState is Connecting) {
+      // A live reconnect loop is a session too: without this the coordinator
+      // keeps restarting the OLD profile underneath the new start.
+      final autoReconnectState = ref.read(autoReconnectProvider);
+      final hasActiveOrReconnectingSession =
+          currentState is Connected ||
+          currentState is Connecting ||
+          autoReconnectState.isReconnecting;
+      if (hasActiveOrReconnectingSession) {
         final currentActiveId =
             _activeConnectingServerId ?? ref.read(activeServerProvider)?.id;
-        if (currentActiveId != null && currentActiveId != profile.id) {
+        final isDifferentServer =
+            currentActiveId != null && currentActiveId != profile.id;
+        if (isDifferentServer || autoReconnectState.isReconnecting) {
           ref.read(autoReconnectProvider.notifier).onUserInitiatedDisconnect();
           ref.read(killSwitchProvider.notifier).onUserInitiatedDisconnect();
           await engine.stop();
+          // Native accepts Stopping immediately; wait for the terminal state so
+          // the new start cannot race the old session's teardown.
+          await _waitUntilStopped(engine);
         } else {
           return const VpnCommandRejectedBusy();
         }
@@ -162,6 +175,39 @@ class ConnectionController extends _$ConnectionController {
       return const VpnCommandFailed();
     } finally {
       _busy = false;
+    }
+  }
+
+  /// Awaits the engine's terminal stopped state, bounded.
+  ///
+  /// `VpnEngine.stop()` is accepted as soon as the native service enters
+  /// `Stopping` (it logs `state -> Stopping` and returns). Calling
+  /// `prepare()` / `start()` in that window races `Stopped` + `onDestroy`, and
+  /// a `BrickVpnService` teardown finishing after the new `ACTION_START` used
+  /// to destroy the service out from under it.
+  ///
+  /// Returns immediately when the engine is already [Disconnected] / [Error]
+  /// (the common synchronous path, including fake engines that emit nothing),
+  /// and also when no teardown is in flight ([Disconnecting] not observed) -
+  /// there is nothing observable to await, and blocking there would wedge the
+  /// command path.
+  Future<void> _waitUntilStopped(VpnEngine engine) async {
+    final current =
+        ref.read(connectionStateProvider).value ??
+        ref.read(initialConnectionStateProvider);
+    if (current is Disconnected || current is Error) return;
+    // Only a published teardown ([Disconnecting]) is awaitable. When the
+    // engine has not reported one yet there is no observable stop to wait for,
+    // and the native layer serializes the start behind an in-flight teardown
+    // itself (`BrickVpnService.requestStart`), so blocking here would only
+    // wedge the command path (including hand-driven test engines).
+    if (current is! Disconnecting) return;
+    try {
+      await engine.connectionState
+          .firstWhere((state) => state is Disconnected || state is Error)
+          .timeout(const Duration(seconds: 3));
+    } on Object {
+      // Bounded: a slow or silent teardown must never wedge the switch.
     }
   }
 

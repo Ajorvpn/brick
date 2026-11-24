@@ -4,6 +4,9 @@ import 'package:core_domain/core_domain.dart'
     show Connected, Disconnected, Error, PlatformError;
 import 'package:flutter/material.dart' hide ConnectionState;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mobile/core/data/repositories/app_preferences_repository.dart';
+import 'package:mobile/core/providers/app_preferences_provider.dart';
+import 'package:mobile/core/providers/vpn_engine_provider.dart';
 import 'package:mobile/features/connection/presentation/screens/home_screen.dart';
 import 'package:mobile/main.dart';
 
@@ -37,6 +40,48 @@ void _simulateAppResumed(WidgetTester tester) {
   tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
 }
 
+/// Pumps exactly one bounded frame pair instead of `pumpAndSettle()`.
+///
+/// The redesigned `HomeScreen` intentionally keeps repeating tickers running
+/// (`BrickPowerOrb` breathing/rotation, `_HomeBeaconIcon` pulse) whenever a
+/// tunnel is active or transitioning, so `pumpAndSettle()` can never settle
+/// there — it throws after its timeout. Bounded pumps advance the state
+/// machine deterministically without waiting for animations to stop.
+Future<void> _settleAnimated(WidgetTester tester) async {
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 400));
+}
+
+/// `pumpConnectionMaterialApp`/`pumpConnectionApp` with bounded pumps.
+///
+/// The localization harness ends in `pumpAndSettle()`, which deadlocks against
+/// the connected orb tickers. The overrides below mirror the harness exactly;
+/// only the pump strategy differs, so every lifecycle assertion is unchanged.
+Future<void> _pumpBoundedHome(
+  WidgetTester tester,
+  Widget app, {
+  required FakeVpnEngine engine,
+  FakeServerProfileDataSource? dataSource,
+  AppPreferencesRepository? preferencesRepository,
+  bool withRouter = false,
+}) async {
+  await tester.pumpWidget(
+    localizedApp(
+      overrides: <Object>[
+        vpnEngineProvider.overrideWithValue(engine),
+        ...repositoryOverride(dataSource),
+        if (preferencesRepository != null)
+          appPreferencesRepositoryProvider.overrideWithValue(
+            preferencesRepository,
+          ),
+      ],
+      child: withRouter ? app : localizedMaterialApp(home: app),
+    ),
+  );
+  await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+  await _settleAnimated(tester);
+}
+
 void main() {
   setUpAll(initTestLocalization);
 
@@ -52,7 +97,7 @@ void main() {
         // 1. Initial state is Connected.
         engine.emit(const Connected());
 
-        await pumpConnectionMaterialApp(
+        await _pumpBoundedHome(
           tester,
           const HomeScreen(),
           engine: engine,
@@ -77,7 +122,7 @@ void main() {
 
         // Allow microtasks and stream events from getStatus() to resolve.
         await tester.runAsync(() => Future<void>.delayed(Duration.zero));
-        await tester.pumpAndSettle();
+        await _settleAnimated(tester);
 
         // 5. Assert badge instantly updated to Disconnected without user input.
         expect(_badgeText(tester), 'Disconnected');
@@ -94,7 +139,7 @@ void main() {
         // 1. Initial state is Disconnected.
         engine.emit(const Disconnected());
 
-        await pumpConnectionMaterialApp(
+        await _pumpBoundedHome(
           tester,
           const HomeScreen(),
           engine: engine,
@@ -114,7 +159,7 @@ void main() {
         _simulateAppResumed(tester);
 
         await tester.runAsync(() => Future<void>.delayed(Duration.zero));
-        await tester.pumpAndSettle();
+        await _settleAnimated(tester);
 
         // 5. Assert badge reconciled to Connected.
         expect(_badgeText(tester), 'Connected');
@@ -132,7 +177,7 @@ void main() {
         // Native engine is already running before Flutter VM started.
         engine.lastState = const Connected();
 
-        await pumpConnectionMaterialApp(
+        await _pumpBoundedHome(
           tester,
           const HomeScreen(),
           engine: engine,
@@ -153,7 +198,7 @@ void main() {
 
         engine.emit(const Connected());
 
-        await pumpConnectionMaterialApp(
+        await _pumpBoundedHome(
           tester,
           const HomeScreen(),
           engine: engine,
@@ -171,7 +216,7 @@ void main() {
         _simulateAppResumed(tester);
 
         await tester.runAsync(() => Future<void>.delayed(Duration.zero));
-        await tester.pumpAndSettle();
+        await _settleAnimated(tester);
 
         // Should render localized connection error
         expect(_badgeText(tester), 'Connection error');
@@ -189,11 +234,12 @@ void main() {
         engine.emit(const Connected());
 
         // Pump full MyApp root
-        await pumpConnectionApp(
+        await _pumpBoundedHome(
           tester,
           const MyApp(),
           engine: engine,
           dataSource: dataSource,
+          withRouter: true,
         );
 
         expect(_badgeText(tester), 'Connected');
@@ -205,7 +251,7 @@ void main() {
 
         _simulateAppResumed(tester);
         await tester.runAsync(() => Future<void>.delayed(Duration.zero));
-        await tester.pumpAndSettle();
+        await _settleAnimated(tester);
 
         expect(_badgeText(tester), 'Disconnected');
       },

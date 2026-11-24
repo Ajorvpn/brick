@@ -131,7 +131,13 @@ class LibboxTunnelEngine(
             service = null
             platformInterface = null
             lentFd = null
-            Log.e(tag, "libbox start failed: ${t.javaClass.simpleName}: ${t.message}")
+            val errLine = "libbox start failed: ${t.javaClass.simpleName}: ${t.message}"
+            Log.e(tag, errLine)
+            // Surface the native failure in the in-app log too, otherwise
+            // LiveLogsScreen shows only the Dart-side symptoms. A throwing
+            // sink must never mask the exception being rethrown below.
+            runCatching { onLogReceived(errLine) }
+            runCatching { globalLogConsumer?.invoke(errLine) }
             throw t
         }
     }

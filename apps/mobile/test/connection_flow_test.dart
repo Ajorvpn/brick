@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import 'dart:async';
+
 import 'package:core_domain/core_domain.dart'
     show
         Connected,
@@ -12,13 +14,24 @@ import 'package:core_vpn_engine/core_vpn_engine.dart';
 import 'package:flutter/material.dart' hide ConnectionState;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:mobile/features/connection/presentation/providers/connection_controller_provider.dart';
 import 'package:mobile/features/connection/presentation/providers/connection_state_provider.dart';
 import 'package:mobile/features/connection/presentation/screens/add_server_screen.dart';
 import 'package:mobile/features/connection/presentation/screens/home_screen.dart';
 import 'package:mobile/main.dart';
+import 'package:ui_theme/ui_theme.dart' show BrickPowerOrb;
 
 import 'localization_test_harness.dart';
+
+/// Flushes pending frames without waiting for the [BrickPowerOrb]'s repeating
+/// state animations to settle — connecting, connected, reconnecting,
+/// disconnecting and kill-switch states never stop scheduling frames, so a
+/// `pumpAndSettle()` there would time out.
+Future<void> pumpBounded(WidgetTester tester) async {
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 400));
+}
 
 /// The label currently shown in the connection state badge.
 ///
@@ -74,7 +87,7 @@ void main() {
         // Nothing is persisted before Save.
         expect(dataSource.records, isEmpty);
 
-        await tester.tap(find.text('Add Server'));
+        unawaited(tester.element(find.byType(HomeScreen)).push('/add-server'));
         await tester.pumpAndSettle();
         expect(find.byType(AddServerScreen), findsOneWidget);
 
@@ -109,7 +122,7 @@ void main() {
         dataSource: dataSource,
       );
 
-      await tester.tap(find.text('Add Server'));
+      unawaited(tester.element(find.byType(HomeScreen)).push('/add-server'));
       await tester.pumpAndSettle();
 
       await tester.enterText(
@@ -234,17 +247,29 @@ void main() {
         dataSource: dataSource,
       );
 
-      expect(find.text('My Server'), findsOneWidget);
-      // Addressed by its own key, never by position: the tile also renders
-      // Connect/Disconnect `Text` buttons, so a `.last` descendant finder
-      // lands on 'Disconnect' the moment the trailing row is reordered.
-      final tileSubtitle = tester.widget<Text>(
-        find.byKey(const ValueKey<String>('server_tile_subtitle_seed-1')),
+      // The redesigned dashboard shows the saved server in its active-server
+      // selector card; the duplicate ServerTile list was removed.
+      expect(
+        find.byKey(const ValueKey<String>('home_active_server_card')),
+        findsOneWidget,
       );
-      expect(tileSubtitle.data, contains('vless'));
-      expect(tileSubtitle.data, contains('example.com:443'));
-      expect(find.text('Connect'), findsNWidgets(2));
-      expect(find.text('Disconnect'), findsOneWidget);
+      expect(find.text('Active: My Server'), findsOneWidget);
+      final activeName = tester.widget<Text>(
+        find.byKey(const ValueKey<String>('home_active_server_name')),
+      );
+      expect(activeName.data, 'Active: My Server');
+      // Protocol and endpoint stay visible, addressed by their own keys.
+      final activeEndpoint = tester.widget<Text>(
+        find.byKey(const ValueKey<String>('home_active_server_endpoint')),
+      );
+      expect(activeEndpoint.data, contains('vless'));
+      expect(activeEndpoint.data, contains('example.com:443'));
+      expect(find.text('VLESS'), findsWidgets);
+      // And it is connectable from the dashboard orb.
+      expect(
+        find.byKey(const ValueKey<String>('home_connect_toggle_button')),
+        findsOneWidget,
+      );
     });
 
     testWidgets('shows an empty message when nothing is saved', (tester) async {
@@ -274,12 +299,15 @@ void main() {
       ]);
       addTearDown(engine.dispose);
 
-      await pumpConnectionMaterialApp(
+      // Broken records surface on the Servers tab, which owns the full list.
+      await pumpConnectionApp(
         tester,
-        const HomeScreen(),
+        const MyApp(),
         engine: engine,
         dataSource: dataSource,
       );
+      await tester.tap(find.byKey(const ValueKey<String>('nav_tab_servers')));
+      await tester.pumpAndSettle();
 
       // A recognizable broken entry...
       expect(find.text('Unreadable server'), findsOneWidget);
@@ -288,7 +316,13 @@ void main() {
       // ...still stored rather than silently dropped...
       expect(dataSource.records, hasLength(1));
       // ...and removable.
-      await tester.tap(find.text('Remove'));
+      await tester.tap(
+        find.byKey(const ValueKey<String>('server_delete_broken-1')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey<String>('confirm_delete_confirm')),
+      );
       await tester.pumpAndSettle();
       expect(dataSource.records, isEmpty);
       expect(find.text('Unreadable server'), findsNothing);
@@ -306,27 +340,27 @@ void main() {
       ]);
       addTearDown(engine.dispose);
 
-      await pumpConnectionMaterialApp(
+      await pumpConnectionApp(
         tester,
-        const HomeScreen(),
+        const MyApp(),
         engine: engine,
         dataSource: dataSource,
       );
+      await tester.tap(find.byKey(const ValueKey<String>('nav_tab_servers')));
+      await tester.pumpAndSettle();
 
       expect(find.text('Unreadable server'), findsOneWidget);
       expect(find.textContaining('hunter2-secret'), findsNothing);
-      // The reason shown must not carry the stored URI either.
-      final reason = tester.widget<Text>(
-        find
-            .descendant(
-              of: find.byKey(
-                const ValueKey<String>('server_tile_broken_broken-2'),
-              ),
-              matching: find.byType(Text),
-            )
-            .last,
+      // No text inside the broken tile may carry the stored URI either.
+      final brokenTexts = tester.widgetList<Text>(
+        find.descendant(
+          of: find.byKey(const ValueKey<String>('server_broken_tile_broken-2')),
+          matching: find.byType(Text),
+        ),
       );
-      expect(reason.data ?? '', isNot(contains('hunter2-secret')));
+      for (final text in brokenTexts) {
+        expect(text.data ?? '', isNot(contains('hunter2-secret')));
+      }
     });
   });
 
@@ -348,17 +382,19 @@ void main() {
 
       expect(engine.startCalls, isEmpty);
 
-      await tester.tap(find.text('Connect').first);
-      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey<String>('home_connect_toggle_button')),
+      );
+      await pumpBounded(tester);
 
       expect(engine.startCalls, hasLength(1));
       expect(engine.startCalls.single.config.protocol.scheme, 'vless');
 
       // Rebuilds driven by stream events must NOT re-dispatch the command.
       engine.emit(const Connecting());
-      await tester.pumpAndSettle();
+      await pumpBounded(tester);
       engine.emit(const Connected());
-      await tester.pumpAndSettle();
+      await pumpBounded(tester);
       expect(badgeText(tester), 'Connected');
 
       expect(engine.startCalls, hasLength(1));
@@ -380,8 +416,10 @@ void main() {
       expect(engine.startCalls, isEmpty);
       expect(engine.prepareCalls, 0);
 
-      await tester.tap(find.text('Connect').first);
-      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey<String>('home_connect_toggle_button')),
+      );
+      await pumpBounded(tester);
 
       expect(engine.prepareCalls, 1);
       expect(engine.startCalls, isEmpty);
@@ -402,13 +440,19 @@ void main() {
 
       expect(engine.stopCalls, 0);
 
-      await tester.tap(find.text('Disconnect'));
-      await tester.pumpAndSettle();
+      // Disconnect is only offered while the tunnel is up.
+      engine.emit(const Connected());
+      await pumpBounded(tester);
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('home_connect_toggle_button')),
+      );
+      await pumpBounded(tester);
 
       expect(engine.stopCalls, 1);
 
       engine.emit(const Disconnecting());
-      await tester.pumpAndSettle();
+      await pumpBounded(tester);
       expect(engine.stopCalls, 1);
     });
   });
@@ -441,19 +485,19 @@ void main() {
       );
 
       engine.emit(const Connecting());
-      await tester.pumpAndSettle();
+      await pumpBounded(tester);
       expect(badgeText(tester), 'Connecting');
 
       engine.emit(const Connected());
-      await tester.pumpAndSettle();
+      await pumpBounded(tester);
       expect(badgeText(tester), 'Connected');
 
       engine.emit(const Disconnecting());
-      await tester.pumpAndSettle();
+      await pumpBounded(tester);
       expect(badgeText(tester), 'Disconnecting');
 
       engine.emit(const Disconnected());
-      await tester.pumpAndSettle();
+      await pumpBounded(tester);
       expect(badgeText(tester), 'Disconnected');
     });
 
@@ -472,8 +516,10 @@ void main() {
         dataSource: dataSource,
       );
 
-      await tester.tap(find.text('Connect').first);
-      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey<String>('home_connect_toggle_button')),
+      );
+      await pumpBounded(tester);
 
       // The engine accepted the command but has emitted NO transition. This
       // is the regression guard for the legacy "Connected over a dead
@@ -501,7 +547,7 @@ void main() {
 
         // Emitting from the engine moves the streamed state...
         engine.emit(const Connecting());
-        await tester.pumpAndSettle();
+        await pumpBounded(tester);
         expect(badgeText(tester), 'Connecting');
 
         // ...while the controller's own value stays a void placeholder, so no
@@ -560,13 +606,13 @@ void main() {
         );
 
         engine.emit(const Connected());
-        await tester.pumpAndSettle();
+        await pumpBounded(tester);
         expect(badgeText(tester), 'Connected');
 
         // Invariant 2: independent failure domains. A stats-pipeline error
         // must degrade statistics WITHOUT moving the connection badge.
         engine.emitStatsError(StateError('stats pipeline down'));
-        await tester.pumpAndSettle();
+        await pumpBounded(tester);
 
         expect(badgeText(tester), 'Connected');
         expect(find.text('Traffic data unavailable'), findsOneWidget);
@@ -600,7 +646,7 @@ void main() {
       expect(dataSource.savedProfiles, isEmpty);
 
       await tester.tap(toggleFinder);
-      await tester.pumpAndSettle();
+      await pumpBounded(tester);
 
       expect(engine.prepareCalls, 1);
       expect(engine.startCalls, hasLength(1));
@@ -612,12 +658,12 @@ void main() {
 
       // Transition engine to Connected
       engine.emit(const Connected());
-      await tester.pumpAndSettle();
+      await pumpBounded(tester);
 
       // Tapping toggle now calls disconnect
       expect(engine.stopCalls, 0);
       await tester.tap(toggleFinder);
-      await tester.pumpAndSettle();
+      await pumpBounded(tester);
 
       expect(engine.stopCalls, 1);
     });
@@ -705,14 +751,14 @@ void main() {
           const ValueKey<String>('home_connect_toggle_button'),
         );
         await tester.tap(toggleFinder);
-        await tester.pumpAndSettle();
+        await pumpBounded(tester);
 
         expect(engine.startCalls, hasLength(1));
         expect(engine.startCalls.single.id, equals(server1.id));
 
         // Engine enters Connected state
         engine.emit(const Connected());
-        await tester.pumpAndSettle();
+        await pumpBounded(tester);
 
         // Mid-connection switch: trigger connect to server 2 while connected
         final container = ProviderScope.containerOf(
@@ -721,7 +767,7 @@ void main() {
         final result = await container
             .read(connectionControllerProvider.notifier)
             .connect(server2);
-        await tester.pumpAndSettle();
+        await pumpBounded(tester);
 
         expect(result, isA<VpnCommandAccepted>());
         // Engine stop was called for server 1, and server 2 was started
@@ -751,10 +797,10 @@ void main() {
 
       // Put engine in Disconnecting state
       engine.emit(const Disconnecting());
-      await tester.pumpAndSettle();
+      await pumpBounded(tester);
 
-      final button = tester.widget<FilledButton>(toggleFinder);
-      expect(button.onPressed, isNull);
+      final orb = tester.widget<BrickPowerOrb>(toggleFinder);
+      expect(orb.onTap, isNull);
     });
 
     testWidgets('empty state displays no active server card or toggle button', (
@@ -783,8 +829,8 @@ void main() {
     });
 
     testWidgets(
-      'tapping Connect on ServerTile connects to that specific server and '
-      'updates active selection',
+      'selecting a server on ServersScreen connects that exact server from '
+      'the Home orb',
       (tester) async {
         final engine = FakeVpnEngine();
         final dataSource = FakeServerProfileDataSource();
@@ -793,9 +839,10 @@ void main() {
         await repo.addServer(validVlessUri);
         await repo.addServer(validShadowsocksUri);
 
-        await pumpConnectionMaterialApp(
+        // Pumped through the real app shell so the Servers tab is reachable.
+        await pumpConnectionApp(
           tester,
-          const HomeScreen(),
+          const MyApp(),
           engine: engine,
           dataSource: dataSource,
         );
@@ -808,26 +855,29 @@ void main() {
         // Active server auto-falls back to server 1
         expect(find.text('Active: ${server1.name}'), findsOneWidget);
 
-        // Find the second server's tile and tap its Connect button specifically
+        // Select the second server on the Servers tab
+        await tester.tap(find.byKey(const ValueKey<String>('nav_tab_servers')));
+        await tester.pumpAndSettle();
         final secondTile = find.byKey(
           ValueKey<String>('server_tile_${server2.id}'),
         );
         expect(secondTile, findsOneWidget);
-        final connectButton = find.descendant(
-          of: secondTile,
-          matching: find.text('Connect'),
-        );
-        expect(connectButton, findsOneWidget);
-
-        await tester.tap(connectButton);
+        await tester.tap(secondTile);
         await tester.pumpAndSettle();
+
+        // Back on Home, the dashboard shows server 2 and connects it
+        await tester.tap(find.byKey(const ValueKey<String>('nav_tab_home')));
+        await tester.pumpAndSettle();
+        expect(find.text('Active: ${server2.name}'), findsOneWidget);
+
+        await tester.tap(
+          find.byKey(const ValueKey<String>('home_connect_toggle_button')),
+        );
+        await pumpBounded(tester);
 
         // Engine starts with server 2's profile
         expect(engine.startCalls, hasLength(1));
         expect(engine.startCalls.single.id, equals(server2.id));
-
-        // Active server selection switched to server 2
-        expect(find.text('Active: ${server2.name}'), findsOneWidget);
       },
     );
   });

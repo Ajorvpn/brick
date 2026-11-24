@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import 'package:easy_localization/easy_localization.dart';
+// `intl` (re-exported by easy_localization) also defines a `TextDirection`
+// whose constants are `LTR`/`RTL`; hide it so this file resolves Flutter's
+// `dart:ui` `TextDirection` (with `.ltr`/`.rtl`) instead.
+import 'package:easy_localization/easy_localization.dart' hide TextDirection;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -98,6 +101,9 @@ class _AddServerScreenState extends ConsumerState<AddServerScreen> {
                 key: const ValueKey<String>('add_server_uri_field'),
                 controller: _controller,
                 enabled: !isLoading,
+                // A server URI is technical data: always type it LTR even when
+                // the surrounding UI is Persian RTL.
+                textDirection: TextDirection.ltr,
                 maxLines: 3,
                 minLines: 1,
                 inputFormatters: [

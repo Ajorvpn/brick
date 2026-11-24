@@ -545,7 +545,68 @@ class PigeonVpnApiImplTest {
         val routeRules = route.getJSONArray("rules")
         val dnsHijack = routeRules.getJSONObject(0)
         assertEquals("dns", dnsHijack.getString("protocol"))
-        assertEquals("hijack-dns", dnsHijack.getString("action"))
+        assertEquals("dns-out", dnsHijack.getString("outbound"))
+    }
+
+    // ------------------------------------------------ v1.10.7 schema regression guards
+
+    @Test
+    fun `buildConfigJson emits only the pinned libbox v1_10_7 route schema`() {
+        val impl = PigeonVpnApiImpl(
+            appContext = dummyContext,
+            coordinator = coordinator,
+        )
+        val outbound = mapOf(
+            "type" to "shadowsocks",
+            "tag" to "ss-proxy",
+            "server" to "node.example.com",
+            "server_port" to 8388,
+        )
+        val root = org.json.JSONObject(impl.buildConfigJson(outbound, isBlock = false))
+
+        // 1. A dedicated dns outbound exists and is the hijack target.
+        val outbounds = root.getJSONArray("outbounds")
+        var hasDnsOut = false
+        for (i in 0 until outbounds.length()) {
+            val candidate = outbounds.getJSONObject(i)
+            if (candidate.optString("tag") == "dns-out") {
+                hasDnsOut = true
+                assertEquals("dns", candidate.getString("type"))
+            }
+        }
+        assertTrue("outbounds must contain {type: dns, tag: dns-out}", hasDnsOut)
+
+        // 2. Route rule uses the classic outbound form, never a rule action.
+        val rule = root.getJSONObject("route").getJSONArray("rules").getJSONObject(0)
+        assertEquals("dns", rule.getString("protocol"))
+        assertEquals("dns-out", rule.getString("outbound"))
+        assertFalse(
+            "rule-action syntax is rejected by libbox v1.10.7: unknown field 'action'",
+            rule.has("action"),
+        )
+
+        // 3. TUN must sniff, or the protocol: dns rule never matches.
+        val tun = root.getJSONArray("inbounds").getJSONObject(0)
+        assertTrue("tun-in must set sniff = true", tun.getBoolean("sniff"))
+
+        // 4. Encrypted DNS targets are untouched by the schema fix.
+        val dnsServers = root.getJSONObject("dns").getJSONArray("servers")
+        var remoteTag: String? = null
+        var remoteAddress: String? = null
+        for (i in 0 until dnsServers.length()) {
+            val server = dnsServers.getJSONObject(i)
+            if (server.getString("tag") == "dns-remote") {
+                remoteTag = server.getString("detour")
+                remoteAddress = server.getString("address")
+            }
+        }
+        assertEquals("ss-proxy", remoteTag)
+        assertEquals("https://1.1.1.1/dns-query", remoteAddress)
+
+        // 5. Block (Gate A) config stays lean: no dns-out, no route rules.
+        val blockRoot = org.json.JSONObject(impl.buildConfigJson(mapOf("type" to "block"), isBlock = true))
+        assertFalse(blockRoot.getJSONObject("route").has("rules"))
+        assertFalse(blockRoot.getJSONArray("inbounds").getJSONObject(0).optBoolean("sniff", false))
     }
 
     @Test

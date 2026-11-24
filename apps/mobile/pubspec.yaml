@@ -93,6 +93,34 @@ flutter:
   assets:
     - assets/translations/
 
+  # Bundled SIL OFL-1.1 font families (P11-T5). These assets are the ONLY
+  # source of `Inter` and `JetBrains Mono` glyphs: nothing is fetched from the
+  # network at runtime (Invariant 37). `family:` names must match
+  # `BrickTypography.primaryFontFamily` and `BrickTypography.monoFontFamily`
+  # verbatim. License notices live beside the fonts as OFL-Inter.txt and
+  # OFL-JetBrainsMono.txt.
+  #
+  # Inter ships as one variable font, so optical weights are selected with the
+  # `wght` design axis (`BrickTypography.regularWeight` / `mediumWeight` /
+  # `boldWeight`) rather than one static asset per weight.
+  #
+  # JetBrains Mono ships as three static instances subset to the Latin-1,
+  # punctuation, arrow and box-drawing ranges used by the telemetry UI, with
+  # the `tnum`/`zero`/`lnum` OpenType features retained so
+  # `FontFeature.tabularFigures()` keeps working.
+  fonts:
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/InterVariable.ttf
+    - family: JetBrains Mono
+      fonts:
+        - asset: assets/fonts/JetBrainsMono-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/JetBrainsMono-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/JetBrainsMono-Bold.ttf
+          weight: 700
+
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in
   # the material Icons class.

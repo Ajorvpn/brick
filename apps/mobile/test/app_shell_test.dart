@@ -193,7 +193,10 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(find.byType(ServersScreen), findsOneWidget);
-        expect(find.widgetWithText(AppBar, 'Servers'), findsOneWidget);
+        expect(
+          find.byKey(const ValueKey<String>('servers_update_button')),
+          findsOneWidget,
+        );
         expect(find.byType(HomeScreen), findsNothing);
 
         // 3. Switch to Settings tab.
@@ -204,6 +207,8 @@ void main() {
         expect(find.byType(ServersScreen), findsNothing);
 
         // 4. Navigate into nested Live Logs screen under Settings.
+        await tester.ensureVisible(find.widgetWithText(ListTile, 'Live Logs'));
+        await tester.pumpAndSettle();
         await tester.tap(find.widgetWithText(ListTile, 'Live Logs'));
         await tester.pumpAndSettle();
 

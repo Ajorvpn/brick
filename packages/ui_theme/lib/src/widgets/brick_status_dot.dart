@@ -9,6 +9,11 @@ import '../brick_tokens.dart';
 ///
 /// Features a core glowing circle and an optional concentric outer ripple
 /// animation contained in a jitter-free bounding box.
+///
+/// WCAG 2.1 SC 2.3.3: when the platform reports reduced motion
+/// ([MediaQueryData.disableAnimations], driven by Android's "Remove
+/// animations" setting) the ripple ticker never runs and the dot renders as a
+/// crisp, fully static indicator.
 class BrickStatusDot extends StatefulWidget {
   const BrickStatusDot({
     super.key,
@@ -35,6 +40,9 @@ class _BrickStatusDotState extends State<BrickStatusDot>
   late final Animation<double> _scaleAnimation;
   late final Animation<double> _opacityAnimation;
 
+  /// Mirrors [MediaQueryData.disableAnimations] for this widget's context.
+  bool _reduceMotion = false;
+
   @override
   void initState() {
     super.initState();
@@ -50,21 +58,38 @@ class _BrickStatusDotState extends State<BrickStatusDot>
       begin: 0.45,
       end: 0.0,
     ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
-    if (widget.pulsing) {
-      _controller.repeat();
+    // The ripple is started from [didChangeDependencies], which is the first
+    // lifecycle hook where the platform's motion preference is readable.
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _reduceMotion = MediaQuery.disableAnimationsOf(context);
+    _syncRipple();
+  }
+
+  /// Runs the ripple only when it was asked for AND motion is allowed.
+  ///
+  /// Returning early under reduced motion stops *and* resets the controller,
+  /// so zero tickers stay registered and no partially-faded ring is left on
+  /// screen.
+  void _syncRipple() {
+    if (widget.pulsing && !_reduceMotion) {
+      if (!_controller.isAnimating) {
+        _controller.repeat();
+      }
+      return;
     }
+    _controller.stop();
+    _controller.reset();
   }
 
   @override
   void didUpdateWidget(covariant BrickStatusDot oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.pulsing != oldWidget.pulsing) {
-      if (widget.pulsing) {
-        _controller.repeat();
-      } else {
-        _controller.stop();
-        _controller.reset();
-      }
+      _syncRipple();
     }
   }
 
@@ -76,6 +101,8 @@ class _BrickStatusDotState extends State<BrickStatusDot>
 
   @override
   Widget build(BuildContext context) {
+    final showRipple = widget.pulsing && !_reduceMotion;
+
     final coreDot = Container(
       width: widget.size,
       height: widget.size,
@@ -100,7 +127,7 @@ class _BrickStatusDotState extends State<BrickStatusDot>
       child: Stack(
         alignment: Alignment.center,
         children: [
-          if (widget.pulsing)
+          if (showRipple)
             AnimatedBuilder(
               animation: _controller,
               builder: (context, child) {

@@ -182,6 +182,34 @@ String percentDecodeOrRaw(String input) {
   }
 }
 
+/// Parses an `alpn` query value into the sing-box ALPN list.
+///
+/// Some subscription feeds double-encode the value (`alpn=http%252F1.1`, and
+/// `alpn=h2%252Chttp%252F1.1` for a list). `Uri.queryParameters` decodes only
+/// one layer, so the parser used to hand sing-box the literal
+/// `["http%2F1.1"]` - a value no TLS stack can negotiate - and the handshake
+/// failed on that live VLESS node.
+///
+/// Up to two further decode passes are applied, stopping as soon as the value
+/// stops changing. That also makes the helper total: a malformed escape (`%ZZ`)
+/// is returned unchanged by [percentDecodeOrRaw], so the loop exits on the first
+/// pass instead of throwing. The decoded text is then split on commas and every
+/// non-empty trimmed token is kept.
+List<String>? parseAlpnQueryValue(String? raw) {
+  if (raw == null) return null;
+  var decoded = raw;
+  for (var pass = 0; pass < 2; pass++) {
+    final next = percentDecodeOrRaw(decoded);
+    if (next == decoded) break;
+    decoded = next;
+  }
+  final tokens = <String>[
+    for (final token in decoded.split(','))
+      if (token.trim().isNotEmpty) token.trim(),
+  ];
+  return tokens.isEmpty ? null : tokens;
+}
+
 /// Builds the [TlsSettings] block from the shared V2Ray query parameters.
 ///
 /// Returns `null` when TLS is not requested (`security=none` / absent) so
@@ -218,7 +246,7 @@ TlsSettings? buildTlsSettings(Map<String, String> query) {
             spiderX: spx,
           )
         : null,
-    alpn: (alpn != null && alpn.isNotEmpty) ? alpn.split(',') : null,
+    alpn: parseAlpnQueryValue(alpn),
   );
 }
 

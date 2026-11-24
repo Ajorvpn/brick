@@ -77,7 +77,10 @@ Future<void> _pumpApp(
   if (engine.lastState is Connected) {
     expect(find.text('Disconnected'), findsNothing);
   }
-  await tester.pumpAndSettle();
+  // Bounded: the orb's connected state breathes forever, so pumpAndSettle
+  // would never return here.
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 400));
 }
 
 void main() {
@@ -245,7 +248,8 @@ void main() {
 
       // Tunnel re-establishes
       engine.emit(const Connected());
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
 
       expect(container.read(connectionStateProvider).value, isA<Connected>());
       expect(container.read(killSwitchProvider), isA<KillSwitchArmed>());
@@ -294,7 +298,8 @@ void main() {
 
       // Reconnect succeeds
       engine.emit(const Connected());
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
 
       expect(container.read(connectionStateProvider).value, isA<Connected>());
       expect(container.read(killSwitchProvider), isA<KillSwitchArmed>());
@@ -379,14 +384,16 @@ void main() {
       await container
           .read(activeServerIdProvider.notifier)
           .selectServer(osakaProfile.id);
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
 
       final switchRes = await controller.connect(osakaProfile);
       expect(switchRes, isA<VpnCommandAccepted>());
       expect(engine.startCalls, contains(osakaProfile));
 
       engine.emit(const Connected());
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
 
       expect(container.read(activeServerProvider)?.id, equals(osakaProfile.id));
       expect(find.textContaining('Osaka Node'), findsWidgets);
@@ -467,7 +474,8 @@ void main() {
         find.byKey(const ValueKey<String>('kill_switch_unblock_button')),
       );
       engine.emit(const Disconnected());
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
 
       expect(
         container.read(connectionStateProvider).value,

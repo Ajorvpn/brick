@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:mobile/features/connection/presentation/screens/add_server_screen.dart';
 import 'package:mobile/features/connection/presentation/screens/home_screen.dart';
 import 'package:mobile/main.dart';
@@ -31,8 +33,9 @@ void main() {
 
       expect(dataSource.records, isEmpty);
 
-      // Navigate from Home to Add Server screen
-      await tester.tap(find.text('Add Server'));
+      // Navigate from Home to Add Server screen (UX Refinement #3: the manual
+      // entry point is hidden; the route is pushed exactly as the app does).
+      unawaited(tester.element(find.byType(HomeScreen)).push('/add-server'));
       await tester.pumpAndSettle();
       expect(find.byType(AddServerScreen), findsOneWidget);
 
@@ -70,7 +73,7 @@ void main() {
         expect(dataSource.records, isEmpty);
 
         // Navigate from Home to Add Server screen
-        await tester.tap(find.text('Add Server'));
+        unawaited(tester.element(find.byType(HomeScreen)).push('/add-server'));
         await tester.pumpAndSettle();
         expect(find.byType(AddServerScreen), findsOneWidget);
 
@@ -106,7 +109,7 @@ void main() {
           dataSource: dataSource,
         );
 
-        await tester.tap(find.text('Add Server'));
+        unawaited(tester.element(find.byType(HomeScreen)).push('/add-server'));
         await tester.pumpAndSettle();
 
         // Enter invalid URI
@@ -146,7 +149,7 @@ void main() {
           dataSource: dataSource,
         );
 
-        await tester.tap(find.text('Add Server'));
+        unawaited(tester.element(find.byType(HomeScreen)).push('/add-server'));
         await tester.pumpAndSettle();
 
         // Paste an HTTP subscription link
@@ -187,7 +190,7 @@ void main() {
           dataSource: dataSource,
         );
 
-        await tester.tap(find.text('Add Server'));
+        unawaited(tester.element(find.byType(HomeScreen)).push('/add-server'));
         await tester.pumpAndSettle();
 
         // Paste multiple server URIs (multi-line subscription payload)
@@ -228,7 +231,7 @@ void main() {
           dataSource: dataSource,
         );
 
-        await tester.tap(find.text('Add Server'));
+        unawaited(tester.element(find.byType(HomeScreen)).push('/add-server'));
         await tester.pumpAndSettle();
 
         // Paste base64-encoded subscription payload
@@ -282,7 +285,7 @@ void main() {
           dataSource: dataSource,
         );
 
-        await tester.tap(find.text('Add Server'));
+        unawaited(tester.element(find.byType(HomeScreen)).push('/add-server'));
         await tester.pumpAndSettle();
 
         // First trigger an error with invalid text
@@ -339,7 +342,7 @@ void main() {
         dataSource: dataSource,
       );
 
-      await tester.tap(find.text('Add Server'));
+      unawaited(tester.element(find.byType(HomeScreen)).push('/add-server'));
       await tester.pumpAndSettle();
 
       await tester.enterText(

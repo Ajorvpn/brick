@@ -55,15 +55,18 @@ Brick VPN deliberately targets Google Play's **Internal Testing Track** (and sub
 | **App Bundle (AAB)** | `app-release.aab` (`versionCode: 1 (AAB / universal base) & 2001 (arm64-v8a split APK)`, `versionName: 1.0.0`) | `apps/mobile/build/app/outputs/bundle/release/app-release.aab` | SHA-256: `5d289eb288226471c3b09f489c62dbc91149f717539a8ed12bf5c9ef6bf99e5d` |
 | **App Title** | `Brick VPN` (9 chars <= 30) | `docs/release/store-listing.md` §1.1 | Verified by `store_listing_assets_test.dart` Test 3 |
 | **Short Description** | `Open-source, ad-free VPN client supporting VLESS, Reality, WireGuard, and HY2.` (78 chars <= 80) | `docs/release/store-listing.md` §1.2 | Verified by `store_listing_assets_test.dart` Test 3 |
-| **Full Description** | BYOS model, 8 protocols, Sing-box engine, Keystore encryption, 3-surface log redaction, GPLv3 (2411 chars <= 4000) | `docs/release/store-listing.md` §1.3 | Verified by `store_listing_assets_test.dart` Test 3 |
+| **Full Description** | Built-in official server directory (mirror failover, encrypted cache), 8 protocols, Sing-box engine, 
+Keystore encryption, 3-surface log redaction, GPLv3 (3239 chars <= 4000) | `docs/release/store-listing.md` §1.3 | Verified by 
+`store_listing_assets_test.dart` Test 3 |
 | **App Icon** | 512 x 512 px, 32-bit RGBA PNG, `< 1024 KB` | `docs/release/store-assets/icon-512x512.png` (3.8 KB) | Verified by `store_listing_assets_test.dart` Test 1 |
 | **Feature Graphic** | 1024 x 500 px, 24-bit RGB PNG, `< 15 MB` | `docs/release/store-assets/feature-graphic-1024x500.png` (12 KB) | Verified by `store_listing_assets_test.dart` Test 1 |
 | **Phone Screenshots** | 4 genuine Flutter UI screenshots (1080 x 1920 px, 32-bit RGBA PNG) | `docs/release/store-assets/screenshots/01..04.png` | Verified by `store_listing_assets_test.dart` Test 2 |
 | **Privacy Policy URL** | `https://github.com/Ajorvpn/brick/blob/master/docs/privacy-policy.md` | `docs/privacy-policy.md` | Verified by `store_listing_assets_test.dart` Test 4 |
-| **Data Safety Questionnaire** | Zero data collected; zero third-party tracking; zero account registration | `docs/release/play-store-vpn-compliance.md` §3 | Verified by `play_store_vpn_policy_compliance_test.dart` |
+| **Data Safety Questionnaire** | One optional category only: **App info and performance > Diagnostics**, off by default, not linked to identity, not shared with third parties, HTTPS in transit; zero third-party tracking; Free plan needs no account (a future optional Pro plan would rely on Google Play Billing entitlement only) | `docs/release/play-store-vpn-compliance.md` §4 | Verified by `play_store_vpn_policy_compliance_test.dart` |
+| **Monetization & Payments** | No ads, no ad SDKs, no data brokerage (permanent). Current build: Free plan, zero billing SDKs. Future Pro: Google Play Billing exclusively in Play builds; `direct`/`foss` builds stay free of proprietary billing SDKs to preserve GPL-3.0-or-later compliance | `docs/release/play-store-vpn-compliance.md` §6 | In-tree policy contract |
 | **VpnService Declaration** | Core functionality: Encrypted proxy tunnel for censorship circumvention | `docs/release/play-store-vpn-compliance.md` §2 | Verified by `play_store_vpn_policy_compliance_test.dart` |
 | **FGS Special Use** | Android 14+ `FOREGROUND_SERVICE_SPECIAL_USE` with `vpn` subtype | `docs/release/play-store-vpn-compliance.md` §2 Q4 | Verified by `play_store_vpn_policy_compliance_test.dart` |
-| **Ads Declaration** | No ("My app does not contain ads") | `docs/release/play-store-vpn-compliance.md` §4 | Verified by `play_store_vpn_policy_compliance_test.dart` |
+| **Ads Declaration** | No ("My app does not contain ads") | `docs/release/play-store-vpn-compliance.md` §5 | Verified by `play_store_vpn_policy_compliance_test.dart` |
 | **Target Audience** | 18 and older (or All ages / No special child-directed content) | `docs/release/store-listing.md` §2.2 | In-tree policy declaration |
 
 ---
@@ -91,8 +94,12 @@ Brick VPN deliberately targets Google Play's **Internal Testing Track** (and sub
 #### Scenario B: Google Reviewer Inquires About App Access / Login Credentials
 - **Context:** Play Console requires developers to declare if parts of the app are restricted by login credentials (**App Access** section).
 - **Action:** In Play Console **App Content > App Access**, select **"All or some functionality is restricted"** and add testing instructions:
-  - *Title:* `"BYOS Server Profile Import Instructions"`
-  - *Instructions:* `"Brick VPN does not require a user account, login, or password. It is a Bring Your Own Server (BYOS) client. To test VPN connectivity, reviewers can import the following test server URI via the 'Add Server' screen: vless://test-uuid@127.0.0.1:443?security=reality&sni=example.com&pbk=1234567890abcdef&sid=1234#ReviewerTestServer. Alternatively, test with any public VLESS or WireGuard endpoint."*
+    - *Title:* `"Built-In Server Directory — No Account Required"`
+  - *Instructions:* `"Brick VPN's Free plan requires no user account, login, or password. Open the app and wait a few seconds: the 
+official free server directory syncs automatically over HTTPS on first entry and is grouped by country and city. Select any 
+country, expand it, tap any server to make it active, then return to Home and tap Connect. Android will show its standard VPN 
+permission dialog once; accept it and the tunnel connects. If the directory has not synced yet, open the Servers tab and tap 
+'Update Servers' to retry, which shows a short privacy disclosure first."*
 
 #### Scenario C: Google Reviewer Requests Details on Encryption or Traffic Inspection
 - **Context:** Play Store VPN policy mandates that all traffic routed through `VpnService` must be encrypted from the device to the target server.

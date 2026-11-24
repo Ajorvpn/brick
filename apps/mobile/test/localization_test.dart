@@ -25,6 +25,14 @@ void main() {
     return direct;
   }
 
+  File findFaJson() {
+    final direct = File('assets/translations/fa.json');
+    if (direct.existsSync()) return direct;
+    final fromRoot = File('apps/mobile/assets/translations/fa.json');
+    if (fromRoot.existsSync()) return fromRoot;
+    return direct;
+  }
+
   group('en.json asset', () {
     test('is valid JSON with the expected top-level keys', () {
       final file = findEnJson();
@@ -57,17 +65,26 @@ void main() {
         overrides: repositoryOverride(),
       );
 
+      // HomeScreen renders the brand-bar title, the guided empty state and the
+      // orb hints; it does NOT render `home.label` ('Home') anywhere.
       expect(find.text('Brick VPN'), findsOneWidget);
-      // HomeScreen renders the AppBar title and the empty-state message. It
-      // does NOT render `home.label` ('Home') anywhere, so asserting on that
-      // string would only ever pass by coincidence.
       expect(find.text('No saved servers yet'), findsOneWidget);
-      expect(find.text('Add Server'), findsOneWidget);
-      expect(find.text('Add Subscription'), findsOneWidget);
+      expect(find.text('Browse Servers'), findsOneWidget);
+      expect(find.text('Choose server'), findsOneWidget);
+      expect(
+        find.text(
+          'Pick a location from the Servers tab to start a secure '
+          'tunnel.',
+        ),
+        findsOneWidget,
+      );
       // The raw lookup key must never be displayed to a user.
       expect(find.text('connection.add_server'), findsNothing);
       expect(find.text('connection.add_subscription'), findsNothing);
       expect(find.text('home.title'), findsNothing);
+      expect(find.text('home.browse_servers'), findsNothing);
+      expect(find.text('home.choose_server_subtitle'), findsNothing);
+      expect(find.text('home.select_server_hint'), findsNothing);
     });
 
     testWidgets('ServersScreen renders translated strings, not keys', (
@@ -79,11 +96,17 @@ void main() {
         overrides: repositoryOverride(),
       );
 
-      expect(find.widgetWithText(AppBar, 'Servers'), findsOneWidget);
+      expect(find.byType(ServersScreen), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey<String>('servers_update_button')),
+        findsOneWidget,
+      );
+      expect(find.text('Servers'), findsOneWidget);
+      // Header pill + empty-state CTA both render the same localized label
+      expect(find.text('Update Servers'), findsNWidgets(2));
       expect(find.text('No servers added yet'), findsOneWidget);
-      expect(find.text('Add Server'), findsOneWidget);
-      expect(find.text('Add Subscription'), findsOneWidget);
       expect(find.text('servers.title'), findsNothing);
+      expect(find.text('servers.update_servers'), findsNothing);
       expect(find.text('servers.empty_title'), findsNothing);
       expect(find.text('servers.empty_subtitle'), findsNothing);
     });
@@ -236,171 +259,15 @@ void main() {
       expect(find.text('add_subscription.import_button'), findsNothing);
     });
 
-    testWidgets("a different locale resolves to that locale's value", (
+    testWidgets("a different locale (fa) resolves to that locale's value", (
       tester,
     ) async {
       // Proves `.tr()` performs a real lookup rather than returning the key:
-      // the loader serves different text for a different language code.
+      // the loader serves the shipped Persian bundle for a different code.
       final loader = TestAssetLoader(
         translations: {
           'en': testEnglishTranslations(),
-          'de': {
-            'app_title': 'Ziegel VPN',
-            'home': {
-              'title': 'Ziegel VPN',
-              'label': 'Startseite',
-              'active_server': 'Aktiver Server',
-              'active_server_prefix': 'Aktiv: {name}',
-            },
-            'servers': {
-              'title': 'Server',
-              'placeholder': 'Serverliste wird hier angezeigt',
-              'empty_title': 'Noch keine Server hinzugefügt',
-              'empty_subtitle':
-                  'Fügen Sie einen Server-Link hinzu, scannen Sie einen '
-                  'QR-Code oder importieren Sie ein Abonnement, um zu '
-                  'beginnen.',
-              'standalone_section': 'Eigenständige Server',
-              'subscription_section': 'Abonnement-Server',
-              'standalone_badge': 'Eigenständig',
-              'subscription_badge': 'Abonnement',
-              'edit': 'Bearbeiten',
-              'duplicate': 'Duplizieren',
-              'refresh_subscription': 'Abonnement aktualisieren',
-              'delete_subscription': 'Abonnement löschen',
-              'delete_server_title': 'Server löschen',
-              'delete_server_message':
-                  'Möchten Sie diesen Server wirklich löschen?',
-              'delete_subscription_title': 'Abonnement löschen',
-              'delete_subscription_message':
-                  'Möchten Sie dieses Abonnement und alle zugehörigen Server '
-                  'wirklich löschen?',
-              'confirm_delete': 'Löschen',
-              'cancel': 'Abbrechen',
-              'save': 'Speichern',
-              'edit_server_title': 'Server bearbeiten',
-              'server_name': 'Servername',
-              'replacement_uri': 'Ersatz-URI (optional)',
-              'replacement_uri_hint': 'Ersatzkonfigurationslink einfügen',
-              'copy_suffix': '{name} (Kopie)',
-              'name_required': 'Servername darf nicht leer sein',
-              'storage_error':
-                  'Serveränderungen konnten nicht lokal gespeichert werden',
-              'read_only_error':
-                  'Abonnement-Server sind schreibgeschützt. '
-                  'Zum Bearbeiten duplizieren.',
-            },
-            'settings': {
-              'title': 'Einstellungen',
-              'label': 'Einstellungen',
-              'back_to_home': 'Zurück zur Startseite',
-              'auto_reconnect': 'Automatisch wiederverbinden',
-              'auto_reconnect_subtitle':
-                  'Verbindung nach Netzwerkunterbrechung wiederherstellen',
-              'kill_switch': 'Kill Switch',
-              'kill_switch_subtitle':
-                  'Internetverkehr blockieren, wenn VPN unerwartet abbricht',
-              'battery_optimization': 'Akku-Optimierung',
-              'battery_optimization_optimized':
-                  'Optimiert — tippen für uneingeschränkte Nutzung',
-              'battery_optimization_unrestricted':
-                  'Uneingeschränkt (empfohlen für stabiles VPN)',
-            },
-            'logs': {
-              'title': 'Protokolle',
-              'jump_to_latest': 'Nach unten springen',
-              'clear_tooltip': 'Protokolle löschen',
-              'copy_tooltip': 'Protokolle kopieren',
-              'copy_warning_title': 'Warnung vor sensiblen Informationen',
-              'copy_warning_body':
-                  'Automatische Schwärzung entfernt bekannte Zugangsdaten, '
-                  'Schlüssel und Serveradressen. Freitext-Protokolle '
-                  'können jedoch weiterhin Netzwerkdetails enthalten. '
-                  'Bitte vor dem Teilen prüfen.',
-              'privacy_warning_body':
-                  'Automatische Schwärzung entfernt bekannte Zugangsdaten, '
-                  'Schlüssel und Serveradressen. Freitext-Protokolle '
-                  'können jedoch weiterhin Netzwerkdetails enthalten. '
-                  'Bitte vor dem Teilen prüfen.',
-              'copy_cancel': 'Abbrechen',
-              'copy_confirm': 'Protokolle kopieren',
-              'copied_to_clipboard': 'Protokolle in die Zwischenablage kopiert',
-            },
-            'connection': {
-              'add_server': 'Server hinzufügen',
-              'add_subscription': 'Abonnement hinzufügen',
-              'no_servers': 'Noch keine Server gespeichert',
-              'state_disconnected': 'Getrennt',
-              'state_checking': 'Wird geprüft...',
-              'state_reconnecting': 'Verbindung wird wiederhergestellt...',
-              'reconnecting_backoff':
-                  'Wiederverbinden in {seconds}s (Versuch {attempt}/{max})',
-              'reconnecting_waiting_network': 'Warte auf Netzwerkverbindung...',
-              'reconnecting_in_flight': 'Verbindung wird wiederhergestellt (Versuch {attempt}/{max})...',
-              'reconnecting_exhausted':
-                  'Automatische Wiederverbindung nach {max} Versuchen '
-                  'fehlgeschlagen',
-              'traffic': '{tx} hoch / {rx} runter',
-              'traffic_speed': 'Geschwindigkeit: ↑ {tx_speed} · ↓ {rx_speed}',
-              'traffic_none': 'Keine Verkehrsdaten',
-              'session_duration': 'Dauer: {duration}',
-              'session_server': 'Server: {name} ({protocol})',
-              'session_server_none': 'Server: Keiner ausgewählt',
-              'session_status': 'Tunnel: {status}',
-              'kill_switch_blocking_title':
-                  'Kill Switch aktiv — Verkehr blockiert',
-              'kill_switch_blocking_body':
-                  'Internetverkehr außerhalb des VPN ist blockiert, um '
-                  'Lecks zu verhindern.',
-              'kill_switch_unblock': 'Trennen & Freigeben',
-            },
-            'add_server': {
-              'title': 'Server hinzufügen',
-              'uri_label': 'Server-URI',
-              'paste_hint': 'Server-Link einfügen',
-              'paste_from_clipboard': 'Aus Zwischenablage einfügen',
-              'save': 'Speichern',
-              'scan_qr': 'QR-Code scannen',
-              'error_is_subscription':
-                  'Dies ist eine Abonnement-URL. Bitte verwenden Sie den '
-                  'Ablauf Abonnement hinzufügen.',
-              'uri_required': 'Geben Sie zuerst eine Server-URI ein',
-            },
-            'qr_scan': {
-              'title': 'QR-Code scannen',
-              'instruction': 'Richten Sie die Kamera auf einen Server-QR-Code',
-              'cancel': 'Abbrechen',
-              'permission_denied':
-                  'Kameraberechtigung ist zum Scannen von QR-Codes '
-                  'erforderlich.',
-              'permission_permanently_denied':
-                  'Kameraberechtigung ist dauerhaft verweigert. Bitte in den '
-                  'Systemeinstellungen aktivieren.',
-              'request_permission': 'Berechtigung erteilen',
-              'open_settings': 'Einstellungen öffnen',
-            },
-            'add_subscription': {
-              'title': 'Abonnement hinzufügen',
-              'url_label': 'Abonnement-URL',
-              'url_hint': 'https://example.com/subscription',
-              'name_label': 'Abonnementname (optional)',
-              'name_hint': 'Mein Abonnement',
-              'import_button': 'Abonnement importieren',
-              'url_required': 'Geben Sie zuerst eine Abonnement-URL ein',
-              'success_message': '{count} Server erfolgreich importiert',
-              'partial_success_message':
-                  '{count} Server importiert '
-                  '({skipped} ungültige Einträge übersprungen)',
-              'no_valid_servers':
-                  'Keine gültigen Serverkonfigurationen im Abonnement '
-                  'gefunden',
-              'invalid_url':
-                  'Bitte geben Sie eine gültige HTTPS-Abonnement-URL ein',
-              'paste_from_clipboard': 'Aus Zwischenablage einfügen',
-              'storage_error':
-                  'Abonnement konnte nicht lokal gespeichert werden',
-            },
-          },
+          'fa': parseTranslationsJson(findFaJson().readAsStringSync()),
         },
       );
 
@@ -408,40 +275,53 @@ void main() {
         tester,
         localizedMaterialApp(home: const HomeScreen()),
         assetLoader: loader,
-        // HomeScreen is a ConsumerWidget: without a ProviderScope (and a
-        // repository override) it throws while building, so the whole test
-        // fails on a StateError rather than on a translation mismatch.
         overrides: repositoryOverride(),
-        startLocale: const Locale('de'),
+        startLocale: const Locale('fa'),
       );
 
-      expect(find.text('Ziegel VPN'), findsOneWidget);
-      expect(find.text('Server hinzufügen'), findsOneWidget);
-      expect(find.text('Abonnement hinzufügen'), findsOneWidget);
+      expect(find.text('Brick VPN'), findsOneWidget);
+      expect(find.text('هنوز سروری ذخیره نشده است'), findsOneWidget);
+      expect(find.text('مرور سرورها'), findsOneWidget);
+      expect(find.text('انتخاب سرور'), findsOneWidget);
       // `home.label` is translated but HomeScreen never renders it, so the
-      // German value must be absent — this pins the assertion to the keys the
+      // Persian value must be absent — this pins the assertion to the keys the
       // screen actually uses.
-      expect(find.text('Startseite'), findsNothing);
+      expect(find.text('خانه'), findsNothing);
       // The raw lookup key must never surface in another locale either.
       expect(find.text('home.title'), findsNothing);
+      expect(find.text('home.browse_servers'), findsNothing);
+      expect(
+        Directionality.of(tester.element(find.byType(HomeScreen))),
+        TextDirection.rtl,
+        reason: 'Persian must render right-to-left',
+      );
 
-      // Verify AddServerScreen also renders German translations via .tr().
+      // AddServerScreen renders Persian chrome plus an LTR URI island.
       await pumpLocalizedApp(
         tester,
         localizedMaterialApp(home: const AddServerScreen()),
         assetLoader: loader,
         overrides: repositoryOverride(),
-        startLocale: const Locale('de'),
+        startLocale: const Locale('fa'),
       );
 
-      expect(find.widgetWithText(AppBar, 'Server hinzufügen'), findsOneWidget);
-      expect(find.text('Server-URI'), findsOneWidget);
-      expect(find.text('Speichern'), findsOneWidget);
-      expect(find.text('QR-Code scannen'), findsOneWidget);
+      expect(find.widgetWithText(AppBar, 'افزودن سرور'), findsOneWidget);
+      expect(find.text('URI سرور'), findsOneWidget);
+      expect(find.text('ذخیره'), findsOneWidget);
+      expect(find.text('اسکن کد QR'), findsOneWidget);
       expect(find.text('Add Server'), findsNothing);
       expect(find.text('add_server.title'), findsNothing);
+      expect(
+        tester
+            .widget<TextField>(
+              find.byKey(const ValueKey<String>('add_server_uri_field')),
+            )
+            .textDirection,
+        TextDirection.ltr,
+        reason: 'A server URI must stay LTR inside an RTL UI',
+      );
 
-      // Verify QrScanScreen also renders German translations via .tr().
+      // QrScanScreen also renders Persian via .tr().
       await pumpLocalizedApp(
         tester,
         localizedMaterialApp(
@@ -451,51 +331,54 @@ void main() {
         ),
         assetLoader: loader,
         overrides: repositoryOverride(),
-        startLocale: const Locale('de'),
+        startLocale: const Locale('fa'),
       );
 
-      expect(find.widgetWithText(AppBar, 'QR-Code scannen'), findsOneWidget);
-      expect(
-        find.text('Richten Sie die Kamera auf einen Server-QR-Code'),
-        findsOneWidget,
-      );
-      expect(find.text('Abbrechen'), findsOneWidget);
+      expect(find.widgetWithText(AppBar, 'اسکن کد QR'), findsOneWidget);
+      expect(find.text('دوربین را به سمت کد QR سرور بگیرید'), findsOneWidget);
+      expect(find.text('لغو'), findsOneWidget);
       expect(find.text('Scan QR Code'), findsNothing);
       expect(find.text('qr_scan.title'), findsNothing);
 
-      // Verify AddSubscriptionScreen also renders German translations
-      // via .tr().
+      // AddSubscriptionScreen renders Persian and keeps its URL field LTR.
       await pumpLocalizedApp(
         tester,
         localizedMaterialApp(home: const AddSubscriptionScreen()),
         assetLoader: loader,
         overrides: repositoryOverride(),
-        startLocale: const Locale('de'),
+        startLocale: const Locale('fa'),
       );
 
-      expect(
-        find.widgetWithText(AppBar, 'Abonnement hinzufügen'),
-        findsOneWidget,
-      );
-      expect(find.text('Abonnement-URL'), findsOneWidget);
-      expect(find.text('Abonnementname (optional)'), findsOneWidget);
-      expect(find.text('Abonnement importieren'), findsOneWidget);
+      expect(find.widgetWithText(AppBar, 'افزودن اشتراک'), findsOneWidget);
+      expect(find.text('نشانی اشتراک'), findsOneWidget);
+      expect(find.text('نام اشتراک (اختیاری)'), findsOneWidget);
+      expect(find.text('وارد کردن اشتراک'), findsOneWidget);
       expect(find.text('Add Subscription'), findsNothing);
       expect(find.text('add_subscription.title'), findsNothing);
+      expect(
+        tester
+            .widget<TextField>(
+              find.byKey(const ValueKey<String>('add_subscription_url_field')),
+            )
+            .textDirection,
+        TextDirection.ltr,
+        reason: 'A subscription URL must stay LTR inside an RTL UI',
+      );
 
-      // Verify ServersScreen also renders German translations via .tr().
+      // ServersScreen also renders Persian via .tr().
       await pumpLocalizedApp(
         tester,
         localizedMaterialApp(home: const ServersScreen()),
         assetLoader: loader,
         overrides: repositoryOverride(),
-        startLocale: const Locale('de'),
+        startLocale: const Locale('fa'),
       );
 
-      expect(find.widgetWithText(AppBar, 'Server'), findsOneWidget);
-      expect(find.text('Noch keine Server hinzugefügt'), findsOneWidget);
-      expect(find.text('Server hinzufügen'), findsOneWidget);
-      expect(find.text('Abonnement hinzufügen'), findsOneWidget);
+      expect(find.byType(ServersScreen), findsOneWidget);
+      // ServersScreen renders its title in a custom header, not an AppBar.
+      expect(find.text('سرورها'), findsOneWidget);
+      expect(find.text('هنوز سروری اضافه نشده است'), findsOneWidget);
+      expect(find.text('به‌روزرسانی سرورها'), findsNWidgets(2));
       expect(find.text('Servers'), findsNothing);
       expect(find.text('servers.title'), findsNothing);
       expect(find.text('servers.empty_title'), findsNothing);

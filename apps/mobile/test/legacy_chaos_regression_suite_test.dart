@@ -18,12 +18,16 @@ import 'package:core_vpn_engine/core_vpn_engine.dart'
         VpnCommandAccepted,
         VpnCommandFailed,
         VpnCommandRejectedBusy,
-        VpnCommandResult;
+        VpnCommandResult,
+        VpnEngine;
 import 'package:flutter/material.dart' hide ConnectionState;
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/core/data/repositories/app_preferences_repository.dart';
+import 'package:mobile/core/network/network_status_provider.dart';
+import 'package:mobile/core/providers/app_preferences_provider.dart';
+import 'package:mobile/core/providers/vpn_engine_provider.dart';
 import 'package:mobile/features/connection/domain/entities/saved_server.dart';
 import 'package:mobile/features/connection/presentation/providers/auto_reconnect_provider.dart';
 import 'package:mobile/features/connection/presentation/providers/connection_controller_provider.dart';
@@ -32,6 +36,7 @@ import 'package:mobile/features/connection/presentation/providers/kill_switch_pr
 import 'package:mobile/features/connection/presentation/providers/session_duration_provider.dart';
 import 'package:mobile/features/connection/presentation/screens/home_screen.dart';
 import 'package:mobile/features/connection/presentation/widgets/throughput_readout.dart';
+import 'package:ui_theme/ui_theme.dart';
 
 import 'localization_test_harness.dart';
 
@@ -64,6 +69,50 @@ class _IpcFaultVpnEngine extends FakeVpnEngine {
   }
 }
 
+/// Pumps exactly one bounded frame pair instead of `pumpAndSettle()`.
+///
+/// The redesigned `HomeScreen` intentionally keeps repeating tickers running
+/// (`BrickPowerOrb` breathing/rotation, `_HomeBeaconIcon` pulse) whenever a
+/// tunnel is active or transitioning, so `pumpAndSettle()` can never settle
+/// there — it throws after its timeout. Bounded pumps keep every chaos and
+/// resilience assertion identical while advancing the state machine
+/// deterministically.
+Future<void> _settleAnimated(WidgetTester tester) async {
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 400));
+}
+
+/// `pumpConnectionMaterialApp` with bounded pumps.
+///
+/// The localization harness ends in `pumpAndSettle()`, which deadlocks when a
+/// chaos test seeds an already-connected or transitioning engine before the
+/// first pump. The overrides mirror the harness exactly; only the pump strategy
+/// differs, so every chaos assertion is unchanged.
+Future<void> _pumpBoundedHome(
+  WidgetTester tester,
+  Widget app, {
+  required VpnEngine engine,
+  FakeServerProfileDataSource? dataSource,
+  ConnectivitySource? connectivitySource,
+  AppPreferencesRepository? preferencesRepository,
+}) async {
+  await tester.pumpWidget(
+    localizedApp(
+      overrides: <Object>[
+        vpnEngineProvider.overrideWithValue(engine),
+        ...repositoryOverride(dataSource, null, connectivitySource),
+        if (preferencesRepository != null)
+          appPreferencesRepositoryProvider.overrideWithValue(
+            preferencesRepository,
+          ),
+      ],
+      child: localizedMaterialApp(home: app),
+    ),
+  );
+  await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+  await _settleAnimated(tester);
+}
+
 void main() {
   setUpAll(initTestLocalization);
 
@@ -88,7 +137,7 @@ void main() {
       'Invariant 2 independent failure domains & error UI presentation',
       (tester) async {
         await _seedServer(dataSource);
-        await pumpConnectionMaterialApp(
+        await _pumpBoundedHome(
           tester,
           const HomeScreen(),
           engine: engine,
@@ -97,7 +146,7 @@ void main() {
         );
 
         engine.emit(const Connected());
-        await tester.pumpAndSettle();
+        await _settleAnimated(tester);
 
         // 1. Valid stats reflect in throughput readout
         final t0 = DateTime.now();
@@ -134,7 +183,7 @@ void main() {
       'stream-truth & no optimistic UI transitions on connect command',
       (tester) async {
         final profile = await _seedServer(dataSource);
-        await pumpConnectionMaterialApp(
+        await _pumpBoundedHome(
           tester,
           const HomeScreen(),
           engine: engine,
@@ -145,7 +194,10 @@ void main() {
         expect(find.text('Connected'), findsNothing);
 
         // Tap connect button
-        final connectBtn = find.widgetWithText(TextButton, 'Connect');
+        // UX Refinement #3: the connect control is the orb's toggle button.
+        final connectBtn = find.byKey(
+          const ValueKey<String>('home_connect_toggle_button'),
+        );
         expect(connectBtn, findsOneWidget);
         await tester.tap(connectBtn);
         await tester.pump();
@@ -158,7 +210,7 @@ void main() {
 
         // Only stream emission transitions to Connected
         engine.emit(const Connected());
-        await tester.pumpAndSettle();
+        await _settleAnimated(tester);
         expect(find.text('Connected'), findsWidgets);
       },
     );
@@ -177,7 +229,7 @@ void main() {
 
         // Part B: Stalled engine startup transitions cleanly to PlatformError
         await _seedServer(dataSource);
-        await pumpConnectionMaterialApp(
+        await _pumpBoundedHome(
           tester,
           const HomeScreen(),
           engine: engine,
@@ -192,7 +244,7 @@ void main() {
             ),
           ),
         );
-        await tester.pumpAndSettle();
+        await _settleAnimated(tester);
 
         expect(find.byType(SnackBar), findsOneWidget);
       },
@@ -209,7 +261,7 @@ void main() {
         );
         addTearDown(mockEngine.dispose);
 
-        await pumpConnectionMaterialApp(
+        await _pumpBoundedHome(
           tester,
           const HomeScreen(),
           engine: mockEngine,
@@ -227,7 +279,7 @@ void main() {
         // Connect
         final connectRes = await controller.connect(profile);
         expect(connectRes, isA<VpnCommandAccepted>());
-        await tester.pumpAndSettle();
+        await _settleAnimated(tester);
         expect(container.read(connectionStateProvider).value, isA<Connected>());
 
         // Disconnect returns asynchronously without blocking the UI thread
@@ -259,7 +311,7 @@ void main() {
       'user via UI feedback, never swallowed into a daemon thread black hole',
       (tester) async {
         await _seedServer(dataSource);
-        await pumpConnectionMaterialApp(
+        await _pumpBoundedHome(
           tester,
           const HomeScreen(),
           engine: engine,
@@ -272,7 +324,7 @@ void main() {
             PlatformError('Fatal core startup failure: TUN permission denied'),
           ),
         );
-        await tester.pumpAndSettle();
+        await _settleAnimated(tester);
 
         expect(find.byType(SnackBar), findsOneWidget);
       },
@@ -283,7 +335,7 @@ void main() {
       'initialization guards across close() cycles',
       (tester) async {
         final profile = await _seedServer(dataSource);
-        await pumpConnectionMaterialApp(
+        await _pumpBoundedHome(
           tester,
           const HomeScreen(),
           engine: engine,
@@ -302,7 +354,7 @@ void main() {
           final connectRes = await controller.connect(profile);
           expect(connectRes, isA<VpnCommandAccepted>());
           engine.emit(const Connected());
-          await tester.pumpAndSettle();
+          await _settleAnimated(tester);
           expect(
             container.read(connectionStateProvider).value,
             isA<Connected>(),
@@ -338,7 +390,7 @@ void main() {
           final disconnectRes = await controller.disconnect();
           expect(disconnectRes, isA<VpnCommandAccepted>());
           engine.emit(const Disconnected());
-          await tester.pumpAndSettle();
+          await _settleAnimated(tester);
           expect(
             container.read(connectionStateProvider).value,
             isA<Disconnected>(),
@@ -360,7 +412,7 @@ void main() {
       (tester) async {
         final faultEngine = _IpcFaultVpnEngine();
         final profile = await _seedServer(dataSource);
-        await pumpConnectionMaterialApp(
+        await _pumpBoundedHome(
           tester,
           const HomeScreen(),
           engine: faultEngine,
@@ -419,7 +471,7 @@ void main() {
         final fakePrefs = FakeAppPreferencesRepository(
           initialKillSwitchEnabled: true,
         );
-        await pumpConnectionMaterialApp(
+        await _pumpBoundedHome(
           tester,
           const HomeScreen(),
           engine: engine,
@@ -438,13 +490,13 @@ void main() {
         // 1. User connect -> Armed
         await controller.connect(profile);
         engine.emit(const Connected());
-        await tester.pumpAndSettle();
+        await _settleAnimated(tester);
         expect(container.read(killSwitchProvider), isA<KillSwitchArmed>());
 
         // 2. Deliberate user disconnect -> Inactive (clean unblock)
         await controller.disconnect();
         engine.emit(const Disconnected());
-        await tester.pumpAndSettle();
+        await _settleAnimated(tester);
         expect(container.read(killSwitchProvider), isA<KillSwitchInactive>());
         expect(
           find.byKey(const ValueKey<String>('kill_switch_blocking_banner')),
@@ -454,12 +506,12 @@ void main() {
         // 3. User reconnect -> Armed
         await controller.connect(profile);
         engine.emit(const Connected());
-        await tester.pumpAndSettle();
+        await _settleAnimated(tester);
         expect(container.read(killSwitchProvider), isA<KillSwitchArmed>());
 
         // 4. Unexpected drop -> Blocking (fail-closed protection)
         engine.emit(const Disconnected());
-        await tester.pumpAndSettle();
+        await _settleAnimated(tester);
         expect(container.read(killSwitchProvider), isA<KillSwitchBlocking>());
         expect(
           find.byKey(const ValueKey<String>('kill_switch_blocking_banner')),
@@ -468,54 +520,53 @@ void main() {
       },
     );
 
-    testWidgets(
-      'Failure Mode 9: Late traffic stats and rapid taps cannot overwrite '
-      'Disconnecting state',
-      (tester) async {
-        await _seedServer(dataSource);
-        await pumpConnectionMaterialApp(
-          tester,
-          const HomeScreen(),
-          engine: engine,
-          dataSource: dataSource,
-          connectivitySource: fakeConnectivity,
-        );
+    testWidgets('Failure Mode 9: Late traffic stats and rapid taps cannot '
+        'overwrite '
+        'Disconnecting state', (tester) async {
+      await _seedServer(dataSource);
+      await _pumpBoundedHome(
+        tester,
+        const HomeScreen(),
+        engine: engine,
+        dataSource: dataSource,
+        connectivitySource: fakeConnectivity,
+      );
 
-        engine.emit(const Connected());
-        await tester.pumpAndSettle();
+      engine.emit(const Connected());
+      await _settleAnimated(tester);
 
-        // Begin disconnect
-        engine.emit(const Disconnecting());
-        await tester.pump();
+      // Begin disconnect
+      engine.emit(const Disconnecting());
+      await tester.pump();
 
-        // Emit late traffic stats during disconnect
-        engine.emitStats(
-          TrafficStats(txBytes: 9999, rxBytes: 9999, timestamp: DateTime.now()),
-        );
-        await tester.pump();
+      // Emit late traffic stats during disconnect
+      engine.emitStats(
+        TrafficStats(txBytes: 9999, rxBytes: 9999, timestamp: DateTime.now()),
+      );
+      await tester.pump();
 
-        final container = ProviderScope.containerOf(
-          tester.element(find.byType(HomeScreen)),
-        );
-        expect(
-          container.read(connectionStateProvider).value,
-          isA<Disconnecting>(),
-        );
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(HomeScreen)),
+      );
+      expect(
+        container.read(connectionStateProvider).value,
+        isA<Disconnecting>(),
+      );
 
-        // Connect button disabled during disconnecting
-        final button = tester.widget<FilledButton>(
-          find.byKey(const ValueKey<String>('home_connect_toggle_button')),
-        );
-        expect(button.onPressed, isNull);
-      },
-    );
+      // Connect control disabled during disconnecting (UX Refinement #3: the
+      // orb replaced the legacy FilledButton, so its tap target must be null).
+      final orb = tester.widget<BrickPowerOrb>(
+        find.byKey(const ValueKey<String>('home_connect_toggle_button')),
+      );
+      expect(orb.onTap, isNull);
+    });
 
     testWidgets(
       'Failure Mode 10: Session timers and coroutines reset cleanly across '
       'sessions with zero leakage',
       (tester) async {
         final profile = await _seedServer(dataSource);
-        await pumpConnectionMaterialApp(
+        await _pumpBoundedHome(
           tester,
           const HomeScreen(),
           engine: engine,
@@ -533,7 +584,7 @@ void main() {
         // Session 1: Connect and run for 3 seconds
         await controller.connect(profile);
         engine.emit(const Connected());
-        await tester.pumpAndSettle();
+        await _settleAnimated(tester);
         await tester.pump(const Duration(seconds: 3));
         expect(container.read(sessionDurationProvider).inSeconds, equals(3));
 
@@ -548,14 +599,14 @@ void main() {
         // User disconnects deliberately -> cancels backoff timer and
         // rests in idle
         await controller.disconnect();
-        await tester.pumpAndSettle();
+        await _settleAnimated(tester);
         expect(container.read(autoReconnectProvider), isA<AutoReconnectIdle>());
         expect(container.read(sessionDurationProvider), equals(Duration.zero));
 
         // Session 2: Connect fresh session
         await controller.connect(profile);
         engine.emit(const Connected());
-        await tester.pumpAndSettle();
+        await _settleAnimated(tester);
         expect(container.read(sessionDurationProvider), equals(Duration.zero));
 
         // Advance 5 seconds (well past Session 1's backoff timer)
@@ -569,7 +620,7 @@ void main() {
         // Disconnect Session 2 cleanly
         await controller.disconnect();
         engine.emit(const Disconnected());
-        await tester.pumpAndSettle();
+        await _settleAnimated(tester);
         expect(container.read(sessionDurationProvider), equals(Duration.zero));
       },
     );
@@ -579,7 +630,7 @@ void main() {
       'guard without deadlock',
       (tester) async {
         final profile = await _seedServer(dataSource);
-        await pumpConnectionMaterialApp(
+        await _pumpBoundedHome(
           tester,
           const HomeScreen(),
           engine: engine,
@@ -617,7 +668,7 @@ void main() {
       'cleanly without TUN descriptor or session leak',
       (tester) async {
         final profile = await _seedServer(dataSource);
-        await pumpConnectionMaterialApp(
+        await _pumpBoundedHome(
           tester,
           const HomeScreen(),
           engine: engine,
@@ -644,7 +695,7 @@ void main() {
         expect(engine.stopCalls, equals(1));
 
         engine.emit(const Disconnected());
-        await tester.pumpAndSettle();
+        await _settleAnimated(tester);
 
         expect(
           container.read(connectionStateProvider).value,

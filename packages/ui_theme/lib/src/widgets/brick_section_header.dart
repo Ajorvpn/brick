@@ -31,33 +31,47 @@ class BrickSectionHeader extends StatelessWidget {
           Icon(icon, size: 14.0, color: colors.textMuted),
           const SizedBox(width: BrickSpacing.xs),
         ],
-        Text(
-          title.toUpperCase(),
-          style: TextStyle(
-            fontFamily: BrickTypography.primaryFontFamily,
-            fontSize: BrickTypography.sizeLabel,
-            fontWeight: FontWeight.w500,
-            letterSpacing: 0.8,
-            color: colors.textMuted,
+        // The title group expands and the title itself may ellipsize: at
+        // 1.5x / 2.0x system font sizes a fixed-width text child overflowed
+        // this row. `trailing` still pins to the right edge.
+        Expanded(
+          child: Row(
+            children: [
+              Flexible(
+                child: Text(
+                  title.toUpperCase(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: BrickTypography.uiStyle(
+                    fontSize: BrickTypography.sizeLabel,
+                    fontWeight: FontWeight.w500,
+                    letterSpacing: 0.8,
+                    color: colors.textMuted,
+                  ),
+                ),
+              ),
+              if (countLabel != null) ...[
+                const SizedBox(width: BrickSpacing.xs),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6.0,
+                    vertical: 2.0,
+                  ),
+                  decoration: BoxDecoration(
+                    color: colors.surfaceElevated,
+                    borderRadius: BorderRadius.circular(BrickRadius.xs),
+                    border: Border.all(color: colors.glassBorder, width: 1.0),
+                  ),
+                  child: Text(
+                    countLabel!,
+                    style: BrickTypography.monoLog(color: colors.textMuted)
+                        .copyWith(fontWeight: FontWeight.w500),
+                  ),
+                ),
+              ],
+            ],
           ),
         ),
-        if (countLabel != null) ...[
-          const SizedBox(width: BrickSpacing.xs),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6.0, vertical: 2.0),
-            decoration: BoxDecoration(
-              color: colors.surfaceElevated,
-              borderRadius: BorderRadius.circular(BrickRadius.xs),
-              border: Border.all(color: colors.glassBorder, width: 1.0),
-            ),
-            child: Text(
-              countLabel!,
-              style: BrickTypography.monoLog(color: colors.textMuted)
-                  .copyWith(fontWeight: FontWeight.w500),
-            ),
-          ),
-        ],
-        const Spacer(),
         if (trailing != null) trailing!,
       ],
     );

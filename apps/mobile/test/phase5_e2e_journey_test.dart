@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -8,6 +9,7 @@ import 'package:core_domain/core_domain.dart'
     show Connected, Disconnected, TrafficStats;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:mobile/core/data/repositories/app_preferences_repository.dart';
 import 'package:mobile/features/connection/presentation/screens/add_server_screen.dart';
 import 'package:mobile/features/connection/presentation/screens/add_subscription_screen.dart';
@@ -105,16 +107,18 @@ void main() {
       expect(find.byType(ServersScreen), findsOneWidget);
       expect(find.text('No servers added yet'), findsOneWidget);
       expect(
-        find.byKey(const ValueKey<String>('servers_empty_add_server_button')),
+        find.byKey(const ValueKey<String>('servers_empty_state')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('servers_empty_update_button')),
         findsOneWidget,
       );
 
       // =====================================================================
       // STEP 2: Add a standalone server via manual URI paste (P5-T2)
       // =====================================================================
-      await tester.tap(
-        find.byKey(const ValueKey<String>('servers_empty_add_server_button')),
-      );
+      unawaited(tester.element(find.byType(ServersScreen)).push('/add-server'));
       await tester.pumpAndSettle();
 
       expect(find.byType(AddServerScreen), findsOneWidget);
@@ -129,7 +133,14 @@ void main() {
 
       // Popped back to ServersScreen
       expect(find.byType(ServersScreen), findsOneWidget);
-      expect(find.text('ManualNode1'), findsOneWidget);
+      final manualNodeId = dataSource.records.first.id;
+      expect(
+        find.descendant(
+          of: find.byKey(ValueKey<String>('server_tile_$manualNodeId')),
+          matching: find.text('ManualNode1'),
+        ),
+        findsOneWidget,
+      );
 
       // Switch to HomeScreen and verify auto-selection of first valid server
       await tester.tap(find.byKey(const ValueKey<String>('nav_tab_home')));
@@ -147,9 +158,7 @@ void main() {
       await tester.tap(find.byKey(const ValueKey<String>('nav_tab_servers')));
       await tester.pumpAndSettle();
 
-      await tester.tap(
-        find.byKey(const ValueKey<String>('servers_add_server_action')),
-      );
+      unawaited(tester.element(find.byType(ServersScreen)).push('/add-server'));
       await tester.pumpAndSettle();
 
       expect(find.byType(AddServerScreen), findsOneWidget);
@@ -169,14 +178,27 @@ void main() {
 
       // Returned to ServersScreen with both standalone servers present
       expect(find.byType(ServersScreen), findsOneWidget);
-      expect(find.text('ManualNode1'), findsOneWidget);
-      expect(find.text('QrNode2'), findsOneWidget);
+      final qrNodeId = dataSource.records.last.id;
+      expect(
+        find.descendant(
+          of: find.byKey(ValueKey<String>('server_tile_$manualNodeId')),
+          matching: find.text('ManualNode1'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(ValueKey<String>('server_tile_$qrNodeId')),
+          matching: find.text('QrNode2'),
+        ),
+        findsOneWidget,
+      );
 
       // =====================================================================
       // STEP 4: Import subscription URL yielding servers (P5-T4, P5-T5)
       // =====================================================================
-      await tester.tap(
-        find.byKey(const ValueKey<String>('servers_add_subscription_action')),
+      unawaited(
+        tester.element(find.byType(ServersScreen)).push('/add-subscription'),
       );
       await tester.pumpAndSettle();
 
@@ -197,11 +219,15 @@ void main() {
       // Popped back to ServersScreen
       expect(find.byType(ServersScreen), findsOneWidget);
 
-      // Verify standalone vs subscription grouping headers
-      expect(find.text('Standalone Servers'), findsOneWidget);
-      // Header plus subtitle on both subscription server tiles = 3 widgets
+      // Verify hierarchical grouping (all remarks are country-less -> 'ZZ')
+      expect(
+        find.byKey(const ValueKey<String>('country_group_ZZ')),
+        findsOneWidget,
+      );
+      // Feed strip name plus source label on both subscription tiles = 3
       expect(find.text('FastVPN Subscription'), findsNWidgets(3));
-      expect(find.text('2'), findsNWidgets(2)); // 2 standalone, 2 subscription
+      expect(find.text('4'), findsOneWidget); // header total count pill
+      expect(find.text('2'), findsOneWidget); // feed count badge
 
       // Zero secret token/URL leakage in UI
       expect(
@@ -209,6 +235,10 @@ void main() {
         findsNothing,
       );
       expect(find.textContaining('https://sub.example.com'), findsNothing);
+
+      // Allow the import success snackbar to expire before tile actions
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
 
       // =====================================================================
       // STEP 5: Edit, Duplicate, Refresh, Delete with Dialog (P5-T6)
@@ -240,7 +270,13 @@ void main() {
       await tester.tap(find.byKey(const ValueKey<String>('edit_server_save')));
       await tester.pumpAndSettle();
 
-      expect(find.text('Renamed ManualNode1'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(ValueKey<String>('server_tile_$manualNodeId')),
+          matching: find.text('Renamed ManualNode1'),
+        ),
+        findsOneWidget,
+      );
 
       // 5b. Duplicate subscription server as standalone
       final duplicateButton = find.byKey(
@@ -255,7 +291,7 @@ void main() {
       await tester.drag(find.byType(ListView), const Offset(0, 300));
       await tester.pumpAndSettle();
       expect(find.text(copyName), findsOneWidget);
-      expect(find.text('3'), findsOneWidget);
+      expect(find.text('5'), findsOneWidget); // header total count pill
 
       // 5c. Refresh subscription with Full-Replace diffing policy
       currentSubPayload = '$_subVlessUri1\n$_subVlessUri2Refreshed';
@@ -274,6 +310,10 @@ void main() {
         find.text('FastVPN Subscription - sub2.example.com:443'),
         findsNothing,
       );
+
+      // Allow the refresh success snackbar to expire before deleting
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
 
       // 5d. Delete server with confirmation dialog
       final updatedAll = await buildRepository(dataSource).getAll();
@@ -298,7 +338,7 @@ void main() {
       expect(find.text(copyName), findsNothing);
       await tester.drag(find.byType(ListView), const Offset(0, 300));
       await tester.pumpAndSettle();
-      expect(find.text('2'), findsNWidgets(2)); // 2 standalone, 2 subscription
+      expect(find.text('4'), findsOneWidget); // header total count pill
 
       // =====================================================================
       // STEP 6: Active server selection & persistence (P5-T7)
@@ -327,7 +367,10 @@ void main() {
       );
       expect(connectToggle, findsOneWidget);
       expect(
-        find.descendant(of: connectToggle, matching: find.text('Connect')),
+        find.descendant(
+          of: connectToggle,
+          matching: find.text('Tap to connect'),
+        ),
         findsOneWidget,
       );
 
@@ -342,11 +385,15 @@ void main() {
 
       // Push Connected state from engine
       engine.emit(const Connected());
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
 
-      // Button switches to Disconnect
+      // The orb hint switches to disconnect
       expect(
-        find.descendant(of: connectToggle, matching: find.text('Disconnect')),
+        find.descendant(
+          of: connectToggle,
+          matching: find.text('Tap to disconnect'),
+        ),
         findsOneWidget,
       );
 
@@ -358,7 +405,8 @@ void main() {
           timestamp: DateTime.now().toUtc(),
         ),
       );
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
 
       expect(find.textContaining('1.0 MiB'), findsOneWidget);
       expect(find.textContaining('2.0 MiB'), findsOneWidget);
@@ -371,10 +419,14 @@ void main() {
 
       // Push Disconnected state from engine
       engine.emit(const Disconnected());
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
 
       expect(
-        find.descendant(of: connectToggle, matching: find.text('Connect')),
+        find.descendant(
+          of: connectToggle,
+          matching: find.text('Tap to connect'),
+        ),
         findsOneWidget,
       );
 
