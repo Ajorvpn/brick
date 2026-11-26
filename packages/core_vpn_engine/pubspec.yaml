@@ -7,4 +7,4 @@ environment:
 dependencies:
   core_domain: 'any'
 dev_dependencies:
-  test: ^1.31.1
+  test: ^1.32.0
