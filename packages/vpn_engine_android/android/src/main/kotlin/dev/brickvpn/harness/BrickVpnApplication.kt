@@ -84,6 +84,9 @@ class BrickVpnApplication : Application() {
                     // no-main-thread-blocking rule: Start() still blocks on
                     // `<-done`, and we call it from Dispatchers.IO regardless.
                     it.fixAndroidStack = true
+                    it.logMaxLines = 300L
+                    it.crashReportSource = "brick"
+                    it.debug = false
                 },
             )
             Log.i(TAG, "Libbox.setup ok (base=$basePath, working=$workingPath, temp=$tempPath)")

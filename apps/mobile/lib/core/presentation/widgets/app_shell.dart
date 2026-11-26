@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:mobile/core/logging/log_manager.dart';
 import 'package:mobile/features/connection/presentation/providers/connection_state_provider.dart';
 import 'package:mobile/features/connection/presentation/providers/kill_switch_provider.dart';
 import 'package:mobile/features/servers/presentation/providers/built_in_directory_sync_provider.dart';
@@ -52,6 +53,9 @@ class _AppShellState extends ConsumerState<AppShell> {
     // Watched (not read) so the controller outlives individual screens and a
     // completed background sync can never notify a disposed object.
     ref.watch(builtInDirectorySyncControllerProvider);
+    // Keep logManagerProvider subscribed from shell mount so first-session
+    // logs are captured before visiting LiveLogsScreen (no dock rebuilds).
+    ref.listen(logManagerProvider, (_, _) {});
 
     return Scaffold(
       // Let scrolled content flow behind the floating dock so

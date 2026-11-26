@@ -65,18 +65,19 @@ String normalizePqcSafeFingerprint(String? rawFingerprint) {
 ///    `httpupgrade`. The URI parser accepts both and this serializer emits
 ///    the sing-box spelling.
 class SingBoxOutboundSerializer {
-  const SingBoxOutboundSerializer({this.enable112Fragmentation = false});
+  const SingBoxOutboundSerializer({this.enable112Fragmentation = true});
 
   /// Whether to emit the sing-box 1.12+ TLS fragmentation keys
   /// (`record_fragment`, `fragment`, `fragment_fallback_delay`).
   ///
-  /// Defaults to `false` because the vendored Android `libbox.aar` is pinned
-  /// at sing-box `v1.10.7`, whose JSON decoder rejects unknown fields — an
-  /// unconditional `record_fragment` would abort startup with
-  /// `unknown field "record_fragment"`. Set to `true` once `libbox.aar` is
-  /// upgraded to a sing-box 1.12+ core. The PQC-safe `utls` block,
-  /// `ech`/`fm` stripping and encrypted DoH are independent of this flag and
-  /// stay active on `v1.10.7`.
+  /// Defaults to `true` because the vendored Android `libbox.aar` is now
+  /// sing-box `v1.14.4` (which supports all three `OutboundTLSOptions` fields
+  /// in `option/tls.go`). Verified in `v1.14.4` `common/tlsfragment/conn.go`
+  /// (`TestTLS2Fragment`): combining `record_fragment: true` + `fragment: true`
+  /// + `fragment_fallback_delay: '500ms'` splits ClientHello across both TLS
+  /// records and ACK-paced TCP segments cleanly (unlike `route-options`,
+  /// `OutboundTLSOptions` allows both together). Can still be set to `false`
+  /// for legacy 1.10/1.11 tests or opt-out diagnostics.
   final bool enable112Fragmentation;
 
   /// Builds the sing-box outbound object for [config].
@@ -362,9 +363,10 @@ class SingBoxOutboundSerializer {
   /// peer`). The uTLS block is always emitted here so a REALITY handshake
   /// never offers a fingerprint a `X25519MLKEM768` server rejects.
   ///
-  /// The fragmentation keys are gated behind [enable112Fragmentation] because
-  /// they do not exist in sing-box `v1.10.7`, the core currently vendored in
-  /// `libbox.aar`.
+  /// Enabled by default for our `sing-box v1.14.4` `libbox.aar`: `conn.go`
+  /// (`common/tlsfragment/conn.go`) supports `record_fragment` + `fragment`
+  /// + `fragment_fallback_delay` simultaneously via `splitRecord` +
+  /// `splitPacket` (exercised by `TestTLS2Fragment`).
   Map<String, dynamic> _tlsAntiDpi(TlsSettings tls) => <String, dynamic>{
     'utls': <String, dynamic>{
       'enabled': true,
@@ -426,18 +428,17 @@ class SingBoxOutboundSerializer {
   }
 }
 
-/// Builds the sing-box 1.10+ outbound JSON for [config].
+/// Builds the sing-box 1.14+ outbound JSON for [config].
 ///
 /// Throws [UnsupportedError] for a protocol with no serializer yet; use
 /// [SingBoxOutboundSerializer.tryBuild] for a `Result`-based call site.
 ///
-/// [enable112Fragmentation] must stay `false` for a sing-box `v1.10.7` core
-/// (the vendored `libbox.aar`), which rejects the 1.12+ TLS fragmentation
-/// fields as unknown.
+/// [enable112Fragmentation] defaults to `true` for the upgraded sing-box
+/// `v1.14.4` core (`libbox.aar`).
 Map<String, dynamic> buildSingBoxOutbound(
   OutboundConfig config, {
   String? tag,
-  bool enable112Fragmentation = false,
+  bool enable112Fragmentation = true,
 }) =>
     SingBoxOutboundSerializer(enable112Fragmentation: enable112Fragmentation)
         .build(config, tag: tag);

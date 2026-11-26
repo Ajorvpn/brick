@@ -17,7 +17,7 @@ verified when the relevant phase begins.
 | Android NDK | **28.2.13676358 (r28c)** | 2026-11-26 | Upgraded from r26b (`26.1.10909125`). Verified installed at `/home/bellard/Android/Sdk/ndk/28.2.13676358`. Upstream `build_shared/sdk.go` targets NDK 28. |
 | Android Gradle Plugin | **9.1.0** | 2026-09-28 | Exercised in a real `./gradlew assembleDebug` build during P3-T3; pinned here retroactively. Declared explicitly in `packages/vpn_engine_android/android/build.gradle.kts`. |
 | Kotlin | Not yet pinned - deferred to a later Phase 3 task | 2026-09-16 | No native Kotlin implementation exists yet. Out of P3-T1 scope. |
-| sing-box | **v1.14.4** (latest stable v1.14.x series) | 2026-11-26 | Human-directed upgrade from `v1.10.7` to latest stable `v1.14.4` (published 2026-10-24) for modern anti-DPI `tls.fragment` / `record_fragment`, updated TLS/uTLS/QUIC, and WireGuard endpoints. Built with `-androidapi=24` and `-tags with_gvisor,with_quic,with_wireguard,with_utls,badlinkname,tfogo_checklinkname0`. See "sing-box version policy (v1.14.4)" below and historical Phase 3 notes below. |
+| sing-box | **v1.14.4** (latest stable v1.14.x series) | 2026-11-26 | Human-directed upgrade from `v1.10.7` to latest stable `v1.14.4` (published 2026-10-24) for modern anti-DPI `tls.fragment` / `record_fragment`, updated TLS/uTLS/QUIC, and WireGuard endpoints. Built with `-androidapi=24` and `-tags with_gvisor,with_quic,with_wireguard,with_utls,badlinkname,tfogo_checklinkname0`. See "Active Core Upgrade Pins" and historical Phase 3 notes below. |
 
 ## Resolved Dart Package Versions (P0-T10)
 

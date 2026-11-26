@@ -1,214 +1,248 @@
 package dev.brickvpn.harness.vpn
 
+import android.content.Context
 import android.util.Log
-import io.nekohasekai.libbox.libbox.BoxService
+import io.nekohasekai.libbox.libbox.CommandClient
+import io.nekohasekai.libbox.libbox.CommandClientHandler
+import io.nekohasekai.libbox.libbox.CommandClientOptions
+import io.nekohasekai.libbox.libbox.CommandServer
+import io.nekohasekai.libbox.libbox.CommandServerHandler
+import io.nekohasekai.libbox.libbox.ConnectionEvents
 import io.nekohasekai.libbox.libbox.Libbox
+import io.nekohasekai.libbox.libbox.LogIterator
+import io.nekohasekai.libbox.libbox.OutboundGroupItemIterator
+import io.nekohasekai.libbox.libbox.OutboundGroupIterator
+import io.nekohasekai.libbox.libbox.OverrideOptions
+import io.nekohasekai.libbox.libbox.StatusMessage
+import io.nekohasekai.libbox.libbox.StringIterator
+import io.nekohasekai.libbox.libbox.SystemProxyStatus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * The real [TunnelEngine]: actually starts and stops a libbox instance.
- *
- * Replaces P3-T6's [FakeTunnelEngine], which only slept. `Running` now means
- * "libbox accepted the config and started", not "a timer elapsed".
- *
- * ## What "real" means here, precisely
- *
- * [start] calls `Libbox.newService(config, platformInterface)` to build a Go
- * `BoxService` and then `BoxService.start()`. [stop] calls `BoxService.close()`.
- * Between them, libbox is a live Go runtime holding the borrowed TUN descriptor
- * and reading packets from it. With the Gate A config those packets are
- * discarded by a `block` outbound: libbox genuinely runs, and nothing is
- * routed to a real server.
- *
- * ## AC1 is NOT satisfied by this class
- *
- * `ROADMAP.md` P3-T7 AC1 requires a verified change in the device's effective
- * outbound IP. A `block` outbound cannot produce that -- it discards traffic.
- * AC1 therefore remains **OUTSTANDING**, blocked on a human-provided test
- * server. This class is the non-traffic half of P3-T7 only.
- *
- * ## Threading
- *
- * Every libbox call is wrapped in `withContext(Dispatchers.IO)`, satisfying AC3
- * ("no libbox call blocks the main thread"). `BrickVpnService` already invokes
- * [start]/[stop] from its own IO scope; the explicit dispatcher here means the
- * guarantee holds even if a future caller does not.
- *
- * ## Error propagation
- *
- * Nothing is swallowed. A libbox failure propagates as a thrown exception,
- * which `BrickVpnService.runStartSequence` turns into
- * `VpnStateMachine.onFailure(...)` with a specific reason -- the ROADMAP's
- * "Notes for Agent" rule against silently swallowing libbox errors.
- *
- * @param configJsonProvider supplies the sing-box config. A provider rather
- *   than a constant so a test can inject a deliberately invalid config and
- *   prove the failure path reaches `Error`.
+ * Real [TunnelEngine] backed by sing-box **v1.14.4** (`CommandServer` + `CommandClient`).
  */
 class LibboxTunnelEngine(
     private val configJsonProvider: () -> String = { GATE_A_CONFIG_JSON },
-    /**
-     * Excludes libbox's outbound sockets from the app's own TUN.
-     *
-     * Threaded straight through to [LibboxPlatformInterface]. Must be wired
-     * whenever the TUN captures a broad route (e.g. `0.0.0.0/0`), otherwise
-     * libbox's connection to the proxy server is routed back into its own TUN.
-     * Defaults to a no-op so unit tests that never dial are unaffected.
-     */
     private val socketProtector: (Int) -> Unit = {},
     private val onLogReceived: (String) -> Unit = {},
+    private val appContext: Context? = null,
 ) : TunnelEngine {
+
+    constructor(configJsonProvider: () -> String) : this(
+        configJsonProvider = configJsonProvider,
+        socketProtector = {},
+    )
+
+    constructor(
+        configJsonProvider: () -> String,
+        socketProtector: (Int) -> Unit,
+    ) : this(
+        configJsonProvider = configJsonProvider,
+        socketProtector = socketProtector,
+        onLogReceived = {},
+        appContext = null,
+    )
 
     private val tag = "LibboxTunnelEngine"
 
-    /**
-     * The live libbox service, or `null` when not running.
-     *
-     * Cleared **before** `close()` is called, so a concurrent or re-entrant
-     * [stop] is a no-op rather than a double close.
-     */
     @Volatile
-    private var service: BoxService? = null
+    private var commandServer: CommandServer? = null
 
-    /**
-     * The descriptor currently lent to libbox, or `null` when none.
-     *
-     * Invalidated before teardown so a late `openTun` callback throws instead
-     * of returning a descriptor whose `ParcelFileDescriptor` is about to be
-     * closed. That is the fd-lifetime half of the Domain 2 ownership rule.
-     */
+    @Volatile
+    private var logClient: CommandClient? = null
+
     @Volatile
     private var lentFd: Int? = null
 
-    /**
-     * Strong reference to the platform interface while libbox is running.
-     *
-     * gomobile proxies hold a Go-side reference back into this object; if the
-     * JVM side let it be collected mid-session the next callback would fail
-     * against a dangling proxy. Held in a field, and cleared together with
-     * [service], for that reason alone.
-     */
     @Volatile
     private var platformInterface: LibboxPlatformInterface? = null
 
-    /** True between a successful [start] and the matching [stop]. */
     private val running = AtomicBoolean(false)
 
-    /**
-     * Creates a libbox `BoxService` and starts it.
-     *
-     * @param tunFd a **borrowed** descriptor owned by `BrickVpnService`. This
-     *   class never closes it; the service closes it exactly once.
-     * @throws Exception propagated from libbox, so the caller can map it to a
-     *   specific `VpnState.Error` reason.
-     */
+    private val serverHandler = object : CommandServerHandler {
+        override fun serviceStop() {
+            Log.i(tag, "CommandServerHandler.serviceStop")
+        }
+
+        override fun serviceReload() {
+            Log.i(tag, "CommandServerHandler.serviceReload")
+        }
+
+        override fun getSystemProxyStatus(): SystemProxyStatus =
+            SystemProxyStatus().apply {
+                available = false
+                enabled = false
+            }
+
+        override fun setSystemProxyEnabled(isEnabled: Boolean) {}
+
+        override fun triggerNativeCrash() {}
+
+        override fun writeDebugMessage(message: String?) {
+            if (!message.isNullOrBlank()) {
+                forwardLogLine(LEVEL_INFO, message)
+            }
+        }
+
+        override fun connectSSHAgent(): Int = -1
+    }
+
     override suspend fun start(tunFd: Int, configJson: String?) {
-        check(service == null) { "start() called while a libbox service is already running" }
+        check(commandServer == null) { "start() called while a libbox service is already running" }
         lentFd = tunFd
         val pi = LibboxPlatformInterface(
+            context = appContext,
             tunFdProvider = { currentLentFd() },
             socketProtector = socketProtector,
-            onLogReceived = { log ->
-                onLogReceived(log)
-                globalLogConsumer?.invoke(log)
-            },
         )
         platformInterface = pi
         val config = configJson?.takeIf { it.isNotBlank() } ?: configJsonProvider()
         try {
-            val created = withContext(Dispatchers.IO) { Libbox.newService(config, pi) }
-            service = created
-            withContext(Dispatchers.IO) { created.start() }
+            val server = withContext(Dispatchers.IO) { Libbox.newCommandServer(serverHandler, pi) }
+            commandServer = server
+            withContext(Dispatchers.IO) { server.start() }
+            withContext(Dispatchers.IO) { server.startOrReloadService(config, OverrideOptions()) }
             running.set(true)
-            Log.i(tag, "libbox service started; needWIFIState=${created.needWIFIState()}")
+            Log.i(tag, "libbox service started; needWIFIState=${server.needWIFIState()}")
+
+            val client = Libbox.newCommandClient(
+                createLogClientHandler(),
+                CommandClientOptions().apply { addCommand(Libbox.CommandLog) },
+            )
+            logClient = client
+            withContext(Dispatchers.IO) {
+                runCatching { client.connect() }
+                    .onFailure { Log.w(tag, "log CommandClient connect skipped: ${it.message}") }
+            }
         } catch (t: Throwable) {
-            // Never leave a half-built service behind: unwind exactly what was
-            // created, then rethrow so the failure reaches the state machine.
-            runCatching { service?.close() }
-                .onFailure { Log.w(tag, "cleanup after failed start failed: ${it.message}") }
-            service = null
+            runCatching { logClient?.disconnect() }
+                .onFailure { Log.w(tag, "cleanup logClient disconnect failed: ${it.message}") }
+            runCatching { commandServer?.closeService() }
+                .onFailure { Log.w(tag, "cleanup closeService failed: ${it.message}") }
+            runCatching { commandServer?.close() }
+                .onFailure { Log.w(tag, "cleanup CommandServer close failed: ${it.message}") }
+            logClient = null
+            commandServer = null
             platformInterface = null
             lentFd = null
-            val errLine = "libbox start failed: ${t.javaClass.simpleName}: ${t.message}"
+            val errLine = "ERROR libbox start failed: ${t.javaClass.simpleName}: ${t.message}"
             Log.e(tag, errLine)
-            // Surface the native failure in the in-app log too, otherwise
-            // LiveLogsScreen shows only the Dart-side symptoms. A throwing
-            // sink must never mask the exception being rethrown below.
             runCatching { onLogReceived(errLine) }
             runCatching { globalLogConsumer?.invoke(errLine) }
             throw t
         }
     }
 
-    /**
-     * Tears the real libbox instance down.
-     *
-     * Idempotent and safe after a failed [start]: both are required by the
-     * [TunnelEngine] contract, and both are exercised because the
-     * `ACTION_STOP`, `onRevoke`, and `onDestroy` paths can race each other in
-     * practice -- a double close must be harmless, not a crash.
-     */
     override suspend fun stop() {
-        val toClose = service
-        // Clear Kotlin-side state FIRST, so a racing second stop() sees null
-        // and does not double-close, and so openTun() stops handing out the
-        // descriptor before its ParcelFileDescriptor is closed.
-        service = null
+        val toDisconnect = logClient
+        val toClose = commandServer
+        logClient = null
+        commandServer = null
         platformInterface = null
         lentFd = null
-        if (toClose == null) {
+        if (toClose == null && toDisconnect == null) {
             Log.i(tag, "stop(): no libbox service to close (already stopped)")
             return
         }
-        withContext(Dispatchers.IO) { toClose.close() }
+        withContext(Dispatchers.IO) {
+            runCatching { toDisconnect?.disconnect() }
+                .onFailure { Log.w(tag, "logClient disconnect failed: ${it.message}") }
+            runCatching { toClose?.closeService() }
+                .onFailure { Log.w(tag, "CommandServer closeService failed: ${it.message}") }
+            toClose?.close()
+        }
         running.set(false)
-        Log.i(tag, "libbox service closed")
+        Log.i(tag, "libbox CommandServer closed")
     }
 
-    /**
-     * The descriptor libbox may borrow, or a thrown error if none is lent.
-     *
-     * Throwing rather than returning `-1` matters: libbox would treat `-1` as
-     * a real (invalid) descriptor and fail far away from the actual cause.
-     */
+    private fun createLogClientHandler(): CommandClientHandler = object : CommandClientHandler {
+        override fun clearLogs() {}
+
+        override fun connected() {
+            Log.i(tag, "CommandClient log stream connected")
+        }
+
+        override fun disconnected(message: String?) {
+            Log.i(tag, "CommandClient log stream disconnected: ${message ?: "closed"}")
+        }
+
+        override fun initializeClashMode(modeList: StringIterator?, currentMode: String?) {}
+
+        override fun setDefaultLogLevel(level: Int) {}
+
+        override fun updateClashMode(newMode: String?) {}
+
+        override fun writeConnectionEvents(events: ConnectionEvents?) {}
+
+        override fun writeGroups(groups: OutboundGroupIterator?) {}
+
+        override fun writeLogs(messageList: LogIterator?) {
+            if (messageList == null) return
+            while (messageList.hasNext()) {
+                val entry = messageList.next() ?: continue
+                val msg = entry.message ?: continue
+                forwardLogLine(entry.level, msg)
+            }
+        }
+
+        override fun writeOutbounds(outbounds: OutboundGroupItemIterator?) {}
+
+        override fun writeStatus(message: StatusMessage?) {}
+    }
+
+    private fun forwardLogLine(level: Int, rawMessage: String) {
+        val cleaned = ANSI_ESCAPE_REGEX.replace(rawMessage, "").trim()
+        if (cleaned.isEmpty()) return
+        val formatted = formatLogLine(level, cleaned)
+        Log.i(tag, "libbox: $formatted")
+        runCatching { onLogReceived(formatted) }
+        runCatching { globalLogConsumer?.invoke(formatted) }
+    }
+
     private fun currentLentFd(): Int = lentFd
         ?: error("libbox asked for a TUN descriptor but none is currently lent")
 
-    /** Whether a libbox service is currently started. Exposed for tests. */
     fun isRunning(): Boolean = running.get()
 
     companion object {
         @Volatile
         var globalLogConsumer: ((String) -> Unit)? = null
 
+        private const val LEVEL_PANIC = 0
+        private const val LEVEL_FATAL = 1
+        private const val LEVEL_ERROR = 2
+        private const val LEVEL_WARN = 3
+        private const val LEVEL_INFO = 4
+        private const val LEVEL_DEBUG = 5
+        private const val LEVEL_TRACE = 6
+
+        private val ANSI_ESCAPE_REGEX = Regex("\u001B\\[[0-9;]*[mK]")
+        private val LEADING_LEVEL_REGEX =
+            Regex("""^(?:[+-]\d{4}\s+\d{4}[-/]\d{2}[-/]\d{2}\s+\d{2}:\d{2}:\d{2}(?:\.\d+)?\s+)?(?:\[?(?:PANIC|FATAL|ERROR|WARN|WARNING|INFO|DEBUG|TRACE)\]?\b)""")
+
+        internal fun formatLogLine(level: Int, cleanMessage: String): String {
+            if (LEADING_LEVEL_REGEX.containsMatchIn(cleanMessage)) {
+                return cleanMessage
+            }
+            val label = when (level) {
+                LEVEL_PANIC -> "FATAL"
+                LEVEL_FATAL -> "FATAL"
+                LEVEL_ERROR -> "ERROR"
+                LEVEL_WARN -> "WARN"
+                LEVEL_INFO -> "INFO"
+                LEVEL_DEBUG -> "DEBUG"
+                LEVEL_TRACE -> "TRACE"
+                else -> "INFO"
+            }
+            return "$label $cleanMessage"
+        }
+
         /**
-         * The Gate A lifecycle-test config: a TUN inbound and a **`block`**
-         * outbound, nothing else.
-         *
-         * `block` is a first-class sing-box outbound that discards everything
-         * routed to it. It exists so libbox can be started and exercised with
-         * **no remote server and no real traffic**, which is what makes this
-         * task independent of external infrastructure.
-         *
-         * Deliberate omissions, each tied to a legacy failure this project must
-         * not inherit:
-         *  - **no `dns` block** -- the legacy project wedged startup on DNS
-         *    bootstrap. With no DNS rules there is nothing to resolve. (AC5:
-         *    v1.10.7's `PlatformInterface` exposes no DNS callback at all, so
-         *    the legacy `Semaphore`/thread-pool bug class is structurally
-         *    absent from this version rather than merely avoided.)
-         *  - **no `route`, `rule_set`, `geoip`, or `geosite`** -- these are
-         *    what the legacy project blocked forever on
-         *    `raw.githubusercontent.com`. Absent here, so startup cannot block
-         *    on a download. (AC6)
-         *  - **no remote outbound** -- so no server, port, UUID, or password
-         *    exists anywhere in this config, and there is no credential for
-         *    `SECURITY.md` to protect at this stage.
-         *
-         * The TUN address matches `BrickVpnService`'s restricted test subnet
-         * (`10.111.222.0/24`) so both sides agree which interface exists.
+         * Gate A lifecycle-test config updated for sing-box **v1.14.4**:
+         * uses a `direct` outbound with a catch-all `reject` route action
+         * (zero remote servers, zero DNS, zero external downloads).
          */
         const val GATE_A_CONFIG_JSON: String = """
         {
@@ -222,10 +256,13 @@ class LibboxTunnelEngine(
             }
           ],
           "outbounds": [
-            { "type": "block", "tag": "block-out" }
+            { "type": "direct", "tag": "direct-out" }
           ],
           "route": {
-            "auto_detect_interface": true
+            "auto_detect_interface": true,
+            "rules": [
+              { "action": "reject" }
+            ]
           }
         }
         """

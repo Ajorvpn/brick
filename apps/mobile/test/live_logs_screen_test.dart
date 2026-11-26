@@ -142,6 +142,42 @@ void main() {
     );
 
     testWidgets(
+      'AppShell eagerly captures logs before first LiveLogsScreen visit',
+      (tester) async {
+        await pumpLocalizedApp(
+          tester,
+          const MyApp(),
+          overrides: [
+            repositoryOverride().first,
+            vpnEngineProvider.overrideWithValue(fakeEngine),
+          ],
+        );
+
+        // Emit logs on the Home tab BEFORE ever visiting Settings -> Live Logs.
+        fakeEngine
+          ..emitLog('2026-11-26 INFO Cold start log one')
+          ..emitLog('2026-11-26 WARN Cold start log two');
+        await tester.pump();
+
+        // Navigate to Settings -> Live Logs for the very first time.
+        await tester.tap(
+          find.byKey(const ValueKey<String>('nav_tab_settings')),
+        );
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(find.widgetWithText(ListTile, 'Live Logs'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.widgetWithText(ListTile, 'Live Logs'));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(LiveLogsScreen), findsOneWidget);
+        expect(find.text('No log entries yet'), findsNothing);
+        expect(find.text('Cold start log one'), findsOneWidget);
+        expect(find.text('Cold start log two'), findsOneWidget);
+        expect(find.text('2'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
       'LiveLogsScreen renders distinct level badges and semantic keys',
       (tester) async {
         await pumpLocalizedApp(

@@ -7,10 +7,12 @@ import android.content.Intent
 import dev.brickvpn.harness.vpn.CommandCoordinator
 import dev.brickvpn.harness.vpn.CommandKind
 import dev.brickvpn.harness.vpn.CommandVerdictHub
+import dev.brickvpn.harness.vpn.PendingConfigHolder
 import dev.brickvpn.harness.vpn.PigeonEventSink
 import dev.brickvpn.harness.vpn.PigeonVpnApiImpl
 import dev.brickvpn.harness.vpn.ServiceLifecycleHub
 import dev.brickvpn.harness.vpn.VpnCommandOutcome
+import dev.brickvpn.harness.vpn.VpnCommandResult
 import dev.brickvpn.harness.vpn.VpnConsentStatus
 import dev.brickvpn.harness.vpn.VpnNativeState
 import dev.brickvpn.harness.vpn.VpnState
@@ -29,6 +31,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -114,6 +117,7 @@ class VpnEngineAndroidPluginTest {
     @Before
     fun setUp() {
         Dispatchers.setMain(testDispatcher)
+        PendingConfigHolder.clear()
         ServiceLifecycleHub.errorLogger = { _, _ -> }
         ServiceLifecycleHub.reset()
         CommandVerdictHub.reset()
@@ -121,6 +125,7 @@ class VpnEngineAndroidPluginTest {
 
     @After
     fun tearDown() {
+        PendingConfigHolder.clear()
         ServiceLifecycleHub.reset()
         CommandVerdictHub.reset()
         Dispatchers.resetMain()
@@ -327,6 +332,55 @@ class VpnEngineAndroidPluginTest {
         assertNull("attachedMachine must be cleared after onServiceDestroyed", plugin.stateHandler.attachedMachineState())
         // c) coordinator pending command received FAILED
         assertEquals(VpnCommandOutcome.FAILED, deferredOutcome.await())
+    }
+
+    @Test
+    fun `ServiceLifecycleHub destroyed preserves pending START config and awaits new service verdict during live switch`() = runTest(testDispatcher) {
+        val plugin = VpnEngineAndroidPlugin()
+        plugin.scope = backgroundScope
+        val coordinator = CommandCoordinator(
+            setListener = { CommandVerdictHub.listener = it },
+            mainDispatcher = testDispatcher,
+        )
+        plugin.coordinator = coordinator
+        plugin.attachLifecycleObserver(currentServiceMachine = { null })
+
+        val oldMachine = VpnStateMachine(backgroundScope)
+        ServiceLifecycleHub.created(oldMachine)
+        oldMachine.start()
+        val oldToken = oldMachine.activeSession!!
+        oldMachine.stop()
+        oldMachine.onStopped(oldToken)
+        runCurrent()
+
+        val stagedVlessConfig = """{"outbounds":[{"type":"vless","tag":"proxy"}]}"""
+        val deferredOutcome = async {
+            coordinator.run(CommandKind.START) {
+                PendingConfigHolder.put(stagedVlessConfig)
+            }
+        }
+        runCurrent()
+
+        assertTrue("Pending config must be staged before old onDestroy", PendingConfigHolder.hasPending())
+
+        // Old service fires onDestroy while new ACTION_START is still in flight
+        ServiceLifecycleHub.destroyed()
+        runCurrent()
+
+        assertTrue("Pending config must survive old service destruction", PendingConfigHolder.hasPending())
+        assertFalse("In-flight START must NOT be failed when new config is staged", deferredOutcome.isCompleted)
+
+        // New service starts up cleanly and claims the staged config
+        val newMachine = VpnStateMachine(backgroundScope)
+        ServiceLifecycleHub.created(newMachine)
+        val claimedConfig = PendingConfigHolder.take()
+        assertEquals(stagedVlessConfig, claimedConfig)
+        assertFalse(PendingConfigHolder.hasPending())
+
+        CommandVerdictHub.publish(CommandKind.START, VpnCommandResult.Accepted)
+        runCurrent()
+
+        assertEquals(VpnCommandOutcome.ACCEPTED, deferredOutcome.await())
     }
 
     // ------------------------------------------------------------- Item 5: Stream cancellation (onCancel)

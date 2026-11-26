@@ -128,7 +128,7 @@ void main() {
         final versionText = tester.widget<Text>(
           find.descendant(
             of: find.byKey(_versionTile),
-            matching: find.text('1.0.0'),
+            matching: find.text('0.4.0'),
           ),
         );
         expect(versionText.style?.fontFamily, BrickTypography.monoFontFamily);
@@ -238,7 +238,7 @@ void main() {
         findsOneWidget,
       );
       expect(find.textContaining('GPL-3.0-or-later'), findsWidgets);
-      expect(find.textContaining('1.0.0'), findsWidgets);
+      expect(find.textContaining('0.4.0'), findsWidgets);
 
       await tester.ensureVisible(find.byKey(_viewLicenses));
       await tester.pumpAndSettle();

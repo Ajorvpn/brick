@@ -709,7 +709,9 @@ void main() {
     // P10-HF1 — Anti-DPI connectivity hotfix
     // -------------------------------------------------------------------
     group('P10-HF1 anti-DPI TLS hardening', () {
-      const hardened = SingBoxOutboundSerializer(enable112Fragmentation: true);
+      const legacySafe = SingBoxOutboundSerializer(
+        enable112Fragmentation: false,
+      );
 
       Map<String, dynamic> tlsOf(Map<String, dynamic> out) =>
           out['tls'] as Map<String, dynamic>;
@@ -731,29 +733,30 @@ void main() {
         ),
       );
 
-      test('v1.10.7 default emits utls only, never 1.12 keys', () {
-        final out = buildSingBoxOutbound(vlessTls(fp: 'edge'));
+      test('opt-out mode emits utls only, omitting fragmentation keys', () {
+        final out = legacySafe.build(vlessTls(fp: 'edge'));
         final tls = tlsOf(out);
 
         expect(tls['utls'], {'enabled': true, 'fingerprint': 'chrome'});
-        // The vendored libbox v1.10.7 decoder rejects unknown fields, so no
-        // 1.12+ fragmentation key may appear without an explicit opt-in.
         expect(tls.containsKey('record_fragment'), isFalse);
         expect(tls.containsKey('fragment'), isFalse);
         expect(tls.containsKey('fragment_fallback_delay'), isFalse);
         expect(out.containsKey('tcp_fast_open'), isFalse);
       });
 
-      test('the serializer defaults to the v1.10.7-safe mode', () {
-        expect(
-          const SingBoxOutboundSerializer().enable112Fragmentation,
-          isFalse,
-        );
-        expect(hardened.enable112Fragmentation, isTrue);
-      });
+      test(
+        'the serializer defaults to v1.14.4 anti-DPI fragmentation enabled',
+        () {
+          expect(
+            const SingBoxOutboundSerializer().enable112Fragmentation,
+            isTrue,
+          );
+          expect(legacySafe.enable112Fragmentation, isFalse);
+        },
+      );
 
-      test('1.12+ mode emits fragmentation keys for VLESS REALITY', () {
-        final out = hardened.build(
+      test('v1.14.4 default emits fragmentation keys for VLESS REALITY', () {
+        final out = buildSingBoxOutbound(
           VlessOutbound(
             server: 'node.example.com',
             serverPort: 443,
@@ -781,12 +784,9 @@ void main() {
         expect(out.containsKey('tcp_fast_open'), isFalse);
       });
 
-      test('1.12+ mode overlays VLESS, Trojan and VMess alike', () {
-        final vless = buildSingBoxOutbound(
-          vlessTls(),
-          enable112Fragmentation: true,
-        );
-        final trojan = hardened.build(
+      test('v1.14.4 default overlays VLESS, Trojan and VMess alike', () {
+        final vless = buildSingBoxOutbound(vlessTls());
+        final trojan = buildSingBoxOutbound(
           TrojanOutbound(
             server: 'node.example.com',
             serverPort: 443,
@@ -794,7 +794,7 @@ void main() {
             tls: TlsSettings(enabled: true, serverName: 'node.example.com'),
           ),
         );
-        final vmess = hardened.build(
+        final vmess = buildSingBoxOutbound(
           VmessOutbound(
             server: 'node.example.com',
             serverPort: 443,

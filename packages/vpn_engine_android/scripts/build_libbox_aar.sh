@@ -37,7 +37,7 @@ ANDROID_API="24"                                # matches v1.14.4 main AAR & plu
 set -euo pipefail
 
 # ------------------------------------------------------------------ environment
-export PATH="$HOME/go/bin:$HOME/.local/go/bin:$PATH"
+export PATH="$HOME/go/bin:$HOME/.local/bin:$PATH"
 export GOTOOLCHAIN=local
 export GOMAXPROCS="${GOMAXPROCS:-2}"
 export ANDROID_HOME="${ANDROID_HOME:-$HOME/Android/Sdk}"
@@ -57,6 +57,7 @@ SRC_DIR="$BUILD_DIR/sing-box"
 OUT_AAR="$NATIVE_DIR/libs/libbox.aar"
 export TMPDIR="$BUILD_DIR/tmp"
 mkdir -p "$TMPDIR"
+trap 'rm -rf "$TMPDIR"' EXIT
 
 die() { echo "ERROR: $*" >&2; exit 1; }
 

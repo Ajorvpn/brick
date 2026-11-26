@@ -12,7 +12,7 @@ import 'package:mobile/core/providers/app_preferences_provider.dart';
 import 'package:ui_theme/ui_theme.dart';
 
 /// The application version shown on the About surface.
-const String _appVersion = '1.0.0';
+const String _appVersion = '0.4.0';
 
 /// The license of the application, shown in the about/license surface.
 const String _appLicense =

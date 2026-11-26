@@ -127,10 +127,19 @@ class PigeonVpnApiImpl(
         val isBlock = outbound["type"] == "block"
         val configJson = buildConfigJson(outbound, isBlock)
 
-        return coordinator.run(CommandKind.START) {
+        val outcome = coordinator.run(CommandKind.START) {
             PendingConfigHolder.put(configJson)
-            startServiceLauncher()
+            try {
+                startServiceLauncher()
+            } catch (t: Throwable) {
+                PendingConfigHolder.clearIfMatches(configJson)
+                throw t
+            }
         }
+        if (outcome != VpnCommandOutcome.ACCEPTED) {
+            PendingConfigHolder.clearIfMatches(configJson)
+        }
+        return outcome
     }
 
     internal fun buildConfigJson(outbound: Map<*, *>, isBlock: Boolean): String {
@@ -144,10 +153,6 @@ class PigeonVpnApiImpl(
                 .put("address", JSONArray().put("10.111.222.1/24"))
                 .put("mtu", 9000)
                 .put("auto_route", true)
-                // sing-box v1.10.7 only matches `protocol: "dns"` in route
-                // rules for packets the inbound has sniffed; without this the
-                // TUN traffic reaches the proxy outbound as raw UDP:53.
-                .apply { if (!isBlock) put("sniff", true) }
                 .put("strict_route", true),
         )
         root.put("inbounds", inbounds)
@@ -158,63 +163,106 @@ class PigeonVpnApiImpl(
             root.put("route", JSONObject().put("auto_detect_interface", true))
         } else {
             val outboundTag = (outbound["tag"] as? String)?.takeIf { it.isNotBlank() } ?: "proxy"
-            val primaryOutbound = JSONObject(outbound).put("tag", outboundTag)
-            outbounds.put(primaryOutbound)
+            val isWireGuard = outbound["type"] == "wireguard"
+            if (isWireGuard) {
+                root.put("endpoints", JSONArray().put(buildWireGuardEndpoint(outbound, outboundTag)))
+            } else {
+                val primaryOutbound = JSONObject(outbound).put("tag", outboundTag)
+                outbounds.put(primaryOutbound)
+            }
             outbounds.put(JSONObject().put("type", "direct").put("tag", "direct-out"))
-            // v1.10.7's DNS special outbound: the target of the hijack rule.
-            outbounds.put(JSONObject().put("type", "dns").put("tag", "dns-out"))
             root.put("outbounds", outbounds)
 
+            // v1.14.4 typed DNS servers (`address` legacy format was removed in 1.14.0).
+            // `dns-direct` omits `detour` intentionally: common/dialer/detour.go rejects
+            // detouring to an empty direct outbound; default dialer routes direct via
+            // route.auto_detect_interface = true.
             val dnsServers = JSONArray()
             dnsServers.put(
                 JSONObject()
+                    .put("type", "udp")
                     .put("tag", "dns-direct")
-                    .put("address", "1.1.1.1")
-                    .put("detour", "direct-out"),
+                    .put("server", "1.1.1.1"),
             )
-            // P10-HF1: plain UDP/TCP DNS is intercepted and poisoned on
-            // Iranian carriers, so proxied resolution uses encrypted DoH over
-            // the tunnel outbound. The address is an IP literal so resolving
-            // the DoH endpoint never needs a recursive lookup.
+            // P10-HF1 / v1.14.4 fix: plain UDP/TCP DNS is intercepted on Iranian
+            // carriers, HTTP/2 DoH stalls 10.0s on dead ClientConn pools, and DoT
+            // (tls) pools idle sockets across silent proxy drops causing 2s+ retries;
+            // forcing HTTP/1.1 ALPN with Connection: close uses a fresh encrypted
+            // DoH connection per query inside outboundTag with a bounded 4s timeout.
             dnsServers.put(
                 JSONObject()
+                    .put("type", "https")
                     .put("tag", "dns-remote")
-                    .put("address", "https://1.1.1.1/dns-query")
-                    .put("detour", outboundTag),
-            )
-            val dnsRules = JSONArray()
-            dnsRules.put(
-                JSONObject()
-                    .put("outbound", JSONArray().put("any"))
-                    .put("server", "dns-direct"),
+                    .put("server", "1.1.1.1")
+                    .put("path", "/dns-query")
+                    .put("detour", outboundTag)
+                    .put("headers", JSONObject().put("Connection", "close"))
+                    .put(
+                        "tls",
+                        JSONObject()
+                            .put("enabled", true)
+                            .put("alpn", JSONArray().put("http/1.1")),
+                    ),
             )
             val dnsObj = JSONObject()
                 .put("servers", dnsServers)
-                .put("rules", dnsRules)
                 .put("final", "dns-remote")
                 .put("strategy", "prefer_ipv4")
+                .put("timeout", "4s")
             root.put("dns", dnsObj)
 
-            // v1.10.7 schema ONLY: `action` (sing-box 1.11+ rule actions) is
-            // rejected by the pinned libbox.aar with
-            // `decode config: route.rules[0].action: json: unknown field
-            // "action"`, so DNS hijacking is expressed the classic way: send
-            // sniffed DNS to the `dns-out` special outbound.
             val routeRules = JSONArray()
+            routeRules.put(JSONObject().put("action", "sniff"))
             routeRules.put(
                 JSONObject()
                     .put("protocol", "dns")
-                    .put("outbound", "dns-out"),
+                    .put("action", "hijack-dns"),
             )
             root.put(
                 "route",
                 JSONObject()
                     .put("auto_detect_interface", true)
+                    .put("default_domain_resolver", "dns-direct")
                     .put("rules", routeRules)
                     .put("final", outboundTag),
             )
         }
         return root.toString()
+    }
+
+    private fun buildWireGuardEndpoint(outbound: Map<*, *>, tag: String): JSONObject {
+        val endpoint = JSONObject()
+            .put("type", "wireguard")
+            .put("tag", tag)
+            .put("system", (outbound["system_interface"] as? Boolean) ?: false)
+        (outbound["mtu"] as? Number)?.let { endpoint.put("mtu", it.toInt()) }
+        (outbound["workers"] as? Number)?.let { endpoint.put("workers", it.toInt()) }
+        val localAddresses = JSONArray()
+        when (val rawAddr = outbound["local_address"]) {
+            is Iterable<*> -> rawAddr.filterIsInstance<String>().forEach { localAddresses.put(it) }
+            is Array<*> -> rawAddr.filterIsInstance<String>().forEach { localAddresses.put(it) }
+            is String -> if (rawAddr.isNotBlank()) localAddresses.put(rawAddr)
+        }
+        endpoint.put("address", localAddresses)
+        (outbound["private_key"] as? String)?.let { endpoint.put("private_key", it) }
+
+        val peer = JSONObject()
+        (outbound["server"] as? String)?.let { peer.put("address", it) }
+        (outbound["server_port"] as? Number)?.let { peer.put("port", it.toInt()) }
+        (outbound["peer_public_key"] as? String)?.let { peer.put("public_key", it) }
+        (outbound["pre_shared_key"] as? String)?.takeIf { it.isNotBlank() }?.let {
+            peer.put("pre_shared_key", it)
+        }
+        val reservedRaw = outbound["reserved"]
+        if (reservedRaw is Iterable<*>) {
+            val reserved = JSONArray()
+            reservedRaw.filterIsInstance<Number>().forEach { reserved.put(it.toInt()) }
+            if (reserved.length() > 0) peer.put("reserved", reserved)
+        }
+        peer.put("allowed_ips", JSONArray().put("0.0.0.0/0").put("::/0"))
+
+        endpoint.put("peers", JSONArray().put(peer))
+        return endpoint
     }
 
     override suspend fun stop(): VpnCommandOutcome {

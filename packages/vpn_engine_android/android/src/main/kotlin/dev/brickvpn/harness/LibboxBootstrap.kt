@@ -39,6 +39,9 @@ object LibboxBootstrap {
                         it.workingPath = workingPath
                         it.tempPath = tempPath
                         it.fixAndroidStack = true
+                        it.logMaxLines = 300L
+                        it.crashReportSource = "brick"
+                        it.debug = false
                     },
                 )
                 Log.i(TAG, "Libbox.setup ok (base=$basePath, working=$workingPath, temp=$tempPath)")

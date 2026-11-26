@@ -2695,3 +2695,67 @@ formatted provider value exactly.
 `alpn_query_decoding_test.dart` (VLESS, Hysteria2, and TUIC); `flutter analyze` reports no issues; the regression suite
 (`T1`–`T7c`) and the ten targeted mobile suites pass with `--concurrency=$(nproc)`; the canonical `--release --split-per-abi`
 build installs and launches on `SM-A205F` with zero `FATAL EXCEPTION` / `FlutterError` / overflow lines in logcat.
+
+### 13.14 Sing-Box Core Upgrade — v1.10.7 to v1.14.4, Anti-DPI Fragmentation & Switch/Log Remediation
+
+**Toolchain & 16 KB core build.** Upgraded `packages/vpn_engine_android/scripts/build_libbox_aar.sh` and
+`AI_ROLES/TOOLCHAIN_VERSIONS.md` from `sing-box v1.10.7` to `v1.14.4` (commit `c005f353`), compiled with matched
+`github.com/sagernet/gomobile@v0.1.13` and `gobind@v0.1.13`, `go1.27.3-X:nodwarf5`, Android NDK `r28c` (`28.2.13676358`),
+and Android API `24` (`packages/vpn_engine_android/android/libs/libbox.aar`, `85,509,600` bytes). All four ELF `LOAD`
+segments of `libgojni.so` align to `0x4000` (`4/4` at `0x4000`, `0` at `0x1000`).
+
+**Android `libbox` API, 26-method `PlatformInterface`, and `v1.14.4` config schema.**
+1. Replaced removed `BoxService` / `Libbox.newService` in `LibboxTunnelEngine.kt` with `CommandServer` + `OverrideOptions()`
+   + `CommandClient` (`Libbox.CommandLog`), stripping ANSI escapes (`\u001B\[[0-9;]*[mK]`) and prefixing log levels.
+2. Implemented all 26 `PlatformInterface` methods in `LibboxPlatformInterface.kt` backed by Android `ConnectivityManager`
+   default-interface monitoring and `getInterfaces()` (stripping IPv6 `%zone` suffixes with `NetworkInterface` fallback).
+3. Added `logMaxLines = 300L`, `crashReportSource = "brick"`, and `debug = false` to `SetupOptions` in
+   `LibboxBootstrap.kt` and `BrickVpnApplication.kt`.
+4. Migrated `PigeonVpnApiImpl.buildConfigJson()` and `GATE_A_CONFIG_JSON` to `v1.14.4` JSON schema: removed legacy
+   `tun-in` `sniff` / `dns-out` outbound and `dns.rules`, upgraded `dns.servers` to typed `udp` (`dns-direct`, omitting
+   empty `direct` detour rejected by `common/dialer/detour.go`) + `https` (`dns-remote`), added
+   `route.default_domain_resolver = "dns-direct"` and `route.rules = [{"action":"sniff"},{"protocol":"dns","action":"hijack-dns"}]`,
+   and translated `wireguard` outbounds to top-level `endpoints`.
+5. Activated `v1.14.4` anti-DPI TLS fragmentation by default (`enable112Fragmentation = true` emitting `fragment: true`,
+   `record_fragment: true`, and `fragment_fallback_delay: "500ms"` in `singbox_serializer.dart`).
+
+**Remediation of live-switch race and cold-start `LiveLogsScreen` gap.**
+1. Live multi-server switching revealed a ~16 ms race between `state -> Stopped` and old `BrickVpnService.onDestroy()`,
+   where `onDestroy()` cleared `PendingConfigHolder` and cancelled `CommandCoordinator` after Dart had already staged a new
+   `START` config (`autoRoute=false` `GATE_A_CONFIG_JSON` fallback). Added `hasPending()` / `clearIfMatches()` in
+   `PendingConfigHolder.kt`, removed unconditional `clear()` from `BrickVpnService.onDestroy()` / `requestStart()`, skipped
+   `stopSelf()` in `requestStop()` when a new `START` config is already staged, cleaned staged configs on launch failure or
+   non-accepted outcome in `PigeonVpnApiImpl.start()`, and guarded `coordinator?.onServiceDestroyed()` in
+   `VpnEngineAndroidPlugin.kt` behind `!PendingConfigHolder.hasPending()`. Covered in `VpnEngineAndroidPluginTest.kt` (`11`
+   host-JVM tests).
+2. `AppShell.build` (`app_shell.dart`) now registers `ref.listen(logManagerProvider, (_, _) {})`, keeping `LogManager`
+   subscribed to `engine.logEvents` from shell mount without rebuilding the dock, so opening `Settings -> Live Logs` for
+   the first time surfaces prior session logs. Covered by a deterministic widget regression test in
+   `apps/mobile/test/live_logs_screen_test.dart`.
+
+**Verification (post-final edit & live on `SM-A205F`).**
+- Host checks: `dart format --output=none --set-exit-if-changed` (`0`); `./gradlew testDebugUnitTest compileDebugAndroidTestKotlin --rerun-tasks` (`96/96` JVM tests passed across 6 suites); `flutter analyze --no-pub` (`No issues found!`); 10 mobile guard suites (`+99` tests passed, `0` failures). (`config_parser` and `vpn_engine_android` Dart suites also passed in Step 2 prior to Step 3 fixes, which touched no files in those packages.)
+- Release build & device check (`SM-A205F` `RZ8M53WPMPF`, `app-arm64-v8a-release.apk` `88,238,074` bytes, `7` plugins / `0` `integration_test` hits, `4/4` `0x4000` ELF `LOAD` alignment): fresh install (`TotalTime: 2188 ms`) and full 4-cycle live run (Cycle 1 `SS` connect -> Cycle 2 one-tap live switch `VLESS` -> Cycle 3 one-tap live switch `VMess` -> Cycle 4 disconnect/select/connect `Trojan` TLS + first-visit `LiveLogsScreen` `300` entries with `ANSI_ESCAPE_HITS=0` -> final `Disconnected`). Logcat PID `19796` counts: `LIBBOX_SERVICE_STARTED=4`, `STATE_RUNNING=4`, `COMMAND_CLIENT_CONNECTED=4`, `COMMAND_SERVER_CLOSED=4`, `TUN_ACQUIRED=4`, `TUN_CLOSED=4`, `AUTO_ROUTE_TRUE_COUNT=4`, `AUTO_ROUTE_FALSE_COUNT=0`, `GATE_A_REJECT_COUNT=0`, `START_FAILED_COUNT=0`, `FATAL_EXCEPTION_COUNT=0`, `DECODE_CONFIG_ERROR_COUNT=0`, `DEPRECATED_WARNING_COUNT=0`, and `RECONNECT_OR_HANDOFF_COUNT=0`. App version bumped with human approval to `0.4.0+4` (`versionName=0.4.0`, `arm64-v8a` `versionCode=2004`).
+
+---
+
+### 13.15 Surgical Data-Plane Fix — Eliminating 10.0s Pooled DoH HTTP/2 & Idle DoT Stalls (`PigeonVpnApiImpl.kt`)
+
+#### Root cause
+1. On live Iran Wi-Fi (`wlan0`), `sing-box v1.14.4` defaulted `dns.timeout` to `10s` (`constant/timeout.go:11`, wired via `option/dns.go:18-24,62-70` and `dns/router.go:86` -> `dns/client.go:83-85`). When `dns-remote` used default `type: "https"` (HTTP/2 `http2.ClientConn` pooling in `dns/transport/https.go:186-204` and `https_transport.go:30-75`), any half-open idle connection silently dropped by an upstream server or NAT stalled uncached DNS queries until the full `10.0s` deadline (`http2: client connection force closed via ClientConn.Close`) before `resetTransportLocked()` reset the pool.
+2. Empirical testing across `wlan0` (`5s` idle gaps) and `SM-A205F` showed that plain `type: "tcp"` (`:53`) failed (`0/5` on `#05`, `EOF` on `#26`), while `type: "tls"` (`DoT` `1.1.1.1:853`) used `queryMultiplexer` (`ConnPoolSingle`, `probeReuse = true`) whose `completeContextDone` (`dns/transport/multiplexer.go:433-446`) removes `pending` via `take()` before `Invalidate()`, causing `recordConnDeath` to see `pendingOnConn == 0` and reset `demoteFailures`. As a result, silently dropped DoT connections still stalled Packet 1 for the full DNS timeout (`2s`/`2.5s`) before Packet 2 dialed fresh (`3/4` on `wlan0`, `2/3` live under `5s` timeout on `SM-A205F`).
+
+#### Selected surgical fix (`PigeonVpnApiImpl.kt`)
+Configured `dns-remote` in `PigeonVpnApiImpl.buildConfigJson()` to force HTTP/1.1 DoH with explicit connection closure per lookup and a bounded `4s` DNS client timeout:
+- `type: "https"`, `server: "1.1.1.1"`, `path: "/dns-query"`, `detour: outboundTag`
+- `headers: {"Connection": "close"}`
+- `tls: {"enabled": true, "alpn": ["http/1.1"]}` (`dns/transport/https.go:69-71` honors custom ALPN; `https_transport.go:41-82` switches once via `errFallback` to Go `net/http.Transport`, after which `Connection: close` opens a clean encrypted DoH TCP+TLS session per lookup with zero HTTP/2 multiplexing and zero idle-pool stalls)
+- `dns.timeout: "4s"` (eliminating the `10.0s` default ceiling while preserving headroom for first-query ALPN fallback and high-RTT nodes)
+
+#### Regression guards & verification (post-final edit & live on `SM-A205F`)
+- **Unit & guard tests:** `PigeonVpnApiImplTest.kt` asserts `type == "https"`, `server == "1.1.1.1"`, `path == "/dns-query"`, `headers.Connection == "close"`, `tls.enabled == true`, `tls.alpn == ["http/1.1"]`, and `dns.timeout == "4s"`. `./gradlew --no-daemon --console=plain cleanTestDebugUnitTest testDebugUnitTest compileDebugAndroidTestKotlin --rerun-tasks --no-build-cache` passed (`GRADLE_JVM_EXIT=0`, `96/96` across 6 suites); `flutter analyze --no-pub` (`MOBILE_ANALYZE_EXIT=0`, zero issues); 4 Flutter guard suites (`+47`, `MOBILE_GUARD_EXIT=0`).
+- **Release build (`SM-A205F` `RZ8M53WPMPF`, `versionCode=2004`, `versionName=0.4.0`):** `flutter build apk --release --split-per-abi` (`RELEASE_SPLIT_BUILD_EXIT=0`, `7` plugins / `0` `integration_test` hits, `ALIGN_0X1000_COUNT=0` with `libgojni.so` at `0x4000`, `RELEASE_UPGRADE_INSTALL_EXIT=0`).
+- **Live sub-5s data-plane proof (`SM-A205F`, `APP_PID=10427`, `tun0` up, zero Packet-1 stalls, zero retries):**
+  - **Test A (`#05 UK 02 | SS`):** `www.gstatic.com` (`801ms` DoH, `HTTP/1.1 204 No Content`), `connectivitycheck.gstatic.com` (`596ms` DoH, `HTTP/1.1 204 No Content`), `cp.cloudflare.com` (`550ms` DoH, `HTTP/1.1 204 No Content`); `TEST_A_DNS_NOERROR_COUNT=14`, `TEST_A_HTTP2_FORCE_CLOSE_COUNT=0`.
+  - **Live-switched Test B (`#26 Brick VPN 26 | VMESS` with anti-DPI fragmentation):** `clients3.google.com` (`1.61s` DoH, `HTTP/1.1 204 No Content`), `connectivitycheck.android.com` (`1.47s` DoH, `HTTP/1.1 204 No Content`), `connectivitycheck.gstatic.com` (`1.34s` DoH, `HTTP/1.1 204 No Content`); `TEST_B_DNS_NOERROR_COUNT=6`, `TEST_B_HTTP2_FORCE_CLOSE_COUNT=0`.
+  - Clean UI disconnect verified (`Tunnel: Disconnected`, `ip addr show tun0` -> `Device "tun0" does not exist.`).

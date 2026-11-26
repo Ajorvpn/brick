@@ -173,7 +173,9 @@ class PigeonVpnApiImplTest {
         assertEquals("direct-out", secondOutbound.getString("tag"))
         assertEquals("proxy", json.getJSONObject("route").getString("final"))
         val dnsServer = json.getJSONObject("dns").getJSONArray("servers").getJSONObject(0)
-        assertEquals("direct-out", dnsServer.getString("detour"))
+        assertEquals("udp", dnsServer.getString("type"))
+        assertEquals("1.1.1.1", dnsServer.getString("server"))
+        assertFalse(dnsServer.has("detour"))
 
         hubListener?.invoke(CommandKind.START, VpnCommandResult.Accepted)
         runCurrent()
@@ -213,7 +215,9 @@ class PigeonVpnApiImplTest {
         assertEquals("direct-out", secondOutbound.getString("tag"))
         assertEquals("proxy", json.getJSONObject("route").getString("final"))
         val dnsServer = json.getJSONObject("dns").getJSONArray("servers").getJSONObject(0)
-        assertEquals("direct-out", dnsServer.getString("detour"))
+        assertEquals("udp", dnsServer.getString("type"))
+        assertEquals("1.1.1.1", dnsServer.getString("server"))
+        assertFalse(dnsServer.has("detour"))
 
         hubListener?.invoke(CommandKind.START, VpnCommandResult.Accepted)
         runCurrent()
@@ -497,61 +501,67 @@ class PigeonVpnApiImplTest {
         // 1. Zero remote rule_set URLs
         assertFalse("Configuration must not contain remote rule_set", root.has("rule_set"))
 
-        // 2. Strict route on TUN inbound
+        // 2. Strict route on TUN inbound, no legacy sniff on inbound
         val inbounds = root.getJSONArray("inbounds")
         val tun = inbounds.getJSONObject(0)
         assertEquals("tun", tun.getString("type"))
         assertTrue("TUN inbound must set strict_route = true", tun.getBoolean("strict_route"))
         assertTrue("TUN inbound must set auto_route = true", tun.getBoolean("auto_route"))
+        assertFalse("tun-in must not contain legacy sniff field", tun.has("sniff"))
 
-        // 3. DNS configuration: bootstrap resolver & remote tunnel resolver
+        // 3. Typed v1.14.4 DNS configuration: bootstrap resolver & remote tunnel resolver
         val dns = root.getJSONObject("dns")
         val dnsServers = dns.getJSONArray("servers")
         var hasDnsRemote = false
         var hasDnsDirect = false
         for (i in 0 until dnsServers.length()) {
             val server = dnsServers.getJSONObject(i)
+            assertFalse("v1.14.4 DNS server must not use legacy address key", server.has("address"))
             val tag = server.getString("tag")
             if (tag == "dns-remote") {
                 hasDnsRemote = true
+                assertEquals("https", server.getString("type"))
+                assertEquals("1.1.1.1", server.getString("server"))
+                assertEquals("/dns-query", server.getString("path"))
                 assertEquals("tokyo-proxy", server.getString("detour"))
-                // P10-HF1: proxied DNS must be encrypted DoH, never plain UDP.
-                assertEquals("https://1.1.1.1/dns-query", server.getString("address"))
-                assertTrue(
-                    "dns-remote must use DoH",
-                    server.getString("address").startsWith("https://"),
-                )
-                assertFalse(
-                    "dns-remote must not be plain UDP",
-                    server.getString("address").startsWith("udp://"),
-                )
+                assertEquals("close", server.getJSONObject("headers").getString("Connection"))
+                val tls = server.getJSONObject("tls")
+                assertTrue(tls.getBoolean("enabled"))
+                val alpn = tls.getJSONArray("alpn")
+                assertEquals(1, alpn.length())
+                assertEquals("http/1.1", alpn.getString(0))
             } else if (tag == "dns-direct") {
                 hasDnsDirect = true
-                assertEquals("direct-out", server.getString("detour"))
-                assertEquals("1.1.1.1", server.getString("address"))
+                assertEquals("udp", server.getString("type"))
+                assertEquals("1.1.1.1", server.getString("server"))
+                assertFalse(
+                    "dns-direct must omit detour to avoid empty direct outbound error",
+                    server.has("detour"),
+                )
             }
         }
         assertTrue("Must include dns-remote server", hasDnsRemote)
         assertTrue("Must include direct bootstrap dns-direct server", hasDnsDirect)
         assertEquals("dns-remote", dns.getString("final"))
+        assertEquals("4s", dns.getString("timeout"))
+        assertFalse("Deprecated dns.rules outbound:any must be omitted", dns.has("rules"))
 
-        val dnsRules = dns.getJSONArray("rules")
-        val directRule = dnsRules.getJSONObject(0)
-        assertEquals("dns-direct", directRule.getString("server"))
-
-        // 4. Route: DNS hijack
+        // 4. Route: v1.14.4 rule actions (sniff + hijack-dns) & default_domain_resolver
         val route = root.getJSONObject("route")
         assertEquals("tokyo-proxy", route.getString("final"))
+        assertEquals("dns-direct", route.getString("default_domain_resolver"))
         val routeRules = route.getJSONArray("rules")
-        val dnsHijack = routeRules.getJSONObject(0)
+        assertEquals(2, routeRules.length())
+        assertEquals("sniff", routeRules.getJSONObject(0).getString("action"))
+        val dnsHijack = routeRules.getJSONObject(1)
         assertEquals("dns", dnsHijack.getString("protocol"))
-        assertEquals("dns-out", dnsHijack.getString("outbound"))
+        assertEquals("hijack-dns", dnsHijack.getString("action"))
     }
 
-    // ------------------------------------------------ v1.10.7 schema regression guards
+    // ------------------------------------------------ v1.14.4 schema regression guards
 
     @Test
-    fun `buildConfigJson emits only the pinned libbox v1_10_7 route schema`() {
+    fun `buildConfigJson emits strict v1_14_4 route, typed DNS, and no removed dns outbound`() {
         val impl = PigeonVpnApiImpl(
             appContext = dummyContext,
             coordinator = coordinator,
@@ -564,49 +574,108 @@ class PigeonVpnApiImplTest {
         )
         val root = org.json.JSONObject(impl.buildConfigJson(outbound, isBlock = false))
 
-        // 1. A dedicated dns outbound exists and is the hijack target.
+        // 1. Removed dns special outbound must NOT appear.
         val outbounds = root.getJSONArray("outbounds")
-        var hasDnsOut = false
         for (i in 0 until outbounds.length()) {
             val candidate = outbounds.getJSONObject(i)
-            if (candidate.optString("tag") == "dns-out") {
-                hasDnsOut = true
-                assertEquals("dns", candidate.getString("type"))
-            }
+            assertFalse(
+                "Removed v1.10.7 dns outbound must not be emitted",
+                candidate.optString("type") == "dns",
+            )
         }
-        assertTrue("outbounds must contain {type: dns, tag: dns-out}", hasDnsOut)
 
-        // 2. Route rule uses the classic outbound form, never a rule action.
-        val rule = root.getJSONObject("route").getJSONArray("rules").getJSONObject(0)
-        assertEquals("dns", rule.getString("protocol"))
-        assertEquals("dns-out", rule.getString("outbound"))
-        assertFalse(
-            "rule-action syntax is rejected by libbox v1.10.7: unknown field 'action'",
-            rule.has("action"),
-        )
+        // 2. Route rules must use v1.14.4 actions: [sniff, protocol:dns -> hijack-dns].
+        val route = root.getJSONObject("route")
+        assertEquals("dns-direct", route.getString("default_domain_resolver"))
+        val rules = route.getJSONArray("rules")
+        assertEquals("sniff", rules.getJSONObject(0).getString("action"))
+        val hijack = rules.getJSONObject(1)
+        assertEquals("dns", hijack.getString("protocol"))
+        assertEquals("hijack-dns", hijack.getString("action"))
+        assertFalse(hijack.has("outbound"))
 
-        // 3. TUN must sniff, or the protocol: dns rule never matches.
+        // 3. TUN must NOT set legacy sniff field.
         val tun = root.getJSONArray("inbounds").getJSONObject(0)
-        assertTrue("tun-in must set sniff = true", tun.getBoolean("sniff"))
+        assertFalse("tun-in must not contain removed sniff field", tun.has("sniff"))
 
-        // 4. Encrypted DNS targets are untouched by the schema fix.
-        val dnsServers = root.getJSONObject("dns").getJSONArray("servers")
-        var remoteTag: String? = null
-        var remoteAddress: String? = null
+        // 4. Typed DNS servers: udp + HTTP/1.1 DoH (Connection: close) with 4s timeout and NO legacy address key.
+        val dnsObj = root.getJSONObject("dns")
+        assertEquals("4s", dnsObj.getString("timeout"))
+        val dnsServers = dnsObj.getJSONArray("servers")
+        var remoteServerObj: org.json.JSONObject? = null
         for (i in 0 until dnsServers.length()) {
             val server = dnsServers.getJSONObject(i)
+            assertFalse(server.has("address"))
             if (server.getString("tag") == "dns-remote") {
-                remoteTag = server.getString("detour")
-                remoteAddress = server.getString("address")
+                remoteServerObj = server
             }
         }
-        assertEquals("ss-proxy", remoteTag)
-        assertEquals("https://1.1.1.1/dns-query", remoteAddress)
+        val remote = remoteServerObj!!
+        assertEquals("ss-proxy", remote.getString("detour"))
+        assertEquals("https", remote.getString("type"))
+        assertEquals("1.1.1.1", remote.getString("server"))
+        assertEquals("/dns-query", remote.getString("path"))
+        assertEquals("close", remote.getJSONObject("headers").getString("Connection"))
+        val remoteTls = remote.getJSONObject("tls")
+        assertTrue(remoteTls.getBoolean("enabled"))
+        assertEquals(1, remoteTls.getJSONArray("alpn").length())
+        assertEquals("http/1.1", remoteTls.getJSONArray("alpn").getString(0))
 
-        // 5. Block (Gate A) config stays lean: no dns-out, no route rules.
+        // 5. Block (Gate A) config stays lean: no dns, no route rules, no sniff.
         val blockRoot = org.json.JSONObject(impl.buildConfigJson(mapOf("type" to "block"), isBlock = true))
         assertFalse(blockRoot.getJSONObject("route").has("rules"))
-        assertFalse(blockRoot.getJSONArray("inbounds").getJSONObject(0).optBoolean("sniff", false))
+        assertFalse(blockRoot.getJSONArray("inbounds").getJSONObject(0).has("sniff"))
+    }
+
+    @Test
+    fun `buildConfigJson translates legacy wireguard outbound into v1_14_4 endpoints`() {
+        val impl = PigeonVpnApiImpl(
+            appContext = dummyContext,
+            coordinator = coordinator,
+        )
+        val outbound = mapOf(
+            "type" to "wireguard",
+            "tag" to "wg-proxy",
+            "server" to "198.51.100.10",
+            "server_port" to 51820,
+            "system_interface" to false,
+            "local_address" to listOf("10.0.0.2/32"),
+            "private_key" to "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+            "peer_public_key" to "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=",
+            "pre_shared_key" to "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC=",
+            "reserved" to listOf(1, 2, 3),
+            "mtu" to 1420,
+        )
+        val root = org.json.JSONObject(impl.buildConfigJson(outbound, isBlock = false))
+
+        // Outbounds must not contain removed wireguard outbound type
+        val outbounds = root.getJSONArray("outbounds")
+        for (i in 0 until outbounds.length()) {
+            assertFalse(
+                "wireguard must not appear in outbounds",
+                outbounds.getJSONObject(i).optString("type") == "wireguard",
+            )
+        }
+
+        // Top-level endpoints[0] must carry translated WireGuardEndpointOptions + peers[0]
+        val endpoints = root.getJSONArray("endpoints")
+        assertEquals(1, endpoints.length())
+        val ep = endpoints.getJSONObject(0)
+        assertEquals("wireguard", ep.getString("type"))
+        assertEquals("wg-proxy", ep.getString("tag"))
+        assertEquals(false, ep.getBoolean("system"))
+        assertEquals(1420, ep.getInt("mtu"))
+        assertEquals("10.0.0.2/32", ep.getJSONArray("address").getString(0))
+        val peers = ep.getJSONArray("peers")
+        assertEquals(1, peers.length())
+        val peer = peers.getJSONObject(0)
+        assertEquals("198.51.100.10", peer.getString("address"))
+        assertEquals(51820, peer.getInt("port"))
+        assertEquals("BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=", peer.getString("public_key"))
+        assertEquals("CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC=", peer.getString("pre_shared_key"))
+        assertEquals("0.0.0.0/0", peer.getJSONArray("allowed_ips").getString(0))
+        assertEquals("::/0", peer.getJSONArray("allowed_ips").getString(1))
+        assertEquals("wg-proxy", root.getJSONObject("route").getString("final"))
     }
 
     @Test

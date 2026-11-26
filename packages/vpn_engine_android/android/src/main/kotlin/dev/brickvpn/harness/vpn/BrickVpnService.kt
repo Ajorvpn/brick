@@ -58,8 +58,20 @@ class BrickVpnService : VpnService() {
      * Still a `var` so a test can inject [FakeTunnelEngine] to exercise the
      * Android layer without libbox; production never overrides it.
      */
-    var engine: TunnelEngine = engineFactoryForTests?.invoke()
-        ?: LibboxTunnelEngine(socketProtector = { fd -> protect(fd) })
+    private var customEngine: TunnelEngine? = null
+    private val defaultEngine: TunnelEngine by lazy {
+        engineFactoryForTests?.invoke()
+            ?: LibboxTunnelEngine(
+                socketProtector = { fd -> protect(fd) },
+                appContext = applicationContext,
+            )
+    }
+
+    var engine: TunnelEngine
+        get() = customEngine ?: defaultEngine
+        set(value) {
+            customEngine = value
+        }
 
     private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -190,7 +202,6 @@ class BrickVpnService : VpnService() {
     }
 
     override fun onDestroy() {
-        PendingConfigHolder.clear()
         Log.i(TAG, "onDestroy")
         // Deliberately NOT cancelling ioScope before the descriptor is closed.
         // Force a final stop, then close on cleanupScope, which outlives the
@@ -246,7 +257,6 @@ class BrickVpnService : VpnService() {
                     Log.i(TAG, "start accepted after teardown wait")
                     runStartSequence(pendingConfig)
                 } else {
-                    PendingConfigHolder.clear()
                     Log.w(TAG, "start rejected after teardown wait: " +
                         "$retry (state=${stateMachine.currentState})")
                 }
@@ -258,7 +268,6 @@ class BrickVpnService : VpnService() {
         when (result) {
             VpnCommandResult.Accepted -> ioScope.launch { runStartSequence(pendingConfig) }
             else -> {
-                PendingConfigHolder.clear()
                 Log.w(TAG, "start rejected: $result (state=${stateMachine.currentState})")
             }
         }
@@ -374,7 +383,9 @@ class BrickVpnService : VpnService() {
                 // the service survives for the new session. A bare stopSelf()
                 // here killed the brand-new session's service ~1 frame after
                 // its ACTION_START.
-                if (stopStartId >= 0) {
+                if (PendingConfigHolder.hasPending()) {
+                    Log.i(TAG, "skipping stopSelf: new ACTION_START config already staged")
+                } else if (stopStartId >= 0) {
                     Log.i(TAG, "stopSelf(startId=$stopStartId) " +
                         "(latestStartId=$latestStartId)")
                     stopSelf(stopStartId)

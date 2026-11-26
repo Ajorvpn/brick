@@ -22,6 +22,7 @@ import dev.brickvpn.harness.vpn.BrickVpnService
 import dev.brickvpn.harness.vpn.CommandCoordinator
 import dev.brickvpn.harness.vpn.CommandVerdictHub
 import dev.brickvpn.harness.vpn.LibboxTunnelEngine
+import dev.brickvpn.harness.vpn.PendingConfigHolder
 import dev.brickvpn.harness.vpn.PigeonEventSink
 import dev.brickvpn.harness.vpn.PigeonVpnApiImpl
 import dev.brickvpn.harness.vpn.ServiceLifecycleHub
@@ -239,7 +240,9 @@ class VpnEngineAndroidPlugin : FlutterPlugin, ActivityAware {
                 val last = stateHandler.attachedMachineState()?.currentState
                 stateHandler.onServiceDestroyed(last)
                 trafficHandler.onServiceDestroyed()
-                coordinator?.onServiceDestroyed()
+                if (!PendingConfigHolder.hasPending()) {
+                    coordinator?.onServiceDestroyed()
+                }
             }
         }
         currentServiceMachine()?.let { machine ->
