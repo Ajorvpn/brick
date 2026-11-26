@@ -10,12 +10,12 @@
 # ---------------------------------------------------------------------------
 # Pinned inputs. These MUST agree with AI_ROLES/TOOLCHAIN_VERSIONS.md.
 # ---------------------------------------------------------------------------
-SINGBOX_TAG="v1.10.7"                          # mobile libbox bridge source
+SINGBOX_TAG="v1.14.4"                          # mobile libbox bridge source
 GOMOBILE_MODULE="github.com/sagernet/gomobile"  # official SagerNet fork
-GOMOBILE_VERSION="v0.1.4"                       # what sing-box v1.10.7 requires
-GO_MINOR="1.21"                                 # see "Go version" below
-ANDROID_NDK_REV="26.1.10909125"                 # NDK r26b
-ANDROID_API="21"                                # minSdk
+GOMOBILE_VERSION="v0.1.13"                      # upstream v1.14.4 Makefile lib_install pin
+GO_MIN_MINOR="25"                               # v1.14.4 go.mod requires go >= 1.25.5
+ANDROID_NDK_REV="28.2.13676358"                 # NDK r28c
+ANDROID_API="24"                                # matches v1.14.4 main AAR & plugin minSdk
 
 # ---------------------------------------------------------------------------
 # Two footguns this script exists to prevent.
@@ -23,21 +23,23 @@ ANDROID_API="21"                                # minSdk
 # 1. Go toolchain auto-resolution. From Go 1.21 onward, `go` will silently
 #    download and switch to a NEWER toolchain when a module's `go` directive
 #    demands it. That changes the compiled .so with no source change at all.
-#    GOTOOLCHAIN=local disables that: we either build with the pinned Go or
-#    fail loudly. This is a reproducibility control, not optional hardening.
+#    GOTOOLCHAIN=local disables that: we either build with the installed pinned
+#    Go or fail loudly. This is a reproducibility control, not optional hardening.
 #
 # 2. 16 KB page alignment. Google requires 16 KB-aligned native libraries on
 #    newer Android. A LOAD segment aligned to 0x1000 (4 KB) puts the app into
-#    "16 KB backcompat mode" and draws a Play Store warning. NDK r26b does NOT
-#    default to 16 KB (r27+ does), so CGO_LDFLAGS below is load-bearing. The
-#    flag alone is not trusted: the result is measured with readelf at the end.
+#    "16 KB backcompat mode" and draws a Play Store warning. NDK r27+ defaults
+#    to 16 KB alignment, and CGO_LDFLAGS below enforces it explicitly as
+#    defense-in-depth. The flag alone is not trusted: the result is measured
+#    with readelf at the end on both arm64-v8a and x86_64.
 # ---------------------------------------------------------------------------
 
 set -euo pipefail
 
 # ------------------------------------------------------------------ environment
-export PATH="$HOME/.local/go/bin:$HOME/go/bin:$PATH"
+export PATH="$HOME/go/bin:$HOME/.local/go/bin:$PATH"
 export GOTOOLCHAIN=local
+export GOMAXPROCS="${GOMAXPROCS:-2}"
 export ANDROID_HOME="${ANDROID_HOME:-$HOME/Android/Sdk}"
 export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/${ANDROID_NDK_REV}"
 export CGO_LDFLAGS="-Wl,-z,max-page-size=16384"
@@ -50,9 +52,11 @@ export CGO_LDFLAGS="-Wl,-z,max-page-size=16384"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 NATIVE_DIR="$PLUGIN_DIR/android"
-BUILD_DIR="${BUILD_DIR:-/tmp/sing-box-build}"
+BUILD_DIR="${BUILD_DIR:-$HOME/.cache/brick-sing-box-build}"
 SRC_DIR="$BUILD_DIR/sing-box"
 OUT_AAR="$NATIVE_DIR/libs/libbox.aar"
+export TMPDIR="$BUILD_DIR/tmp"
+mkdir -p "$TMPDIR"
 
 die() { echo "ERROR: $*" >&2; exit 1; }
 
@@ -76,19 +80,12 @@ command -v gobind >/dev/null 2>&1 || die \
 [ -d "$ANDROID_NDK_HOME" ] || die "NDK r${ANDROID_NDK_REV} not found at $ANDROID_NDK_HOME"
 
 GO_VER="$(go env GOVERSION)"
-
-# Go version, and why it is 1.21 and not 1.20.
-# P3-T1 pinned Go 1.20 by reading sing-box v1.10.7's `go 1.20` directive in
-# go.mod. That directive UNDERSTATES the real requirement: the file
-# experimental/libbox/command_connections.go imports the standard-library
-# `slices` package, which only entered GOROOT in Go 1.21. gomobile bind
-# therefore cannot compile the libbox package with Go 1.20, whatever go.mod
-# declares. Corrected to 1.21.x with human approval during P3-T3.
-# Generalisable lesson: a `go` directive is a floor, not a build recipe.
-case "$GO_VER" in
-  go${GO_MINOR}.*) ;;
-  *) die "expected Go ${GO_MINOR}.x per TOOLCHAIN_VERSIONS.md, got $GO_VER" ;;
-esac
+GO_MAJ_MIN="$(printf '%s\n' "$GO_VER" | sed -E 's/^go([0-9]+\.[0-9]+).*/\1/')"
+GO_MAJOR="${GO_MAJ_MIN%%.*}"
+GO_MINOR="${GO_MAJ_MIN#*.}"
+if ! [ "$GO_MAJOR" -gt 1 ] 2>/dev/null && ! { [ "$GO_MAJOR" -eq 1 ] && [ "$GO_MINOR" -ge "$GO_MIN_MINOR" ]; } 2>/dev/null; then
+  die "expected Go >= 1.${GO_MIN_MINOR} per TOOLCHAIN_VERSIONS.md, got $GO_VER"
+fi
 
 # gomobile's own version, read from the binary's build info rather than
 # assumed from PATH.
@@ -97,11 +94,18 @@ GOMOBILE_VER="$(go version -m "$(command -v gomobile)" 2>/dev/null \
 [ "$GOMOBILE_VER" = "$GOMOBILE_VERSION" ] \
   || die "expected gomobile ${GOMOBILE_VERSION} per TOOLCHAIN_VERSIONS.md, got '${GOMOBILE_VER:-unknown}'"
 
+GOBIND_VER="$(go version -m "$(command -v gobind)" 2>/dev/null \
+  | awk '/mod[[:space:]]+github.com\/sagernet\/gomobile/{print $3}')"
+[ "$GOBIND_VER" = "$GOMOBILE_VERSION" ] \
+  || die "expected gobind ${GOMOBILE_VERSION} per TOOLCHAIN_VERSIONS.md, got '${GOBIND_VER:-unknown}'"
+
 echo "== preflight OK =="
 echo "   go        : $GO_VER"
-echo "   gomobile  : $GOMOBILE_VER"
-echo "   gobind    : $(command -v gobind)"
+echo "   gomobile  : $GOMOBILE_VER ($(command -v gomobile))"
+echo "   gobind    : $GOBIND_VER ($(command -v gobind))"
+echo "   GOMAXPROCS: $GOMAXPROCS"
 echo "   NDK       : $ANDROID_NDK_HOME"
+echo "   BUILD_DIR : $BUILD_DIR"
 echo "   sing-box  : $SINGBOX_TAG"
 echo "   CGO_LDFLAGS: $CGO_LDFLAGS"
 
@@ -114,10 +118,9 @@ else
   rm -rf "$SRC_DIR"
   git clone --depth 1 --branch "$SINGBOX_TAG" https://github.com/SagerNet/sing-box "$SRC_DIR"
 fi
-# The shallow branch clone already carries the tag; this fetch is belt-and-braces
-# and is allowed to fail (some networks drop the sideband packet on large fetches).
-git -C "$SRC_DIR" fetch --tags --depth 1 origin "refs/tags/${SINGBOX_TAG}:refs/tags/${SINGBOX_TAG}" || true
-git -C "$SRC_DIR" checkout -q "$SINGBOX_TAG"
+# Fetch target tag cleanly so reusing an older cached checkout switches safely.
+git -C "$SRC_DIR" fetch --tags --depth 1 origin "refs/tags/${SINGBOX_TAG}:refs/tags/${SINGBOX_TAG}"
+git -C "$SRC_DIR" checkout -f "$SINGBOX_TAG"
 # Submodules (`clients/android`, `clients/apple`) are NOT needed to bind
 # `./experimental/libbox` -- that package does not import them. Fetching them
 # cost ~20 minutes on 2026-10-03 and failed twice with
@@ -153,43 +156,27 @@ cd "$SRC_DIR"
 # against the 16 KB requirement. gomobile derives its CXXFLAGS from
 # ANDROID_NDK_HOME; CGO_LDFLAGS above is what forces the page alignment.
 #
-# --- Build tags (added 2026-10-03, P3-T7 Part 2) -----------------------------
-# `-tags with_utls` is REQUIRED, not optional. Evidence from the pinned source
-# tree, not from memory:
-#
-#   1. `Makefile:3` lists sing-box's own official tag set:
-#        TAGS_GO120 = with_gvisor,with_dhcp,with_wireguard,with_reality_server,
-#                     with_clash_api,with_quic,with_utls
-#      and `Makefile:4` adds `TAGS_GO121 = with_ech` for Go 1.21+.
-#   2. `common/tls/reality_client.go:1` carries `//go:build with_utls`, i.e. the
-#      ENTIRE Reality client is compiled out without this tag.
-#   3. `common/tls/utls_stub.go:1` carries the complement `//go:build !with_utls`
-#      and its `NewRealityClient` returns an unconditional error:
-#      "uTLS, which is required by reality client is not included in this build".
-#   4. `common/tls/client.go:35` routes every Reality outbound through
-#      `NewRealityClient`, so the stub is hit by every Reality connection.
-#
-# Consequence when omitted: every Reality (VLESS/XRay) outbound fails at parse
-# time. That is what this tag fixes.
-#
-# Companion-tag check (why `with_utls` ALONE is correct here):
-#   - The v2ray gRPC transport (`transport/v2raygrpc/`) carries NO build tags,
-#     so a gRPC-transported VLESS needs nothing extra.
-#   - `common/badtls/read_wait_utls.go` is `go1.21 && !without_badtls && with_utls`
-#     -- an optimisation that is enabled by this tag, not an extra dependency.
-#   - `with_reality_server` is for Reality INBOUNDs (running a server); we are a
-#     client only, so it is deliberately NOT enabled.
-#   - `with_quic` / `with_gvisor` / `with_wireguard` / `with_ech` /
-#     `with_clash_api` / `with_dhcp` remain EXCLUDED, matching the previous AAR's
-#     behaviour, so this change cannot regress anything else. Enabling them is a
-#     separate decision (they change AAR size and attack surface).
-GOMOBILE_TAGS="with_utls"
+# --- Build tags & linker flags (verified against sing-box v1.14.4) ----------
+# Upstream `cmd/internal/build_libbox/main.go` + `cmd/internal/build_shared/flags.go`:
+#   - `with_utls`: required for VLESS/Reality and uTLS client fingerprints.
+#   - `with_quic`: required for Hysteria2 and TUIC outbounds.
+#   - `with_wireguard`: required for WireGuard endpoints.
+#   - `with_gvisor`: required for Android TUN gvisor/mixed stack.
+#   - `badlinkname,tfogo_checklinkname0`: required for Go 1.23+ linkname usage.
+# Deliberately excluded unused bloat: `with_tailscale`, `with_naive_outbound`,
+# `with_openvpn`, `with_openconnect`, `with_usbip`, `with_clash_api`.
+GOMOBILE_TAGS="with_gvisor,with_quic,with_wireguard,with_utls,badlinkname,tfogo_checklinkname0"
+SINGBOX_VERSION="${SINGBOX_TAG#v}"
+GOMOBILE_LDFLAGS="-X github.com/sagernet/sing-box/constant.Version=${SINGBOX_VERSION} -X runtime.godebugDefault=multipathtcp=0,tlssha1=1 -checklinkname=0 -s -w -buildid="
 
 gomobile bind \
   -v \
   -target=android \
   -androidapi="$ANDROID_API" \
   -javapkg=io.nekohasekai.libbox \
+  -trimpath \
+  -buildvcs=false \
+  -ldflags "$GOMOBILE_LDFLAGS" \
   -tags "$GOMOBILE_TAGS" \
   -o "$OUT_AAR" \
   ./experimental/libbox
@@ -206,19 +193,21 @@ unzip -q -o "$OUT_AAR" 'jni/*/libgojni.so' -d "$SO_DIR"
 echo "== ABIs built =="
 ls -1 "$SO_DIR/jni" 2>/dev/null
 
-ARM64_SO="$SO_DIR/jni/arm64-v8a/libgojni.so"
-[ -f "$ARM64_SO" ] || die "arm64-v8a/libgojni.so missing from AAR"
-
-echo "== 16 KB alignment check (jni/arm64-v8a/libgojni.so) =="
-ALIGN="$(readelf -l "$ARM64_SO" | grep -A 1 LOAD | grep -oE '0x[0-9a-f]+$' | sort -u | tr '\n' ' ')"
-echo "   LOAD segment alignments: $ALIGN"
-if echo "$ALIGN" | grep -q '0x4000'; then
-  echo "   PASS: arm64-v8a LOAD segments are 16 KB aligned (0x4000)"
-else
-  echo "   FAIL: expected 0x4000, found: $ALIGN" >&2
-  echo "   The CGO_LDFLAGS flag was not honoured on the final link. Do NOT ship this AAR." >&2
-  exit 1
-fi
+for ABI in arm64-v8a x86_64; do
+  ABI_SO="$SO_DIR/jni/${ABI}/libgojni.so"
+  [ -f "$ABI_SO" ] || die "${ABI}/libgojni.so missing from AAR"
+  echo "== 16 KB alignment check (jni/${ABI}/libgojni.so) =="
+  ALIGN="$(readelf -l "$ABI_SO" | grep -A 1 LOAD | grep -oE '0x[0-9a-f]+$' | sort -u | tr '\n' ' ')"
+  echo "   LOAD segment alignments: $ALIGN"
+  if echo "$ALIGN" | grep -q '0x4000'; then
+    echo "   PASS: ${ABI} LOAD segments are 16 KB aligned (0x4000)"
+  else
+    echo "   FAIL: expected 0x4000 on ${ABI}, found: $ALIGN" >&2
+    echo "   The CGO_LDFLAGS flag was not honoured on the final link. Do NOT ship this AAR." >&2
+    rm -rf "$SO_DIR"
+    exit 1
+  fi
+done
 rm -rf "$SO_DIR"
 
-echo "== DONE: $OUT_AAR is built and 16 KB aligned =="
+echo "== DONE: $OUT_AAR is built and 16 KB aligned (arm64-v8a + x86_64) =="

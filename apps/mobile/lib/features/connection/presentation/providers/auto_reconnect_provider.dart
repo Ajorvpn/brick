@@ -255,6 +255,7 @@ class AutoReconnectNotifier extends Notifier<AutoReconnectState> {
     final connSource = ref.watch(connectivitySourceProvider);
     unawaited(
       connSource.checkConnectivity().then((initial) {
+        if (_connectivityInitialized) return;
         _lastConnectivity = List<ConnectivityResult>.unmodifiable(initial);
         _rememberPhysicalTransports(initial);
         _connectivityInitialized = true;

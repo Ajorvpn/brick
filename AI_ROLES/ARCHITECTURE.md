@@ -2691,7 +2691,7 @@ asserts the invariants instead: the re-attached session keeps its recovered seco
 added live (strictly increasing), the value stays inside the honest 5–8 s window, and the rendered label equals the
 formatted provider value exactly.
 
-**Verification.** `dart format` clean; `packages/config_parser` analyze and its full test suite green, including the new
-`alpn_query_decoding_test.dart`; `flutter analyze` reports no issues; the regression suite is 10/10 (T1–T7) and the ten
-targeted mobile suites pass with `--concurrency=$(nproc)`; the canonical `--release --split-per-abi` build installs and
-launches on `SM-A205F` with zero `FATAL EXCEPTION` / `FlutterError` / overflow lines in logcat.
+**Verification.** `dart format` clean; `packages/config_parser` analyze and its full test suite green, including
+`alpn_query_decoding_test.dart` (VLESS, Hysteria2, and TUIC); `flutter analyze` reports no issues; the regression suite
+(`T1`–`T7c`) and the ten targeted mobile suites pass with `--concurrency=$(nproc)`; the canonical `--release --split-per-abi`
+build installs and launches on `SM-A205F` with zero `FATAL EXCEPTION` / `FlutterError` / overflow lines in logcat.

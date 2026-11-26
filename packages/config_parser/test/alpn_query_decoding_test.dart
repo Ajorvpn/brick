@@ -62,5 +62,16 @@ void main() {
               as Hysteria2Outbound;
       expect(hy2.tls.alpn, ['http/1.1']);
     });
+
+    test('TUIC applies the same normalization', () {
+      final result = parseTuicUri(
+        'tuic://$_uuid:secret@example.com:443?alpn=h2%252Chttp%252F1.1#N',
+      );
+      expect(result.isOk, isTrue);
+      final tuic =
+          (result as Ok<OutboundConfig, ConfigParseError>).value
+              as TuicOutbound;
+      expect(tuic.tls.alpn, ['h2', 'http/1.1']);
+    });
   });
 }

@@ -287,9 +287,9 @@ class SingBoxOutboundSerializer {
             for (final entry in extraParams.entries)
               if (!_isUnverifiedEchKey(entry.key) &&
                   (entry.key != 'server_name' ||
-                  (entry.value is String &&
-                      (entry.value as String).isNotEmpty &&
-                      !_isIpLiteral(entry.value as String))))
+                      (entry.value is String &&
+                          (entry.value as String).isNotEmpty &&
+                          !_isIpLiteral(entry.value as String))))
                 entry.key: entry.value,
           }
         : null;
@@ -438,6 +438,6 @@ Map<String, dynamic> buildSingBoxOutbound(
   OutboundConfig config, {
   String? tag,
   bool enable112Fragmentation = false,
-}) => SingBoxOutboundSerializer(
-  enable112Fragmentation: enable112Fragmentation,
-).build(config, tag: tag);
+}) =>
+    SingBoxOutboundSerializer(enable112Fragmentation: enable112Fragmentation)
+        .build(config, tag: tag);

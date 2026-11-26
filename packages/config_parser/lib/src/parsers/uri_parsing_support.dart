@@ -112,9 +112,7 @@ Map<String, String> stripInsecureTlsFlags(Map<String, String> query) {
   if (query.isEmpty) return query;
   return <String, String>{
     for (final entry in query.entries)
-      if (!kInsecureTlsQueryParameters.contains(
-        entry.key.trim().toLowerCase(),
-      ))
+      if (!kInsecureTlsQueryParameters.contains(entry.key.trim().toLowerCase()))
         entry.key: entry.value,
   };
 }

@@ -791,10 +791,7 @@ void main() {
             server: 'node.example.com',
             serverPort: 443,
             password: 'pw',
-            tls: TlsSettings(
-              enabled: true,
-              serverName: 'node.example.com',
-            ),
+            tls: TlsSettings(enabled: true, serverName: 'node.example.com'),
           ),
         );
         final vmess = hardened.build(
@@ -802,10 +799,7 @@ void main() {
             server: 'node.example.com',
             serverPort: 443,
             uuid: _uuid,
-            tls: TlsSettings(
-              enabled: true,
-              serverName: 'node.example.com',
-            ),
+            tls: TlsSettings(enabled: true, serverName: 'node.example.com'),
           ),
         );
 
@@ -915,64 +909,61 @@ void main() {
         expect(tls['utls'], {'enabled': true, 'fingerprint': 'chrome'});
       });
 
-      test(
-        'links carrying allowInsecure=1 or insecure=1 are sanitized and '
-        'never emit tls.insecure',
-        () {
-          for (final uri in <String>[
-            'vless://$_uuid@example.com:443'
-                '?security=tls&sni=example.com&allowInsecure=1',
-            'vless://$_uuid@example.com:443'
-                '?security=tls&sni=example.com&insecure=1',
-            'vless://$_uuid@example.com:443'
-                '?security=tls&sni=example.com&allow_insecure=1',
-            'vless://$_uuid@example.com:443'
-                '?security=reality&sni=example.com&pbk=PBK&sid=ab12'
-                '&allowInsecure=1&fp=edge',
-          ]) {
-            final parsed = parseVlessUri(uri);
-            expect(parsed.isOk, isTrue, reason: 'must stay usable: $uri');
-            final out = buildSingBoxOutbound(
-              (parsed as Ok<OutboundConfig, ConfigParseError>).value,
-            );
-            final tls = tlsOf(out);
-            expect(tls.containsKey('insecure'), isFalse);
-            expect(tls['utls'], {'enabled': true, 'fingerprint': 'chrome'});
-          }
+      test('links carrying allowInsecure=1 or insecure=1 are sanitized and '
+          'never emit tls.insecure', () {
+        for (final uri in <String>[
+          'vless://$_uuid@example.com:443'
+              '?security=tls&sni=example.com&allowInsecure=1',
+          'vless://$_uuid@example.com:443'
+              '?security=tls&sni=example.com&insecure=1',
+          'vless://$_uuid@example.com:443'
+              '?security=tls&sni=example.com&allow_insecure=1',
+          'vless://$_uuid@example.com:443'
+              '?security=reality&sni=example.com&pbk=PBK&sid=ab12'
+              '&allowInsecure=1&fp=edge',
+        ]) {
+          final parsed = parseVlessUri(uri);
+          expect(parsed.isOk, isTrue, reason: 'must stay usable: $uri');
+          final out = buildSingBoxOutbound(
+            (parsed as Ok<OutboundConfig, ConfigParseError>).value,
+          );
+          final tls = tlsOf(out);
+          expect(tls.containsKey('insecure'), isFalse);
+          expect(tls['utls'], {'enabled': true, 'fingerprint': 'chrome'});
+        }
 
-          final trojan = parseTrojanUri(
-            'trojan://pw@example.com:443?security=tls&allowInsecure=1',
-          );
-          expect(trojan.isOk, isTrue);
-          final trojanTls = tlsOf(
-            buildSingBoxOutbound(
-              (trojan as Ok<OutboundConfig, ConfigParseError>).value,
-            ),
-          );
-          expect(trojanTls.containsKey('insecure'), isFalse);
+        final trojan = parseTrojanUri(
+          'trojan://pw@example.com:443?security=tls&allowInsecure=1',
+        );
+        expect(trojan.isOk, isTrue);
+        final trojanTls = tlsOf(
+          buildSingBoxOutbound(
+            (trojan as Ok<OutboundConfig, ConfigParseError>).value,
+          ),
+        );
+        expect(trojanTls.containsKey('insecure'), isFalse);
 
-          final vmessPayload = jsonEncode(<String, String>{
-            'v': '2',
-            'add': 'example.com',
-            'port': '443',
-            'id': _uuid,
-            'tls': 'tls',
-            'sni': 'example.com',
-            'allowInsecure': '1',
-            'insecure': '1',
-          });
-          final vmess = parseVmessUri(
-            'vmess://${base64Encode(utf8.encode(vmessPayload))}',
-          );
-          expect(vmess.isOk, isTrue);
-          final vmessTls = tlsOf(
-            buildSingBoxOutbound(
-              (vmess as Ok<OutboundConfig, ConfigParseError>).value,
-            ),
-          );
-          expect(vmessTls.containsKey('insecure'), isFalse);
-        },
-      );
+        final vmessPayload = jsonEncode(<String, String>{
+          'v': '2',
+          'add': 'example.com',
+          'port': '443',
+          'id': _uuid,
+          'tls': 'tls',
+          'sni': 'example.com',
+          'allowInsecure': '1',
+          'insecure': '1',
+        });
+        final vmess = parseVmessUri(
+          'vmess://${base64Encode(utf8.encode(vmessPayload))}',
+        );
+        expect(vmess.isOk, isTrue);
+        final vmessTls = tlsOf(
+          buildSingBoxOutbound(
+            (vmess as Ok<OutboundConfig, ConfigParseError>).value,
+          ),
+        );
+        expect(vmessTls.containsKey('insecure'), isFalse);
+      });
 
       test('insecure flags in extraParams are dropped by the serializer', () {
         final out = buildSingBoxOutbound(

@@ -12,12 +12,12 @@ verified when the relevant phase begins.
 | Dart SDK | 3.13.3 | 2026-09-16 | Installed through Flutter and verified with `dart --version`. |
 | Melos | 8.7.0 | 2026-09-16 | Installed and verified with `melos --version`. |
 | Git | 2.43.0 | 2026-09-16 | Installed and verified with `git --version`. |
-| Go | **1.21.x** (1.21.13 installed) — CORRECTED in P3-T3 | 2026-09-28 | Pinned in P3-T1 as 1.20, corrected in P3-T3: sing-box v1.10.7's `go.mod` says `go 1.20` but that **understates** the real requirement — `experimental/libbox/command_connections.go:6` imports the stdlib `slices` package, which only entered GOROOT in Go 1.21, so `gomobile bind` cannot compile the libbox package with Go 1.20. Must be built with `GOTOOLCHAIN=local`. |
-| gomobile | **`github.com/sagernet/gomobile` v0.1.4** (fork of `golang.org/x/mobile`) | 2026-09-28 | Pinned (P3-T1). v0.1.4 is the exact version sing-box v1.10.7 requires. BSD-3-Clause. |
-| Android NDK | **r26b** — HUMAN-DECIDED, not primary-source verified | 2026-09-28 | Pinned (P3-T1) on human direction. See "Unverified" below. |
+| Go | **1.27.3** (`>= 1.25.5` required by v1.14.4) | 2026-11-26 | Upgraded from 1.21.13 for sing-box v1.14.4 (`go.mod` specifies `go 1.25.5`). Host toolchain is `go1.27.3-X:nodwarf5` (`GOTOOLCHAIN=local` enforced so Go never auto-downloads). |
+| gomobile | **`github.com/sagernet/gomobile` v0.1.13** (fork of `golang.org/x/mobile`) | 2026-11-26 | Upgraded from v0.1.4 to match sing-box v1.14.4 `Makefile` `lib_install` (`gomobile@v0.1.13` and `gobind@v0.1.13`). BSD-3-Clause. |
+| Android NDK | **28.2.13676358 (r28c)** | 2026-11-26 | Upgraded from r26b (`26.1.10909125`). Verified installed at `/home/bellard/Android/Sdk/ndk/28.2.13676358`. Upstream `build_shared/sdk.go` targets NDK 28. |
 | Android Gradle Plugin | **9.1.0** | 2026-09-28 | Exercised in a real `./gradlew assembleDebug` build during P3-T3; pinned here retroactively. Declared explicitly in `packages/vpn_engine_android/android/build.gradle.kts`. |
 | Kotlin | Not yet pinned - deferred to a later Phase 3 task | 2026-09-16 | No native Kotlin implementation exists yet. Out of P3-T1 scope. |
-| sing-box | **v1.10.7** (v1.10.x series) | 2026-09-28 | Pinned (P3-T1). Chosen to match the schema the Phase 2 serializers already emit. See "sing-box version policy". **CONFIRMED STILL PINNED by human decision 2026-09-29** after a read-only evidence review of v1.14.2: the 14 methods v1.14.2 adds are Tailscale-SSH/bridge plus opt-in L2 and DNS facilities, none needed for the 6+2-protocol MVP, whereas upgrading would need Go 1.21->1.25.5, a gomobile re-pin, and would break WireGuard outbound (removed at >= 1.13). Full rationale in `PROJECT_STATE.md` section 6. Revisit only if Tailscale-like features or a WireGuard-endpoint rewrite become roadmap items. |
+| sing-box | **v1.14.4** (latest stable v1.14.x series) | 2026-11-26 | Human-directed upgrade from `v1.10.7` to latest stable `v1.14.4` (published 2026-10-24) for modern anti-DPI `tls.fragment` / `record_fragment`, updated TLS/uTLS/QUIC, and WireGuard endpoints. Built with `-androidapi=24` and `-tags with_gvisor,with_quic,with_wireguard,with_utls,badlinkname,tfogo_checklinkname0`. See "sing-box version policy (v1.14.4)" below and historical Phase 3 notes below. |
 
 ## Resolved Dart Package Versions (P0-T10)
 
@@ -45,7 +45,21 @@ The task must verify the replacement version from an authoritative source,
 update this matrix, rerun all affected validation, and document compatibility
 risks before the version is adopted.
 
-## Phase 3 Pins — Evidence and Rationale (P3-T1, recorded 2026-09-28)
+## Active Core Upgrade Pins (2026-11-26 — `sing-box v1.14.4`)
+
+Human-directed upgrade of `libbox.aar` from `v1.10.7` to latest stable `SagerNet/sing-box` **`v1.14.4`** (published `2026-10-24`):
+
+- **sing-box tag:** `v1.14.4` (`-androidapi=24`, `-javapkg=io.nekohasekai.libbox`)
+- **Go toolchain:** `go1.27.3-X:nodwarf5` (`>= 1.25.5` declared in `v1.14.4/go.mod`; `GOTOOLCHAIN=local` enforced)
+- **gomobile / gobind:** `github.com/sagernet/gomobile` **`v0.1.13`** (matching `v1.14.4` `Makefile` `lib_install`)
+- **Android NDK:** **`28.2.13676358`** (r28c, installed at `/home/bellard/Android/Sdk/ndk/28.2.13676358`)
+- **Build tags:** `with_gvisor,with_quic,with_wireguard,with_utls,badlinkname,tfogo_checklinkname0`
+- **Linker flags:** `-X github.com/sagernet/sing-box/constant.Version=1.14.4 -X runtime.godebugDefault=multipathtcp=0,tlssha1=1 -checklinkname=0 -s -w -buildid=` plus `CGO_LDFLAGS="-Wl,-z,max-page-size=16384"`
+- **16 KB alignment:** Verified via `readelf -l` (`0x4000`) on both `jni/arm64-v8a/libgojni.so` and `jni/x86_64/libgojni.so` in `packages/vpn_engine_android/scripts/build_libbox_aar.sh`.
+
+---
+
+## Historical Phase 3 Pins — Evidence and Rationale (P3-T1, recorded 2026-09-28)
 
 Every value below was checked against a primary source on 2026-09-28. Where a
 claim could **not** be confirmed, it is marked UNVERIFIED and repeated in the

@@ -148,7 +148,7 @@ class _ScriptedEngine implements VpnEngine {
   Future<VpnCommandResult> start(ServerProfile profile) async {
     startCalls.add(profile);
     final gate = startGate;
-    if (gate != null) return gate.future;
+    if (gate != null) return await gate.future;
     return startResult;
   }
 
@@ -519,115 +519,198 @@ void main() {
         expect(
           engine.stopCalls,
           equals(1),
-          reason: 'a wiped bearer memory would miss the Wi-Fi -> Cellular '
+          reason:
+              'a wiped bearer memory would miss the Wi-Fi -> Cellular '
               'handoff entirely',
         );
       },
     );
   });
 
-  group('T7: J2 a rejected or overlapping live switch never desyncs the UI', () {
-    testWidgets(
-      'T7a: a rejected start leaves the active selection on the old server '
-      'and surfaces an error',
-      (tester) async {
-        final engine = _ScriptedEngine();
-        final dataSource = FakeServerProfileDataSource();
-        addTearDown(engine.dispose);
-        final repo = buildRepository(dataSource);
-        await repo.addServer(_uriA);
-        await repo.addServer(_uriB);
-        final seeded = await repo.getAll();
-        final serverA = seeded[0];
-        final serverB = seeded[1];
+  group(
+    'T7: J2 a rejected or overlapping live switch never desyncs the UI',
+    () {
+      testWidgets(
+        'T7a: a rejected start leaves the active selection on the old server '
+        'and surfaces an error',
+        (tester) async {
+          final engine = _ScriptedEngine();
+          final dataSource = FakeServerProfileDataSource();
+          addTearDown(engine.dispose);
+          final repo = buildRepository(dataSource);
+          await repo.addServer(_uriA);
+          await repo.addServer(_uriB);
+          final seeded = await repo.getAll();
+          final serverA = seeded[0];
+          final serverB = seeded[1];
+          final prefs = FakeAppPreferencesRepository(
+            initialActiveServerId: serverA.id,
+          );
 
-        await pumpConnectionApp(
-          tester,
-          const MyApp(),
-          engine: engine,
-          dataSource: dataSource,
-        );
-        final container = ProviderScope.containerOf(
-          tester.element(find.byType(HomeScreen)),
-        );
+          await pumpConnectionApp(
+            tester,
+            const MyApp(),
+            engine: engine,
+            dataSource: dataSource,
+            preferencesRepository: prefs,
+          );
+          final container = ProviderScope.containerOf(
+            tester.element(find.byType(HomeScreen)),
+          );
+          expect(container.read(activeServerIdProvider), equals(serverA.id));
 
-        engine.emit(const Connected());
-        await _pumpBounded(tester);
+          engine.emit(const Connected());
+          await _pumpBounded(tester);
 
-        await tester.tap(find.byKey(const ValueKey<String>('nav_tab_servers')));
-        await _pumpBounded(tester);
+          await tester.tap(
+            find.byKey(const ValueKey<String>('nav_tab_servers')),
+          );
+          await _pumpBounded(tester);
 
-        engine.startResult = const VpnCommandRejectedInvalidConfig();
-        await tester.tap(
-          find.byKey(ValueKey<String>('server_tile_${serverB.id}')),
-        );
-        await _pumpBounded(tester);
+          final tileB = find.byKey(
+            ValueKey<String>('server_tile_${serverB.id}'),
+          );
+          await tester.ensureVisible(tileB);
+          await _pumpBounded(tester);
 
-        expect(
-          container.read(activeServerIdProvider),
-          equals(serverA.id),
-          reason: 'a rejected switch must not claim the new server is active',
-        );
-        expect(find.byType(SnackBar), findsOneWidget);
-      },
-    );
+          engine.startResult = const VpnCommandRejectedInvalidConfig();
+          await tester.tap(tileB);
+          await _pumpBounded(tester);
 
-    testWidgets(
-      'T7b: a tap that lands while a switch is still in flight is ignored, so '
-      'the selection stays with the server that actually starts',
-      (tester) async {
-        final engine = _ScriptedEngine();
-        final dataSource = FakeServerProfileDataSource();
-        addTearDown(engine.dispose);
-        final repo = buildRepository(dataSource);
-        await repo.addServer(_uriA);
-        await repo.addServer(_uriB);
-        await repo.addServer(_uriC);
-        final seeded = await repo.getAll();
-        final serverB = seeded[1];
-        final serverC = seeded[2];
+          expect(
+            container.read(activeServerIdProvider),
+            equals(serverA.id),
+            reason: 'a rejected switch must not claim the new server is active',
+          );
+          expect(find.byType(SnackBar), findsOneWidget);
+          expect(
+            find.text('The server configuration is invalid'),
+            findsOneWidget,
+          );
+        },
+      );
 
-        await pumpConnectionApp(
-          tester,
-          const MyApp(),
-          engine: engine,
-          dataSource: dataSource,
-        );
-        final container = ProviderScope.containerOf(
-          tester.element(find.byType(HomeScreen)),
-        );
+      testWidgets(
+        'T7b: a tap that lands while a switch is still in flight is ignored, '
+        'so the selection stays with the server that actually starts',
+        (tester) async {
+          final engine = _ScriptedEngine();
+          final dataSource = FakeServerProfileDataSource();
+          addTearDown(engine.dispose);
+          final repo = buildRepository(dataSource);
+          await repo.addServer(_uriA);
+          await repo.addServer(_uriB);
+          await repo.addServer(_uriC);
+          final seeded = await repo.getAll();
+          final serverA = seeded[0];
+          final serverB = seeded[1];
+          final serverC = seeded[2];
+          final prefs = FakeAppPreferencesRepository(
+            initialActiveServerId: serverA.id,
+          );
 
-        engine.emit(const Connected());
-        await _pumpBounded(tester);
+          await pumpConnectionApp(
+            tester,
+            const MyApp(),
+            engine: engine,
+            dataSource: dataSource,
+            preferencesRepository: prefs,
+          );
+          final container = ProviderScope.containerOf(
+            tester.element(find.byType(HomeScreen)),
+          );
 
-        await tester.tap(find.byKey(const ValueKey<String>('nav_tab_servers')));
-        await _pumpBounded(tester);
+          engine.emit(const Connected());
+          await _pumpBounded(tester);
 
-        // First tap: the switch to B stays in flight until the gate opens.
-        engine.startGate = Completer<VpnCommandResult>();
-        await tester.tap(
-          find.byKey(ValueKey<String>('server_tile_${serverB.id}')),
-        );
-        await tester.pump();
-        await tester.pump();
+          await tester.tap(
+            find.byKey(const ValueKey<String>('nav_tab_servers')),
+          );
+          await _pumpBounded(tester);
 
-        // Second tap lands while `connect()` is still busy: it must be dropped.
-        await tester.tap(
-          find.byKey(ValueKey<String>('server_tile_${serverC.id}')),
-        );
-        await tester.pump();
+          // Scroll so both server B and server C sit comfortably above the
+          // floating bottom dock before starting the timed overlap test.
+          await tester.drag(find.byType(ListView), const Offset(0, -180));
+          await _pumpBounded(tester);
 
-        engine.startGate!.complete(const VpnCommandAccepted());
-        engine.startGate = null;
-        await _pumpBounded(tester);
+          // First tap: the switch to B stays in flight until the gate opens.
+          engine.startGate = Completer<VpnCommandResult>();
+          await tester.tap(
+            find.byKey(ValueKey<String>('server_tile_${serverB.id}')),
+          );
+          await tester.pump();
+          await tester.pump();
 
-        expect(
-          container.read(activeServerIdProvider),
-          equals(serverB.id),
-          reason: 'the dropped overlap must not rewrite the selection to C',
-        );
-        expect(engine.startCalls.single.id, equals(serverB.id));
-      },
-    );
-  });
+          // Second tap lands while `connect()` is still busy: it must be
+          // dropped.
+          await tester.tap(
+            find.byKey(ValueKey<String>('server_tile_${serverC.id}')),
+          );
+          await tester.pump();
+
+          engine.startGate!.complete(const VpnCommandAccepted());
+          engine.startGate = null;
+          await _pumpBounded(tester);
+
+          expect(
+            container.read(activeServerIdProvider),
+            equals(serverB.id),
+            reason: 'the dropped overlap must not rewrite the selection to C',
+          );
+          expect(engine.startCalls.single.id, equals(serverB.id));
+        },
+      );
+
+      testWidgets(
+        'T7c: engine VpnCommandRejectedBusy leaves activeServerIdProvider on '
+        'the old server and surfaces busy feedback',
+        (tester) async {
+          final engine = _ScriptedEngine();
+          final dataSource = FakeServerProfileDataSource();
+          addTearDown(engine.dispose);
+          final repo = buildRepository(dataSource);
+          await repo.addServer(_uriA);
+          await repo.addServer(_uriB);
+          final seeded = await repo.getAll();
+          final serverA = seeded[0];
+          final serverB = seeded[1];
+          final prefs = FakeAppPreferencesRepository(
+            initialActiveServerId: serverA.id,
+          );
+
+          await pumpConnectionApp(
+            tester,
+            const MyApp(),
+            engine: engine,
+            dataSource: dataSource,
+            preferencesRepository: prefs,
+          );
+          final container = ProviderScope.containerOf(
+            tester.element(find.byType(HomeScreen)),
+          );
+
+          engine.emit(const Connected());
+          await _pumpBounded(tester);
+
+          await tester.tap(
+            find.byKey(const ValueKey<String>('nav_tab_servers')),
+          );
+          await _pumpBounded(tester);
+
+          engine.startResult = const VpnCommandRejectedBusy();
+          await tester.tap(
+            find.byKey(ValueKey<String>('server_tile_${serverB.id}')),
+          );
+          await _pumpBounded(tester);
+
+          expect(container.read(activeServerIdProvider), equals(serverA.id));
+          expect(find.byType(SnackBar), findsOneWidget);
+          expect(
+            find.text('A VPN operation is already in progress'),
+            findsOneWidget,
+          );
+        },
+      );
+    },
+  );
 }

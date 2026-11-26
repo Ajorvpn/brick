@@ -1176,21 +1176,28 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
   /// carrying traffic.
   ///
   /// The preference is written AFTER the switch succeeds. Writing it up front
-  /// left the UI describing a node the tunnel never reached whenever `connect()`
-  /// was rejected (`InvalidConfig`, permission loss, or a `RejectedBusy` from a
-  /// rapid double tap), and the rejection itself was silently discarded.
+  /// left the UI describing a node the tunnel never reached whenever
+  /// `connect()` was rejected (`InvalidConfig`, permission loss, or a
+  /// `RejectedBusy` from a rapid double tap), and the rejection itself was
+  /// silently discarded.
   Future<void> _handleSelectServer(
     BuildContext context,
     SavedServerProfile server,
     SavedServerProfile? activeServer,
   ) async {
+    final controller = ref.read(connectionControllerProvider.notifier);
+    if (controller.isBusy) {
+      // A command is already dispatching; ignore overlapping taps before they
+      // can race activeServerIdProvider or draw a RejectedBusy error.
+      return;
+    }
+
     final connState =
         ref.read(connectionStateProvider).value ??
         ref.read(initialConnectionStateProvider);
     final isReconnecting = ref.read(autoReconnectProvider).isReconnecting;
     final hasLiveSession =
         connState is Connected || connState is Connecting || isReconnecting;
-    final controller = ref.read(connectionControllerProvider.notifier);
     final activeConnectingId =
         controller.activeConnectingServerId ?? activeServer?.id;
     final isLiveSwitch =
@@ -1205,16 +1212,12 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
       return;
     }
 
-    if (controller.isBusy) {
-      // A second tap landed while the first command is still dispatching.
-      // Ignore it: dispatching now would be rejected as busy and would leave
-      // the selection disagreeing with the tunnel.
-      return;
-    }
-
+    // Capture the notifier before the async switch so persistence still runs
+    // safely if the user leaves this screen before `connect()` resolves.
+    final activeServerNotifier = ref.read(activeServerIdProvider.notifier);
     final result = await controller.connect(server.profile);
     if (result is VpnCommandAccepted) {
-      await ref.read(activeServerIdProvider.notifier).selectServer(server.id);
+      await activeServerNotifier.selectServer(server.id);
     } else if (context.mounted) {
       AppFeedback.showError(context, ErrorMapper.mapToUserMessage(result));
     }
