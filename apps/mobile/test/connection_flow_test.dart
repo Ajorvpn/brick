@@ -15,6 +15,7 @@ import 'package:flutter/material.dart' hide ConnectionState;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:mobile/features/connection/domain/entities/connection_location_target.dart';
 import 'package:mobile/features/connection/presentation/providers/connection_controller_provider.dart';
 import 'package:mobile/features/connection/presentation/providers/connection_state_provider.dart';
 import 'package:mobile/features/connection/presentation/screens/add_server_screen.dart';
@@ -247,24 +248,22 @@ void main() {
         dataSource: dataSource,
       );
 
-      // The redesigned dashboard shows the saved server in its active-server
-      // selector card; the duplicate ServerTile list was removed.
+      // The redesigned dashboard shows Smart Auto in its active-location card
+      // without leaking raw node endpoints or 0ms metrics.
       expect(
         find.byKey(const ValueKey<String>('home_active_server_card')),
         findsOneWidget,
       );
-      expect(find.text('Active: My Server'), findsOneWidget);
+      expect(find.text('Smart Auto'), findsOneWidget);
       final activeName = tester.widget<Text>(
         find.byKey(const ValueKey<String>('home_active_server_name')),
       );
-      expect(activeName.data, 'Active: My Server');
-      // Protocol and endpoint stay visible, addressed by their own keys.
-      final activeEndpoint = tester.widget<Text>(
+      expect(activeName.data, 'Smart Auto');
+      expect(find.text('Best available server'), findsOneWidget);
+      expect(
         find.byKey(const ValueKey<String>('home_active_server_endpoint')),
+        findsNothing,
       );
-      expect(activeEndpoint.data, contains('vless'));
-      expect(activeEndpoint.data, contains('example.com:443'));
-      expect(find.text('VLESS'), findsWidgets);
       // And it is connectable from the dashboard orb.
       expect(
         find.byKey(const ValueKey<String>('home_connect_toggle_button')),
@@ -829,15 +828,19 @@ void main() {
     });
 
     testWidgets(
-      'selecting a server on ServersScreen connects that exact server from '
+      'selecting a country on ServersScreen connects that country pool from '
       'the Home orb',
       (tester) async {
         final engine = FakeVpnEngine();
         final dataSource = FakeServerProfileDataSource();
         addTearDown(engine.dispose);
         final repo = buildRepository(dataSource);
-        await repo.addServer(validVlessUri);
-        await repo.addServer(validShadowsocksUri);
+        await repo.addServer(
+          'vless://11111111-2222-3333-4444-555555555555@example.com:443#Germany%2001',
+        );
+        await repo.addServer(
+          'ss://YWVzLTI1Ni1nY206c2VjcmV0cHc=@example.com:8388#United%20Kingdom%2001',
+        );
 
         // Pumped through the real app shell so the Servers tab is reachable.
         await pumpConnectionApp(
@@ -849,36 +852,148 @@ void main() {
 
         final servers = await repo.getAll();
         expect(servers, hasLength(2));
-        final server1 = servers[0];
-        final server2 = servers[1];
+        final ukServer = servers[1];
 
-        // Active server auto-falls back to server 1
-        expect(find.text('Active: ${server1.name}'), findsOneWidget);
+        // Home starts on Smart Auto by default.
+        expect(find.text('Smart Auto'), findsOneWidget);
 
-        // Select the second server on the Servers tab
+        // Select United Kingdom on the Servers tab.
         await tester.tap(find.byKey(const ValueKey<String>('nav_tab_servers')));
         await tester.pumpAndSettle();
-        final secondTile = find.byKey(
-          ValueKey<String>('server_tile_${server2.id}'),
-        );
-        expect(secondTile, findsOneWidget);
-        await tester.tap(secondTile);
+        final ukCard = find.byKey(const ValueKey<String>('country_header_GB'));
+        expect(ukCard, findsOneWidget);
+        await tester.tap(ukCard);
         await tester.pumpAndSettle();
 
-        // Back on Home, the dashboard shows server 2 and connects it
+        // Back on Home, the dashboard shows United Kingdom and connects it.
         await tester.tap(find.byKey(const ValueKey<String>('nav_tab_home')));
         await tester.pumpAndSettle();
-        expect(find.text('Active: ${server2.name}'), findsOneWidget);
+        expect(find.text('United Kingdom'), findsOneWidget);
+        expect(find.text('Auto-selected · 1 server'), findsOneWidget);
 
         await tester.tap(
           find.byKey(const ValueKey<String>('home_connect_toggle_button')),
         );
         await pumpBounded(tester);
 
-        // Engine starts with server 2's profile
+        // Engine starts with the United Kingdom profile.
         expect(engine.startCalls, hasLength(1));
-        expect(engine.startCalls.single.id, equals(server2.id));
+        expect(engine.startCalls.single.id, equals(ukServer.id));
+      },
+    );
+
+    testWidgets(
+      'PoolVpnEngine dispatches startPool with diversified saved servers on '
+      'connect',
+      (tester) async {
+        final poolEngine = _FakePoolVpnEngine();
+        final dataSource = FakeServerProfileDataSource();
+        addTearDown(poolEngine.dispose);
+        final repo = buildRepository(dataSource);
+        await repo.addServer(validVlessUri);
+        await repo.addServer(validShadowsocksUri);
+        await repo.addServer(validTrojanUri);
+
+        await pumpConnectionApp(
+          tester,
+          const MyApp(),
+          engine: poolEngine,
+          dataSource: dataSource,
+        );
+
+        final servers = await repo.getAll();
+        expect(servers, hasLength(3));
+        final primary = servers[0];
+
+        await tester.tap(
+          find.byKey(const ValueKey<String>('home_connect_toggle_button')),
+        );
+        await pumpBounded(tester);
+
+        expect(poolEngine.startCalls, isEmpty);
+        expect(poolEngine.startPoolCalls, hasLength(1));
+        final call = poolEngine.startPoolCalls.single;
+        expect(call.primary.id, equals(primary.id));
+        expect(call.candidates.first.id, equals(primary.id));
+        expect(
+          call.candidates.map((p) => p.id).toSet(),
+          equals(servers.map((s) => s.id).toSet()),
+        );
+      },
+    );
+
+    testWidgets(
+      'connectForTarget scopes urltest pool by country and distinguishes '
+      'SmartAuto from CountryTarget even on shared primary ID',
+      (tester) async {
+        final poolEngine = _FakePoolVpnEngine();
+        final dataSource = FakeServerProfileDataSource();
+        addTearDown(poolEngine.dispose);
+        final repo = buildRepository(dataSource);
+        await repo.addServer(
+          'vless://11111111-2222-3333-4444-555555555555@uk1.example.com:443#United%20Kingdom%2001',
+        );
+        await repo.addServer(
+          'ss://YWVzLTI1Ni1nY206c2VjcmV0cHc=@uk2.example.com:8388#United%20Kingdom%2002',
+        );
+        await repo.addServer(
+          'trojan://mypassword@de1.example.com:443#Germany%2001',
+        );
+
+        await pumpConnectionApp(
+          tester,
+          const MyApp(),
+          engine: poolEngine,
+          dataSource: dataSource,
+        );
+
+        final container = ProviderScope.containerOf(
+          tester.element(find.byType(HomeScreen)),
+        );
+        final controller = container.read(
+          connectionControllerProvider.notifier,
+        );
+
+        // Start in Smart Auto (global diversified pool containing all 3).
+        final autoResult = await controller.connectForTarget(
+          const SmartAutoTarget(),
+        );
+        expect(autoResult, isA<VpnCommandAccepted>());
+        expect(poolEngine.startPoolCalls, hasLength(1));
+        expect(poolEngine.startPoolCalls.last.candidates, hasLength(3));
+
+        // Transition engine to Connected and switch to United Kingdom
+        // even though UK01 was also the primary server ID of Smart Auto.
+        poolEngine.emit(const Connected());
+        await pumpBounded(tester);
+
+        final ukResult = await controller.connectForTarget(CountryTarget('GB'));
+        expect(ukResult, isA<VpnCommandAccepted>());
+        expect(poolEngine.stopCalls, equals(1));
+        expect(poolEngine.startPoolCalls, hasLength(2));
+        expect(poolEngine.startPoolCalls.last.candidates, hasLength(2));
+        expect(
+          poolEngine.startPoolCalls.last.candidates.every(
+            (p) => p.name.contains('United Kingdom'),
+          ),
+          isTrue,
+        );
       },
     );
   });
+}
+
+class _FakePoolVpnEngine extends FakeVpnEngine implements PoolVpnEngine {
+  final List<({ServerProfile primary, List<ServerProfile> candidates})>
+  startPoolCalls =
+      <({ServerProfile primary, List<ServerProfile> candidates})>[];
+
+  @override
+  Future<VpnCommandResult> startPool(
+    ServerProfile primary,
+    List<ServerProfile> candidates,
+  ) async {
+    startPoolCalls.add((primary: primary, candidates: candidates));
+    return const VpnCommandAccepted();
+  }
 }

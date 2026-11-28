@@ -9,6 +9,7 @@ import 'package:core_domain/core_domain.dart' as domain;
 import 'package:easy_localization/easy_localization.dart' hide TextDirection;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:mobile/features/connection/domain/entities/connection_location_target.dart';
 import 'package:mobile/features/connection/domain/formatters/traffic_formatter.dart';
 import 'package:mobile/features/connection/presentation/providers/active_server_provider.dart';
 import 'package:mobile/features/connection/presentation/providers/auto_reconnect_provider.dart';
@@ -16,6 +17,7 @@ import 'package:mobile/features/connection/presentation/providers/connection_con
 import 'package:mobile/features/connection/presentation/providers/connection_state_provider.dart';
 import 'package:mobile/features/connection/presentation/providers/kill_switch_provider.dart';
 import 'package:mobile/features/connection/presentation/providers/session_duration_provider.dart';
+import 'package:mobile/features/servers/domain/models/server_location_group.dart';
 import 'package:ui_theme/ui_theme.dart';
 
 /// Glanceable connection session info panel sitting alongside traffic stats
@@ -67,19 +69,31 @@ class _ActiveServerText extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = context.brickColors;
     final activeServer = ref.watch(activeServerProvider);
+    final locationTarget = ref.watch(resolvedLocationTargetProvider);
 
-    final text = activeServer != null
-        ? 'connection.session_server'.tr(
-            namedArgs: {
-              'name': activeServer.name,
-              'protocol': activeServer.protocolLabel,
-            },
-          )
-        : 'connection.session_server_none'.tr();
+    final String text;
+    if (activeServer == null) {
+      text = 'connection.session_location_none'.tr();
+    } else {
+      switch (locationTarget) {
+        case SmartAutoTarget():
+          text = 'connection.session_location'.tr(
+            namedArgs: {'location': 'servers.smart_auto_title'.tr()},
+          );
+        case CountryTarget(:final countryCode):
+          final countryName =
+              countryCode == ServerLocationParser.unknownCountryCode
+              ? 'servers.other_locations'.tr()
+              : ServerLocationParser.countryNameForCode(countryCode);
+          text = 'connection.session_location'.tr(
+            namedArgs: {'location': countryName},
+          );
+      }
+    }
 
     return Row(
       children: [
-        Icon(Icons.dns_outlined, size: 16, color: colors.brandBrick),
+        Icon(Icons.public_rounded, size: 16, color: colors.brandBrick),
         const SizedBox(width: BrickSpacing.xs),
         Expanded(
           child: Text(

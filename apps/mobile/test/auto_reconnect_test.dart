@@ -14,7 +14,11 @@ import 'package:core_domain/core_domain.dart'
         ServerProfile,
         TrafficStats;
 import 'package:core_vpn_engine/core_vpn_engine.dart'
-    show VpnCommandAccepted, VpnCommandRejectedInvalidConfig, VpnCommandResult;
+    show
+        PoolVpnEngine,
+        VpnCommandAccepted,
+        VpnCommandRejectedInvalidConfig,
+        VpnCommandResult;
 import 'package:flutter/material.dart' hide ConnectionState;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -1026,6 +1030,59 @@ void main() {
 
       await rejectingEngine.dispose();
     });
+
+    testWidgets(
+      'Auto-reconnect preserves startPool failover candidates on drops',
+      (tester) async {
+        final repo = buildRepository(dataSource);
+        await repo.addServer(validVlessUri);
+        await repo.addServer(validShadowsocksUri);
+        final saved = await repo.loadServers();
+        final p1 = (saved[0] as SavedServerProfile).profile;
+        final p2 = (saved[1] as SavedServerProfile).profile;
+
+        final poolEngine = _ReconnectPoolFakeVpnEngine();
+        await pumpConnectionMaterialApp(
+          tester,
+          const Scaffold(body: SessionInfoPanel()),
+          engine: poolEngine,
+          dataSource: dataSource,
+          connectivitySource: fakeConnectivity,
+          preferencesRepository: fakePrefs,
+        );
+        final container = ProviderScope.containerOf(
+          tester.element(find.byType(SessionInfoPanel)),
+        );
+        final metricsSub = container.listen(
+          sessionTrafficMetricsProvider,
+          (previous, next) {},
+        );
+        addTearDown(metricsSub.close);
+
+        await container
+            .read(connectionControllerProvider.notifier)
+            .connect(p1, candidateProfiles: [p1, p2]);
+        expect(poolEngine.startPoolCalls, hasLength(1));
+        expect(poolEngine.startCalls, isEmpty);
+
+        poolEngine.emit(const Connected());
+        await tester.pumpAndSettle();
+
+        poolEngine.emit(const Error(PlatformError('Unexpected drop')));
+        await tester.pump();
+        await tester.pump(const Duration(seconds: 1));
+
+        expect(poolEngine.startPoolCalls, hasLength(2));
+        expect(poolEngine.startCalls, isEmpty);
+        expect(poolEngine.startPoolCalls.last.primary.id, equals(p1.id));
+        expect(
+          poolEngine.startPoolCalls.last.candidates.map((p) => p.id).toList(),
+          equals([p1.id, p2.id]),
+        );
+
+        await poolEngine.dispose();
+      },
+    );
   });
 }
 
@@ -1048,5 +1105,21 @@ class _RejectingStartFakeVpnEngine extends FakeVpnEngine {
   Future<VpnCommandResult> start(ServerProfile profile) async {
     startCalls.add(profile);
     return rejection;
+  }
+}
+
+class _ReconnectPoolFakeVpnEngine extends FakeVpnEngine
+    implements PoolVpnEngine {
+  final List<({ServerProfile primary, List<ServerProfile> candidates})>
+  startPoolCalls =
+      <({ServerProfile primary, List<ServerProfile> candidates})>[];
+
+  @override
+  Future<VpnCommandResult> startPool(
+    ServerProfile primary,
+    List<ServerProfile> candidates,
+  ) async {
+    startPoolCalls.add((primary: primary, candidates: candidates));
+    return const VpnCommandAccepted();
   }
 }

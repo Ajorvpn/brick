@@ -131,19 +131,46 @@ class _InstantaneousSpeedText extends ConsumerWidget {
             fit: BoxFit.scaleDown,
             // Directional so the label hugs the start edge in both LTR and RTL.
             alignment: AlignmentDirectional.centerStart,
-            // `MiB/s` and `KiB` rates are technical data: LTR island under
-            // Persian RTL.
-            child: Directionality(
-              textDirection: TextDirection.ltr,
-              child: Text(
-                'connection.traffic_speed'.tr(
-                  namedArgs: {'tx_speed': speeds.$1, 'rx_speed': speeds.$2},
-                ),
-                key: const ValueKey<String>('throughput_speed_readout'),
-                maxLines: 1,
-                style: BrickTypography.monoMetric(color: colors.textPrimary),
-              ),
-            ),
+            child: Directionality.of(context) == TextDirection.rtl
+                ? Row(
+                    key: const ValueKey<String>('throughput_speed_readout'),
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'connection.traffic_speed_label'.tr(),
+                        maxLines: 1,
+                        style: BrickTypography.monoMetric(
+                          color: colors.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      // Numeric speeds stay in an isolated LTR island while the
+                      // localized prefix stays in ambient RTL.
+                      Directionality(
+                        textDirection: TextDirection.ltr,
+                        child: Text(
+                          '↑ ${speeds.$1} · ↓ ${speeds.$2}',
+                          key: const ValueKey<String>(
+                            'throughput_speed_numeric',
+                          ),
+                          maxLines: 1,
+                          style: BrickTypography.monoMetric(
+                            color: colors.textPrimary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  )
+                : Text(
+                    'connection.traffic_speed'.tr(
+                      namedArgs: {'tx_speed': speeds.$1, 'rx_speed': speeds.$2},
+                    ),
+                    key: const ValueKey<String>('throughput_speed_readout'),
+                    maxLines: 1,
+                    style: BrickTypography.monoMetric(
+                      color: colors.textPrimary,
+                    ),
+                  ),
           ),
         ),
       ],
@@ -179,19 +206,58 @@ class _CumulativeTotalsText extends ConsumerWidget {
             fit: BoxFit.scaleDown,
             // Directional so the label hugs the start edge in both LTR and RTL.
             alignment: AlignmentDirectional.centerStart,
-            // Byte totals are technical data: LTR island under Persian RTL.
-            child: Directionality(
-              textDirection: TextDirection.ltr,
-              child: Text(
-                'connection.traffic'.tr(
-                  namedArgs: {'tx': totals.$1, 'rx': totals.$2},
-                ),
-                key: const ValueKey<String>('throughput_readout'),
-                maxLines: 1,
-                style: BrickTypography.monoLog(color: colors.textSecondary)
-                    .copyWith(fontWeight: FontWeight.w500),
-              ),
-            ),
+            child: Directionality.of(context) == TextDirection.rtl
+                ? Row(
+                    key: const ValueKey<String>('throughput_readout'),
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Directionality(
+                        textDirection: TextDirection.ltr,
+                        child: Text(
+                          totals.$1,
+                          key: const ValueKey<String>('throughput_tx_numeric'),
+                          maxLines: 1,
+                          style: BrickTypography.monoLog(
+                            color: colors.textSecondary,
+                          ).copyWith(fontWeight: FontWeight.w500),
+                        ),
+                      ),
+                      Text(
+                        ' ${'connection.traffic_up_label'.tr()} / ',
+                        maxLines: 1,
+                        style: BrickTypography.monoLog(
+                          color: colors.textSecondary,
+                        ).copyWith(fontWeight: FontWeight.w500),
+                      ),
+                      Directionality(
+                        textDirection: TextDirection.ltr,
+                        child: Text(
+                          totals.$2,
+                          key: const ValueKey<String>('throughput_rx_numeric'),
+                          maxLines: 1,
+                          style: BrickTypography.monoLog(
+                            color: colors.textSecondary,
+                          ).copyWith(fontWeight: FontWeight.w500),
+                        ),
+                      ),
+                      Text(
+                        ' ${'connection.traffic_down_label'.tr()}',
+                        maxLines: 1,
+                        style: BrickTypography.monoLog(
+                          color: colors.textSecondary,
+                        ).copyWith(fontWeight: FontWeight.w500),
+                      ),
+                    ],
+                  )
+                : Text(
+                    'connection.traffic'.tr(
+                      namedArgs: {'tx': totals.$1, 'rx': totals.$2},
+                    ),
+                    key: const ValueKey<String>('throughput_readout'),
+                    maxLines: 1,
+                    style: BrickTypography.monoLog(color: colors.textSecondary)
+                        .copyWith(fontWeight: FontWeight.w500),
+                  ),
           ),
         ),
       ],

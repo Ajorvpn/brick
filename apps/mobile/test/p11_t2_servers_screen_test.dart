@@ -212,85 +212,101 @@ void main() {
     },
   );
 
+  testWidgets('2. Hierarchical Country -> City/State -> Servers accordion with active '
+      'spotlight, collapse/expand, and selection changes', (tester) async {
+    _setSurface(tester, const Size(412, 1800));
+    final engine = FakeVpnEngine();
+    addTearDown(engine.dispose);
+    final dataSource = _seedHierarchy();
+
+    await _pumpServersScreen(tester, engine: engine, dataSource: dataSource);
+
+    // Country accordion cards (small list -> all expanded by default).
+    expect(
+      find.byKey(const ValueKey<String>('country_group_DE')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('country_group_US')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('country_group_ZZ')),
+      findsOneWidget,
+    );
+
+    // No city / state sub-headers or individual server tiles leak into UI.
+    expect(find.text('FRANKFURT'), findsNothing);
+    expect(find.text('BERLIN'), findsNothing);
+    expect(find.text('NEW YORK'), findsNothing);
+    expect(find.text('STANDARD'), findsNothing);
+    expect(
+      find.byKey(const ValueKey<String>('server_tile_de-frankfurt')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('server_tile_de-berlin')),
+      findsNothing,
+    );
+
+    // 'Other Locations' label for ZZ and top Smart Auto hero card.
+    expect(find.text('Other Locations'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('server_location_auto')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('server_location_auto_selected')),
+      findsOneWidget,
+    );
+
+    // Active spotlight starts on Smart Auto.
+    final spotlight = find.byKey(
+      const ValueKey<String>('servers_active_spotlight'),
+    );
+    expect(spotlight, findsOneWidget);
+    expect(
+      find.descendant(of: spotlight, matching: find.text('Smart Auto')),
+      findsOneWidget,
+    );
+
+    // Tapping United States card switches selection cleanly without accordions.
+    await tester.tap(find.byKey(const ValueKey<String>('country_header_US')));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey<String>('country_selected_US')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('server_location_auto_selected')),
+      findsNothing,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey<String>('servers_active_spotlight')),
+        matching: find.text('United States'),
+      ),
+      findsOneWidget,
+    );
+
+    // Tapping Smart Auto restores Smart Auto selection.
+    await tester.tap(
+      find.byKey(const ValueKey<String>('server_location_auto_tap')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey<String>('server_location_auto_selected')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('country_selected_US')),
+      findsNothing,
+    );
+  });
+
   testWidgets(
-    '2. Hierarchical Country -> City/State -> Servers accordion with active '
-    'spotlight, collapse/expand, and selection changes',
-    (tester) async {
-      _setSurface(tester, const Size(412, 1800));
-      final engine = FakeVpnEngine();
-      addTearDown(engine.dispose);
-      final dataSource = _seedHierarchy();
-
-      await _pumpServersScreen(tester, engine: engine, dataSource: dataSource);
-
-      // Country accordion cards (small list -> all expanded by default).
-      expect(
-        find.byKey(const ValueKey<String>('country_group_DE')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const ValueKey<String>('country_group_US')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const ValueKey<String>('country_group_ZZ')),
-        findsOneWidget,
-      );
-
-      // City / state sub-headers.
-      expect(find.text('FRANKFURT'), findsOneWidget);
-      expect(find.text('BERLIN'), findsOneWidget);
-      expect(find.text('NEW YORK'), findsOneWidget);
-
-      // Country-only servers have no fake 'Standard' sub-header.
-      expect(find.text('STANDARD'), findsNothing);
-
-      // 'Other Locations' label for ZZ.
-      expect(find.text('Other Locations'), findsOneWidget);
-
-      // Active spotlight for the auto-selected first server.
-      expect(
-        find.byKey(const ValueKey<String>('servers_active_spotlight')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const ValueKey<String>('server_selected_de-frankfurt')),
-        findsOneWidget,
-      );
-
-      // Collapse Germany -> its child tiles disappear.
-      await tester.tap(find.byKey(const ValueKey<String>('country_header_DE')));
-      await tester.pumpAndSettle();
-      expect(
-        find.byKey(const ValueKey<String>('server_tile_de-berlin')),
-        findsNothing,
-      );
-
-      // Expand Germany again -> child tiles come back.
-      await tester.tap(find.byKey(const ValueKey<String>('country_header_DE')));
-      await tester.pumpAndSettle();
-      expect(
-        find.byKey(const ValueKey<String>('server_tile_de-berlin')),
-        findsOneWidget,
-      );
-
-      // Selecting a different server moves the selection ring.
-      await tester.tap(find.byKey(const ValueKey<String>('server_tile_us-ny')));
-      await tester.pumpAndSettle();
-      expect(
-        find.byKey(const ValueKey<String>('server_selected_us-ny')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const ValueKey<String>('server_selected_de-frankfurt')),
-        findsNothing,
-      );
-    },
-  );
-
-  testWidgets(
-    '3. Instant search filters to matching country/city, shows no-match '
-    'recovery state, and clear search restores the full list',
+    '3. Instant search filters to matching country or Smart Auto, shows '
+    'no-match recovery state, and clear search restores the full list',
     (tester) async {
       _setSurface(tester, const Size(412, 1800));
       final engine = FakeVpnEngine();
@@ -301,7 +317,7 @@ void main() {
 
       await tester.enterText(
         find.byKey(const ValueKey<String>('servers_search_field')),
-        'Frankfurt',
+        'Germany',
       );
       await tester.pumpAndSettle();
 
@@ -309,7 +325,10 @@ void main() {
         find.byKey(const ValueKey<String>('country_group_DE')),
         findsOneWidget,
       );
-      expect(find.text('FRANKFURT'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey<String>('server_location_auto')),
+        findsNothing,
+      );
       expect(
         find.byKey(const ValueKey<String>('country_group_US')),
         findsNothing,

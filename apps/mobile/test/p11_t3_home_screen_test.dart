@@ -214,19 +214,19 @@ void main() {
       await tester.pump(const Duration(milliseconds: 200));
       expect(_orb(tester).state, BrickOrbState.connecting);
       expect(_orb(tester).statusLabel, 'Connecting');
-      expect(_orb(tester).actionHint, 'Tap to cancel');
+      expect(_orb(tester).actionHint, 'Cancel');
 
       engine.emit(const Connected());
       await tester.pump(const Duration(milliseconds: 200));
       expect(_orb(tester).state, BrickOrbState.connected);
       expect(_orb(tester).statusLabel, 'Connected');
-      expect(_orb(tester).actionHint, 'Tap to disconnect');
+      expect(_orb(tester).actionHint, 'Disconnect');
 
       _autoReconnect(tester).startReconnecting();
       await tester.pump(const Duration(milliseconds: 200));
       expect(_orb(tester).state, BrickOrbState.reconnecting);
       expect(_orb(tester).statusLabel, 'Reconnecting');
-      expect(_orb(tester).actionHint, 'Tap to cancel');
+      expect(_orb(tester).actionHint, 'Cancel');
 
       _autoReconnect(tester).reset();
       engine.emit(const Disconnecting());
@@ -245,7 +245,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 200));
       expect(_orb(tester).state, BrickOrbState.killSwitch);
       expect(_orb(tester).statusLabel, 'Traffic Blocked');
-      expect(_orb(tester).actionHint, 'Tap to unblock');
+      expect(_orb(tester).actionHint, 'Unblock');
       expect(_orb(tester).onTap, isNotNull);
       expect(tester.takeException(), isNull);
 
@@ -370,7 +370,12 @@ void main() {
       find.byKey(const ValueKey<String>('home_active_server_card')),
       findsOneWidget,
     );
-    expect(find.text('Active: 🇩🇪 Germany · Frankfurt #1'), findsOneWidget);
+    expect(find.text('Smart Auto'), findsOneWidget);
+    expect(find.text('Best available server'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('home_active_server_endpoint')),
+      findsNothing,
+    );
 
     await tester.tap(
       find.byKey(const ValueKey<String>('home_active_server_card')),

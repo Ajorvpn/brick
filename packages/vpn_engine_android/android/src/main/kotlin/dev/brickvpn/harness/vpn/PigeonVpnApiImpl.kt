@@ -122,10 +122,20 @@ class PigeonVpnApiImpl(
         if (profileJson.isEmpty()) return VpnCommandOutcome.REJECTED_INVALID_CONFIG
         val outbound = profileJson["outbound"] as? Map<*, *>
         if (outbound == null || outbound.isEmpty()) return VpnCommandOutcome.REJECTED_INVALID_CONFIG
-        if (prepareChecker(appContext) != null) return VpnCommandOutcome.REJECTED_PERMISSION_DENIED
 
         val isBlock = outbound["type"] == "block"
-        val configJson = buildConfigJson(outbound, isBlock)
+        val candidates = profileJson["candidates"] as? List<*>
+        val validCandidates = if (isBlock) emptyList() else filterValidCandidates(candidates)
+        val effectiveOutbound: Map<*, *>? = when {
+            isBlock -> outbound
+            isValidRuntimeOutbound(outbound) -> outbound
+            validCandidates.isNotEmpty() -> validCandidates.first()
+            else -> null
+        }
+        if (effectiveOutbound == null) return VpnCommandOutcome.REJECTED_INVALID_CONFIG
+        if (prepareChecker(appContext) != null) return VpnCommandOutcome.REJECTED_PERMISSION_DENIED
+
+        val configJson = buildConfigJson(effectiveOutbound, isBlock, candidates)
 
         val outcome = coordinator.run(CommandKind.START) {
             PendingConfigHolder.put(configJson)
@@ -142,7 +152,11 @@ class PigeonVpnApiImpl(
         return outcome
     }
 
-    internal fun buildConfigJson(outbound: Map<*, *>, isBlock: Boolean): String {
+    internal fun buildConfigJson(
+        outbound: Map<*, *>,
+        isBlock: Boolean,
+        candidates: List<*>? = null,
+    ): String {
         val root = JSONObject()
         root.put("log", JSONObject().put("level", "info").put("timestamp", false))
         val inbounds = JSONArray()
@@ -150,8 +164,13 @@ class PigeonVpnApiImpl(
             JSONObject()
                 .put("type", "tun")
                 .put("tag", "tun-in")
-                .put("address", JSONArray().put("10.111.222.1/24"))
-                .put("mtu", 9000)
+                .put(
+                    "address",
+                    JSONArray()
+                        .put("10.111.222.1/24")
+                        .put("fdfe:dcba:9876::1/126"),
+                )
+                .put("mtu", 1500)
                 .put("auto_route", true)
                 .put("strict_route", true),
         )
@@ -162,13 +181,54 @@ class PigeonVpnApiImpl(
             root.put("outbounds", outbounds)
             root.put("route", JSONObject().put("auto_detect_interface", true))
         } else {
-            val outboundTag = (outbound["tag"] as? String)?.takeIf { it.isNotBlank() } ?: "proxy"
-            val isWireGuard = outbound["type"] == "wireguard"
-            if (isWireGuard) {
-                root.put("endpoints", JSONArray().put(buildWireGuardEndpoint(outbound, outboundTag)))
+            val validCandidates = filterValidCandidates(candidates)
+
+            val outboundTag: String
+            if (validCandidates.size >= 2) {
+                outboundTag = "proxy"
+                val endpoints = JSONArray()
+                val candidateTags = JSONArray()
+                validCandidates.forEachIndexed { index, candidate ->
+                    val candidateTag = "proxy-$index"
+                    candidateTags.put(candidateTag)
+                    if (candidate["type"] == "wireguard") {
+                        endpoints.put(buildWireGuardEndpoint(candidate, candidateTag))
+                    } else {
+                        val candidateObj = JSONObject(candidate).put("tag", candidateTag)
+                        if (!candidateObj.has("connect_timeout")) {
+                            candidateObj.put("connect_timeout", URLTEST_CONNECT_TIMEOUT)
+                        }
+                        outbounds.put(candidateObj)
+                    }
+                }
+                if (endpoints.length() > 0) {
+                    root.put("endpoints", endpoints)
+                }
+                outbounds.put(
+                    JSONObject()
+                        .put("type", "urltest")
+                        .put("tag", outboundTag)
+                        .put("outbounds", candidateTags)
+                        .put("url", URLTEST_PROBE_URL)
+                        .put("interval", URLTEST_INTERVAL)
+                        .put("tolerance", URLTEST_TOLERANCE_MS)
+                        .put("idle_timeout", URLTEST_IDLE_TIMEOUT)
+                        .put("interrupt_exist_connections", true),
+                )
             } else {
-                val primaryOutbound = JSONObject(outbound).put("tag", outboundTag)
-                outbounds.put(primaryOutbound)
+                val fallbackOutbound = if (isValidRuntimeOutbound(outbound)) {
+                    outbound
+                } else {
+                    validCandidates.firstOrNull() ?: outbound
+                }
+                outboundTag = (fallbackOutbound["tag"] as? String)?.takeIf { it.isNotBlank() } ?: "proxy"
+                val isWireGuard = fallbackOutbound["type"] == "wireguard"
+                if (isWireGuard) {
+                    root.put("endpoints", JSONArray().put(buildWireGuardEndpoint(fallbackOutbound, outboundTag)))
+                } else {
+                    val primaryOutbound = JSONObject(fallbackOutbound).put("tag", outboundTag)
+                    outbounds.put(primaryOutbound)
+                }
             }
             outbounds.put(JSONObject().put("type", "direct").put("tag", "direct-out"))
             root.put("outbounds", outbounds)
@@ -207,7 +267,7 @@ class PigeonVpnApiImpl(
             val dnsObj = JSONObject()
                 .put("servers", dnsServers)
                 .put("final", "dns-remote")
-                .put("strategy", "prefer_ipv4")
+                .put("strategy", "ipv4_only")
                 .put("timeout", "4s")
             root.put("dns", dnsObj)
 
@@ -217,6 +277,14 @@ class PigeonVpnApiImpl(
                 JSONObject()
                     .put("protocol", "dns")
                     .put("action", "hijack-dns"),
+            )
+            // Reject Chrome QUIC (UDP:443) locally so HTTPS falls back to TCP:443 cleanly
+            // instead of stalling on free proxies that blackhole UDP.
+            routeRules.put(
+                JSONObject()
+                    .put("network", "udp")
+                    .put("port", 443)
+                    .put("action", "reject"),
             )
             root.put(
                 "route",
@@ -289,6 +357,12 @@ class PigeonVpnApiImpl(
         )
     }
 
+    private fun filterValidCandidates(candidates: List<*>?): List<Map<*, *>> =
+        (candidates ?: emptyList<Any?>())
+            .mapNotNull { it as? Map<*, *> }
+            .filter { it.isNotEmpty() && it["type"] != "block" && isValidRuntimeOutbound(it) }
+            .take(MAX_URLTEST_CANDIDATES)
+
     private fun VpnState.toNativeState(): VpnNativeState = when (this) {
         VpnState.Idle -> VpnNativeState.IDLE
         VpnState.Preparing -> VpnNativeState.PREPARING
@@ -298,5 +372,86 @@ class PigeonVpnApiImpl(
         VpnState.Stopped -> VpnNativeState.STOPPED
         is VpnState.Error -> VpnNativeState.ERROR
         VpnState.Revoked -> VpnNativeState.REVOKED
+    }
+
+    internal companion object {
+        const val MAX_URLTEST_CANDIDATES = 10
+        const val URLTEST_CONNECT_TIMEOUT = "3s"
+        const val URLTEST_PROBE_URL = "https://www.gstatic.com/generate_204"
+        const val URLTEST_INTERVAL = "2m"
+        const val URLTEST_TOLERANCE_MS = 150
+        const val URLTEST_IDLE_TIMEOUT = "15m"
+
+        /**
+         * Returns false when an outbound would fail `libbox` startup before dial,
+         * e.g. a Shadowsocks-2022 outbound with invalid Base64 PSK or wrong key length.
+         */
+        internal fun isValidRuntimeOutbound(outbound: Map<*, *>): Boolean {
+            if (outbound.isEmpty()) return false
+            val type = (outbound["type"] as? String)?.trim()?.lowercase() ?: return false
+            if (type != "shadowsocks") return true
+            val method = (outbound["method"] as? String)?.trim()?.lowercase() ?: return true
+            if (!method.startsWith("2022-blake3-")) return true
+            val password = outbound["password"] as? String ?: return false
+            return isValidSs2022Key(method, password)
+        }
+
+        private fun isValidSs2022Key(method: String, password: String): Boolean {
+            val requiredBytes: Int
+            val allowMultiKey: Boolean
+            when (method) {
+                "2022-blake3-aes-128-gcm" -> {
+                    requiredBytes = 16
+                    allowMultiKey = true
+                }
+                "2022-blake3-aes-256-gcm" -> {
+                    requiredBytes = 32
+                    allowMultiKey = true
+                }
+                "2022-blake3-chacha20-poly1305" -> {
+                    requiredBytes = 32
+                    allowMultiKey = false
+                }
+                else -> return false
+            }
+            if (password.isEmpty()) return false
+            val parts = password.split(':')
+            if (!allowMultiKey && parts.size > 1) return false
+            return parts.all { strictStdBase64DecodedLength(it) == requiredBytes }
+        }
+
+        private fun strictStdBase64DecodedLength(input: String): Int? {
+            if (input.isEmpty() || input.length % 4 != 0) return null
+            var decodedBytes = 0
+            var i = 0
+            while (i < input.length) {
+                val c0 = input[i]
+                val c1 = input[i + 1]
+                val c2 = input[i + 2]
+                val c3 = input[i + 3]
+                if (!isStdBase64Char(c0) || !isStdBase64Char(c1)) return null
+                val isLastBlock = i + 4 == input.length
+                decodedBytes += when {
+                    c2 == '=' && c3 == '=' -> {
+                        if (!isLastBlock) return null
+                        1
+                    }
+                    c2 == '=' -> return null
+                    c3 == '=' -> {
+                        if (!isLastBlock || !isStdBase64Char(c2)) return null
+                        2
+                    }
+                    else -> {
+                        if (!isStdBase64Char(c2) || !isStdBase64Char(c3)) return null
+                        3
+                    }
+                }
+                i += 4
+            }
+            return decodedBytes
+        }
+
+        private fun isStdBase64Char(ch: Char): Boolean =
+            ch in 'A'..'Z' || ch in 'a'..'z' || ch in '0'..'9' || ch == '+' || ch == '/'
     }
 }

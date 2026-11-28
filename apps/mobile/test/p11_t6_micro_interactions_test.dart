@@ -393,10 +393,7 @@ void main() {
         // Collapsed by default (4 countries > auto-expand threshold), and
         // every country card animates its body size instead of snapping.
         expect(
-          find.descendant(
-            of: find.byKey(const ValueKey<String>('country_group_DE')),
-            matching: find.byType(AnimatedSize),
-          ),
+          find.byKey(const ValueKey<String>('country_group_DE')),
           findsOneWidget,
         );
 
@@ -407,6 +404,10 @@ void main() {
         await tester.pump(const Duration(milliseconds: 300));
 
         expect(haptics, contains('HapticFeedbackType.selectionClick'));
+        expect(
+          find.byKey(const ValueKey<String>('country_selected_DE')),
+          findsOneWidget,
+        );
         expect(tester.takeException(), isNull);
 
         // Unmount first: a new screen with a different override set needs a

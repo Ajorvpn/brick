@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:config_parser/config_parser.dart';
 import 'package:core_domain/core_domain.dart';
@@ -9,9 +10,12 @@ import 'package:flutter/services.dart' show EventChannel;
 
 import 'vpn_engine_api.g.dart';
 
-/// Implementation of [VpnEngine] for Android using the Gate A native engine
-/// via Pigeon platform channels.
-final class AndroidVpnEngine implements VpnEngine {
+/// Implementation of [VpnEngine] and [PoolVpnEngine] for Android using the
+/// Gate A native engine via Pigeon platform channels.
+final class AndroidVpnEngine implements PoolVpnEngine {
+  /// Maximum number of candidate outbounds forwarded to native `urltest`.
+  static const int kMaxUrlTestCandidates = 10;
+
   /// Creates an [AndroidVpnEngine] instance.
   ///
   /// Optional parameters allow injecting fake/mock implementations for
@@ -93,9 +97,7 @@ final class AndroidVpnEngine implements VpnEngine {
 
   @override
   Future<VpnCommandResult> start(ServerProfile profile) async {
-    // sing-box has no AmneziaWG schema; runtime AmneziaWG is unsupported
-    // by libbox on Android (see PROJECT_STATE.md Item 5 & TOOLCHAIN_VERSIONS.md).
-    if (profile.config is AmneziaWgOutbound) {
+    if (!_isValidRuntimeOutbound(profile.config)) {
       return const VpnCommandRejectedInvalidConfig();
     }
 
@@ -118,6 +120,131 @@ final class AndroidVpnEngine implements VpnEngine {
     } on Object catch (_) {
       return const VpnCommandFailed();
     }
+  }
+
+  @override
+  Future<VpnCommandResult> startPool(
+    ServerProfile primary,
+    List<ServerProfile> candidates,
+  ) async {
+    // sing-box has no AmneziaWG schema; runtime AmneziaWG is unsupported
+    // by libbox on Android (see PROJECT_STATE.md Item 5 & TOOLCHAIN_VERSIONS.md).
+    if (primary.config is AmneziaWgOutbound) {
+      return const VpnCommandRejectedInvalidConfig();
+    }
+
+    final serializedCandidates = <Map<String, Object?>>[];
+    final seenIds = <String>{primary.id};
+    ServerProfile effectivePrimary = primary;
+    Map<String, Object?>? primaryOutbound =
+        _trySerializeRuntimeOutbound(primary);
+    if (primaryOutbound != null) {
+      serializedCandidates.add(primaryOutbound);
+    } else if (candidates.isEmpty) {
+      return const VpnCommandRejectedInvalidConfig();
+    }
+
+    for (final candidate in candidates) {
+      if (serializedCandidates.length >= kMaxUrlTestCandidates) {
+        break;
+      }
+      if (!seenIds.add(candidate.id)) {
+        continue;
+      }
+      final serialized = _trySerializeRuntimeOutbound(candidate);
+      if (serialized == null) {
+        continue;
+      }
+      if (primaryOutbound == null) {
+        effectivePrimary = candidate;
+        primaryOutbound = serialized;
+      }
+      serializedCandidates.add(serialized);
+    }
+
+    if (primaryOutbound == null) {
+      return const VpnCommandRejectedInvalidConfig();
+    }
+
+    final profileJson = <String, Object?>{
+      'id': effectivePrimary.id,
+      'name': effectivePrimary.name,
+      'outbound': primaryOutbound,
+      if (serializedCandidates.length >= 2) 'candidates': serializedCandidates,
+    };
+
+    try {
+      final outcome = await _hostApi.start(profileJson);
+      return _mapCommandOutcome(outcome);
+    } on Object catch (_) {
+      return const VpnCommandFailed();
+    }
+  }
+
+  Map<String, Object?>? _trySerializeRuntimeOutbound(ServerProfile profile) {
+    if (!_isValidRuntimeOutbound(profile.config)) {
+      return null;
+    }
+    try {
+      return _outboundSerializer(profile.config);
+    } on Object catch (_) {
+      return null;
+    }
+  }
+
+  static bool _isValidRuntimeOutbound(OutboundConfig config) {
+    // sing-box has no AmneziaWG schema; runtime AmneziaWG is unsupported
+    // by libbox on Android (see PROJECT_STATE.md Item 5 & TOOLCHAIN_VERSIONS.md).
+    if (config is AmneziaWgOutbound) {
+      return false;
+    }
+    if (config is ShadowsocksOutbound) {
+      return _isValidShadowsocksRuntimeKey(config.method, config.password);
+    }
+    return true;
+  }
+
+  static bool _isValidShadowsocksRuntimeKey(String method, String password) {
+    final normalizedMethod = method.trim().toLowerCase();
+    if (!normalizedMethod.startsWith('2022-blake3-')) {
+      return true;
+    }
+    final int requiredBytes;
+    final bool allowMultiKey;
+    switch (normalizedMethod) {
+      case '2022-blake3-aes-128-gcm':
+        requiredBytes = 16;
+        allowMultiKey = true;
+      case '2022-blake3-aes-256-gcm':
+        requiredBytes = 32;
+        allowMultiKey = true;
+      case '2022-blake3-chacha20-poly1305':
+        requiredBytes = 32;
+        allowMultiKey = false;
+      default:
+        return false;
+    }
+    if (password.isEmpty) {
+      return false;
+    }
+    final parts = password.split(':');
+    if (!allowMultiKey && parts.length > 1) {
+      return false;
+    }
+    for (final part in parts) {
+      if (part.isEmpty || part.length % 4 != 0) {
+        return false;
+      }
+      try {
+        final decoded = base64Decode(part);
+        if (decoded.length != requiredBytes) {
+          return false;
+        }
+      } on FormatException {
+        return false;
+      }
+    }
+    return true;
   }
 
   @override

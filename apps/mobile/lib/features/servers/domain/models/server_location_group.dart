@@ -145,6 +145,9 @@ final class CountryLocationGroup {
 
 /// Pure-Dart parser that infers country and city/state from server remarks.
 abstract final class ServerLocationParser {
+  /// Sentinel country code assigned when no known ISO-2 country is inferred.
+  static const String unknownCountryCode = 'ZZ';
+
   static const Map<String, String> _countryNames = {
     'DE': 'Germany',
     'US': 'United States',
@@ -274,6 +277,8 @@ abstract final class ServerLocationParser {
     'TCP',
     'HTTP',
     'QUIC',
+    'BRICKVPN',
+    'BRICK',
   };
 
   /// Parses [remark] into country and city/state location metadata.
@@ -377,6 +382,16 @@ abstract final class ServerLocationParser {
       countryName: 'Other Locations',
       flagEmoji: '🌐',
     );
+  }
+
+  /// Returns the canonical English country name for [code], or
+  /// `'Other Locations'` for [unknownCountryCode].
+  static String countryNameForCode(String code) {
+    final normalized = code.trim().toUpperCase();
+    if (normalized.isEmpty || normalized == unknownCountryCode) {
+      return 'Other Locations';
+    }
+    return _countryNames[normalized] ?? normalized;
   }
 
   /// Converts a 2-letter ISO country code into Unicode flag emoji.

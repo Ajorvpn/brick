@@ -649,5 +649,55 @@ void main() {
         expect(identical(speedWidgetAtTick2, speedWidgetAtTick3), isTrue);
       },
     );
+
+    testWidgets(
+      'Persian RTL BiDi keeps localized labels in ambient RTL and isolates '
+      'only numeric throughput values in LTR islands',
+      (tester) async {
+        final engine = FakeVpnEngine();
+        addTearDown(engine.dispose);
+
+        await pumpConnectionMaterialApp(
+          tester,
+          const Directionality(
+            textDirection: TextDirection.rtl,
+            child: Scaffold(body: ThroughputReadout()),
+          ),
+          engine: engine,
+        );
+
+        final t0 = DateTime.utc(2026, 11, 5, 10);
+        engine.emitStats(
+          TrafficStats(txBytes: 1024, rxBytes: 2048, timestamp: t0),
+        );
+        await tester.pumpAndSettle();
+
+        final speedNumeric = find.byKey(
+          const ValueKey<String>('throughput_speed_numeric'),
+        );
+        final txNumeric = find.byKey(
+          const ValueKey<String>('throughput_tx_numeric'),
+        );
+        final rxNumeric = find.byKey(
+          const ValueKey<String>('throughput_rx_numeric'),
+        );
+        expect(speedNumeric, findsOneWidget);
+        expect(txNumeric, findsOneWidget);
+        expect(rxNumeric, findsOneWidget);
+
+        expect(
+          Directionality.of(tester.element(speedNumeric)),
+          TextDirection.ltr,
+        );
+        expect(Directionality.of(tester.element(txNumeric)), TextDirection.ltr);
+        expect(Directionality.of(tester.element(rxNumeric)), TextDirection.ltr);
+
+        // Localized prefix/suffix texts stay in ambient RTL (never forced LTR).
+        final speedRow = find.byKey(
+          const ValueKey<String>('throughput_speed_readout'),
+        );
+        expect(Directionality.of(tester.element(speedRow)), TextDirection.rtl);
+      },
+    );
   });
 }

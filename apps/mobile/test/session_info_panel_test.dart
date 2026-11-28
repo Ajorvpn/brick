@@ -162,29 +162,29 @@ void main() {
         );
 
         // When no servers exist
-        expect(find.text('Server: None selected'), findsOneWidget);
+        expect(find.text('Location: None selected'), findsOneWidget);
 
-        // Add a server
+        // Add a server (defaults to Smart Auto)
         final repo = buildRepository(dataSource);
         await repo.addServer(validVlessUri);
         container.invalidate(savedServersProvider);
         await tester.pumpAndSettle();
 
-        expect(find.text('Server: My Server (vless)'), findsOneWidget);
+        expect(find.text('Location: Smart Auto'), findsOneWidget);
 
-        // Add a second server and explicitly select it
-        await repo.addServer(validTrojanUri);
-        final secondId = dataSource.records.last.id;
+        // Add a second server in United Kingdom and select its country target
+        await repo.addServer(
+          'trojan://mypassword@example.com:443#United%20Kingdom%20Trojan',
+        );
         container.invalidate(savedServersProvider);
         await tester.pumpAndSettle();
 
-        // Switch active server via activeServerIdProvider
         await container
-            .read(activeServerIdProvider.notifier)
-            .selectServer(secondId);
+            .read(selectedLocationProvider.notifier)
+            .selectCountry('GB');
         await tester.pumpAndSettle();
 
-        expect(find.text('Server: Trojan Node (trojan)'), findsOneWidget);
+        expect(find.text('Location: United Kingdom'), findsOneWidget);
       },
     );
 

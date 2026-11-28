@@ -501,10 +501,15 @@ class PigeonVpnApiImplTest {
         // 1. Zero remote rule_set URLs
         assertFalse("Configuration must not contain remote rule_set", root.has("rule_set"))
 
-        // 2. Strict route on TUN inbound, no legacy sniff on inbound
+        // 2. Strict route on TUN inbound, aligned MTU 1500, IPv4 + ULA IPv6, no legacy sniff
         val inbounds = root.getJSONArray("inbounds")
         val tun = inbounds.getJSONObject(0)
         assertEquals("tun", tun.getString("type"))
+        assertEquals(1500, tun.getInt("mtu"))
+        val tunAddrs = tun.getJSONArray("address")
+        assertEquals(2, tunAddrs.length())
+        assertEquals("10.111.222.1/24", tunAddrs.getString(0))
+        assertEquals("fdfe:dcba:9876::1/126", tunAddrs.getString(1))
         assertTrue("TUN inbound must set strict_route = true", tun.getBoolean("strict_route"))
         assertTrue("TUN inbound must set auto_route = true", tun.getBoolean("auto_route"))
         assertFalse("tun-in must not contain legacy sniff field", tun.has("sniff"))
@@ -543,19 +548,24 @@ class PigeonVpnApiImplTest {
         assertTrue("Must include dns-remote server", hasDnsRemote)
         assertTrue("Must include direct bootstrap dns-direct server", hasDnsDirect)
         assertEquals("dns-remote", dns.getString("final"))
+        assertEquals("ipv4_only", dns.getString("strategy"))
         assertEquals("4s", dns.getString("timeout"))
         assertFalse("Deprecated dns.rules outbound:any must be omitted", dns.has("rules"))
 
-        // 4. Route: v1.14.4 rule actions (sniff + hijack-dns) & default_domain_resolver
+        // 4. Route: v1.14.4 rule actions (sniff + hijack-dns + QUIC reject) & default_domain_resolver
         val route = root.getJSONObject("route")
         assertEquals("tokyo-proxy", route.getString("final"))
         assertEquals("dns-direct", route.getString("default_domain_resolver"))
         val routeRules = route.getJSONArray("rules")
-        assertEquals(2, routeRules.length())
+        assertEquals(3, routeRules.length())
         assertEquals("sniff", routeRules.getJSONObject(0).getString("action"))
         val dnsHijack = routeRules.getJSONObject(1)
         assertEquals("dns", dnsHijack.getString("protocol"))
         assertEquals("hijack-dns", dnsHijack.getString("action"))
+        val quicReject = routeRules.getJSONObject(2)
+        assertEquals("udp", quicReject.getString("network"))
+        assertEquals(443, quicReject.getInt("port"))
+        assertEquals("reject", quicReject.getString("action"))
     }
 
     // ------------------------------------------------ v1.14.4 schema regression guards
@@ -584,22 +594,29 @@ class PigeonVpnApiImplTest {
             )
         }
 
-        // 2. Route rules must use v1.14.4 actions: [sniff, protocol:dns -> hijack-dns].
+        // 2. Route rules must use v1.14.4 actions: [sniff, protocol:dns -> hijack-dns, udp:443 -> reject].
         val route = root.getJSONObject("route")
         assertEquals("dns-direct", route.getString("default_domain_resolver"))
         val rules = route.getJSONArray("rules")
+        assertEquals(3, rules.length())
         assertEquals("sniff", rules.getJSONObject(0).getString("action"))
         val hijack = rules.getJSONObject(1)
         assertEquals("dns", hijack.getString("protocol"))
         assertEquals("hijack-dns", hijack.getString("action"))
         assertFalse(hijack.has("outbound"))
+        val quicReject = rules.getJSONObject(2)
+        assertEquals("udp", quicReject.getString("network"))
+        assertEquals(443, quicReject.getInt("port"))
+        assertEquals("reject", quicReject.getString("action"))
 
-        // 3. TUN must NOT set legacy sniff field.
+        // 3. TUN must NOT set legacy sniff field and must align MTU 1500 + dual-stack addrs.
         val tun = root.getJSONArray("inbounds").getJSONObject(0)
         assertFalse("tun-in must not contain removed sniff field", tun.has("sniff"))
+        assertEquals(1500, tun.getInt("mtu"))
 
-        // 4. Typed DNS servers: udp + HTTP/1.1 DoH (Connection: close) with 4s timeout and NO legacy address key.
+        // 4. Typed DNS servers: udp + HTTP/1.1 DoH (Connection: close) with ipv4_only + 4s timeout.
         val dnsObj = root.getJSONObject("dns")
+        assertEquals("ipv4_only", dnsObj.getString("strategy"))
         assertEquals("4s", dnsObj.getString("timeout"))
         val dnsServers = dnsObj.getJSONArray("servers")
         var remoteServerObj: org.json.JSONObject? = null
@@ -708,5 +725,316 @@ class PigeonVpnApiImplTest {
         val tamperedChar = if (payload.last() == 'A') 'B' else 'A'
         val tampered = prefix + payload.dropLast(1) + tamperedChar
         dev.brickvpn.harness.SecureStorageHelper.decrypt(tampered)
+    }
+
+    // ------------------------------------------------------------- urltest pool
+
+    @Test
+    fun `buildConfigJson with 3 candidates emits urltest group and 3s connect_timeout`() {
+        val impl = PigeonVpnApiImpl(appContext = dummyContext, coordinator = coordinator)
+        val primary = mapOf("type" to "shadowsocks", "server" to "198.51.100.1", "server_port" to 8388)
+        val backup1 = mapOf("type" to "vless", "server" to "198.51.100.2", "server_port" to 443)
+        val backup2 = mapOf("type" to "trojan", "server" to "198.51.100.3", "server_port" to 443, "connect_timeout" to "5s")
+
+        val root = org.json.JSONObject(
+            impl.buildConfigJson(primary, isBlock = false, candidates = listOf(primary, backup1, backup2)),
+        )
+
+        val outbounds = root.getJSONArray("outbounds")
+        // proxy-0, proxy-1, proxy-2, urltest("proxy"), direct-out
+        assertEquals(5, outbounds.length())
+        assertEquals("proxy-0", outbounds.getJSONObject(0).getString("tag"))
+        assertEquals("3s", outbounds.getJSONObject(0).getString("connect_timeout"))
+        assertEquals("proxy-1", outbounds.getJSONObject(1).getString("tag"))
+        assertEquals("3s", outbounds.getJSONObject(1).getString("connect_timeout"))
+        assertEquals("proxy-2", outbounds.getJSONObject(2).getString("tag"))
+        assertEquals("5s", outbounds.getJSONObject(2).getString("connect_timeout"))
+
+        val urltest = outbounds.getJSONObject(3)
+        assertEquals("urltest", urltest.getString("type"))
+        assertEquals("proxy", urltest.getString("tag"))
+        assertEquals("https://www.gstatic.com/generate_204", urltest.getString("url"))
+        assertEquals("2m", urltest.getString("interval"))
+        assertEquals(150, urltest.getInt("tolerance"))
+        assertEquals("15m", urltest.getString("idle_timeout"))
+        assertTrue(urltest.getBoolean("interrupt_exist_connections"))
+        val memberTags = urltest.getJSONArray("outbounds")
+        assertEquals(3, memberTags.length())
+        assertEquals("proxy-0", memberTags.getString(0))
+        assertEquals("proxy-1", memberTags.getString(1))
+        assertEquals("proxy-2", memberTags.getString(2))
+
+        assertEquals("direct", outbounds.getJSONObject(4).getString("type"))
+        assertEquals("direct-out", outbounds.getJSONObject(4).getString("tag"))
+
+        val dns = root.getJSONObject("dns")
+        assertEquals("4s", dns.getString("timeout"))
+        assertEquals("dns-remote", dns.getString("final"))
+        val dnsServers = dns.getJSONArray("servers")
+        assertEquals(2, dnsServers.length())
+        val dnsRemote = dnsServers.getJSONObject(1)
+        assertEquals("dns-remote", dnsRemote.getString("tag"))
+        assertEquals("https", dnsRemote.getString("type"))
+        assertEquals("proxy", dnsRemote.getString("detour"))
+        assertEquals("close", dnsRemote.getJSONObject("headers").getString("Connection"))
+        assertEquals("http/1.1", dnsRemote.getJSONObject("tls").getJSONArray("alpn").getString(0))
+
+        assertEquals("proxy", root.getJSONObject("route").getString("final"))
+    }
+
+    @Test
+    fun `buildConfigJson with single candidate falls back to single outbound without urltest`() {
+        val impl = PigeonVpnApiImpl(appContext = dummyContext, coordinator = coordinator)
+        val primary = mapOf("type" to "shadowsocks", "server" to "198.51.100.1", "server_port" to 8388)
+
+        val root = org.json.JSONObject(
+            impl.buildConfigJson(primary, isBlock = false, candidates = listOf(primary)),
+        )
+
+        val outbounds = root.getJSONArray("outbounds")
+        assertEquals(2, outbounds.length())
+        assertEquals("shadowsocks", outbounds.getJSONObject(0).getString("type"))
+        assertEquals("proxy", outbounds.getJSONObject(0).getString("tag"))
+        assertFalse(outbounds.getJSONObject(0).has("connect_timeout"))
+        assertEquals("direct", outbounds.getJSONObject(1).getString("type"))
+    }
+
+    @Test
+    fun `buildConfigJson caps candidates at 10 and ignores block or empty maps`() {
+        val impl = PigeonVpnApiImpl(appContext = dummyContext, coordinator = coordinator)
+        val primary = mapOf("type" to "vless", "server" to "198.51.100.0", "server_port" to 443)
+        val candidates = listOf(
+            emptyMap<String, Any>(),
+            mapOf("type" to "block"),
+        ) + (0 until 13).map { i ->
+            mapOf("type" to "vless", "server" to "198.51.100.$i", "server_port" to 443)
+        }
+
+        val root = org.json.JSONObject(
+            impl.buildConfigJson(primary, isBlock = false, candidates = candidates),
+        )
+
+        val outbounds = root.getJSONArray("outbounds")
+        // 10 candidate outbounds + urltest("proxy") + direct-out = 12
+        assertEquals(12, outbounds.length())
+        val urltest = outbounds.getJSONObject(10)
+        assertEquals("urltest", urltest.getString("type"))
+        assertEquals(10, urltest.getJSONArray("outbounds").length())
+        assertEquals("proxy-0", urltest.getJSONArray("outbounds").getString(0))
+        assertEquals("proxy-9", urltest.getJSONArray("outbounds").getString(9))
+    }
+
+    @Test
+    fun `buildConfigJson ignores candidates when isBlock is true`() {
+        val impl = PigeonVpnApiImpl(appContext = dummyContext, coordinator = coordinator)
+        val block = mapOf("type" to "block")
+        val backup = mapOf("type" to "vless", "server" to "198.51.100.2", "server_port" to 443)
+
+        val root = org.json.JSONObject(
+            impl.buildConfigJson(block, isBlock = true, candidates = listOf(backup, backup)),
+        )
+
+        val outbounds = root.getJSONArray("outbounds")
+        assertEquals(1, outbounds.length())
+        assertEquals("block", outbounds.getJSONObject(0).getString("type"))
+    }
+
+    @Test
+    fun `buildConfigJson urltest pool supports mixed wireguard endpoint and non-wireguard outbound`() {
+        val impl = PigeonVpnApiImpl(appContext = dummyContext, coordinator = coordinator)
+        val ssPrimary = mapOf("type" to "shadowsocks", "server" to "198.51.100.1", "server_port" to 8388)
+        val wgBackup = mapOf(
+            "type" to "wireguard",
+            "server" to "198.51.100.10",
+            "server_port" to 51820,
+            "local_address" to listOf("10.0.0.2/32"),
+            "private_key" to "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+            "peer_public_key" to "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=",
+        )
+
+        val root = org.json.JSONObject(
+            impl.buildConfigJson(ssPrimary, isBlock = false, candidates = listOf(ssPrimary, wgBackup)),
+        )
+
+        val endpoints = root.getJSONArray("endpoints")
+        assertEquals(1, endpoints.length())
+        assertEquals("wireguard", endpoints.getJSONObject(0).getString("type"))
+        assertEquals("proxy-1", endpoints.getJSONObject(0).getString("tag"))
+
+        val outbounds = root.getJSONArray("outbounds")
+        // proxy-0 + urltest("proxy") + direct-out = 3
+        assertEquals(3, outbounds.length())
+        assertEquals("proxy-0", outbounds.getJSONObject(0).getString("tag"))
+        val urltest = outbounds.getJSONObject(1)
+        assertEquals("urltest", urltest.getString("type"))
+        val tags = urltest.getJSONArray("outbounds")
+        assertEquals("proxy-0", tags.getString(0))
+        assertEquals("proxy-1", tags.getString(1))
+    }
+
+    @Test
+    fun `start with candidates stores urltest config in PendingConfigHolder`() = runTest(testDispatcher) {
+        val impl = PigeonVpnApiImpl(
+            appContext = dummyContext,
+            coordinator = coordinator,
+            prepareChecker = { null },
+            startServiceLauncher = {},
+        )
+        val primary = mapOf("type" to "shadowsocks", "server" to "198.51.100.1", "server_port" to 8388)
+        val backup = mapOf("type" to "vless", "server" to "198.51.100.2", "server_port" to 443)
+        val profile = mapOf(
+            "id" to "p1",
+            "name" to "Pool Test",
+            "outbound" to primary,
+            "candidates" to listOf(primary, backup),
+        )
+
+        val deferredOutcome = async { impl.start(profile) }
+        runCurrent()
+        val storedJson = PendingConfigHolder.take()
+        assertNotNull(storedJson)
+        val parsed = org.json.JSONObject(storedJson!!)
+        val outbounds = parsed.getJSONArray("outbounds")
+        assertTrue(
+            (0 until outbounds.length()).any {
+                outbounds.getJSONObject(it).optString("type") == "urltest"
+            },
+        )
+
+        hubListener?.invoke(CommandKind.START, VpnCommandResult.Accepted)
+        runCurrent()
+        assertEquals(VpnCommandOutcome.ACCEPTED, deferredOutcome.await())
+    }
+
+    // ------------------------------------------------ SS-2022 runtime validation & QUIC guards
+
+    @Test
+    fun `start rejects single invalid Shadowsocks-2022 outbound immediately`() = runTest(testDispatcher) {
+        var prepareCheckerCalled = false
+        var startLauncherCalled = false
+        val impl = PigeonVpnApiImpl(
+            appContext = dummyContext,
+            coordinator = coordinator,
+            prepareChecker = { prepareCheckerCalled = true; null },
+            startServiceLauncher = { startLauncherCalled = true },
+        )
+        val brokenSs2022 = mapOf(
+            "type" to "shadowsocks",
+            "server" to "198.51.100.8",
+            "server_port" to 8388,
+            "method" to "2022-blake3-aes-256-gcm",
+            // 43 chars: missing '=' padding (triggers byte 43 decode error in libbox)
+            "password" to "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        )
+
+        val outcome = impl.start(mapOf("id" to "sg-08", "outbound" to brokenSs2022))
+
+        assertEquals(VpnCommandOutcome.REJECTED_INVALID_CONFIG, outcome)
+        assertFalse("prepareChecker must not be called", prepareCheckerCalled)
+        assertFalse("startServiceLauncher must not be called", startLauncherCalled)
+    }
+
+    @Test
+    fun `buildConfigJson drops invalid Shadowsocks-2022 candidates while preserving valid SS-2022 keys`() {
+        val impl = PigeonVpnApiImpl(
+            appContext = dummyContext,
+            coordinator = coordinator,
+        )
+        val validVless = mapOf("type" to "vless", "server" to "198.51.100.1", "server_port" to 443)
+        val badLength = mapOf(
+            "type" to "shadowsocks",
+            "server" to "198.51.100.2",
+            "server_port" to 8388,
+            "method" to "2022-blake3-aes-256-gcm",
+            "password" to "AAAAAAAAAAAAAAAAAAAAAA==", // 16 bytes for a 32-byte cipher
+        )
+        val badBase64 = mapOf(
+            "type" to "shadowsocks",
+            "server" to "198.51.100.3",
+            "server_port" to 8388,
+            "method" to "2022-blake3-aes-256-gcm",
+            "password" to "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", // 43 chars
+        )
+        val badChachaEih = mapOf(
+            "type" to "shadowsocks",
+            "server" to "198.51.100.4",
+            "server_port" to 8388,
+            "method" to "2022-blake3-chacha20-poly1305",
+            "password" to "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=:AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI=",
+        )
+        val valid128Eih = mapOf(
+            "type" to "shadowsocks",
+            "server" to "198.51.100.5",
+            "server_port" to 8388,
+            "method" to "2022-blake3-aes-128-gcm",
+            "password" to "AAAAAAAAAAAAAAAAAAAAAA==:AQEBAQEBAQEBAQEBAQEBAQ==",
+        )
+        val valid256 = mapOf(
+            "type" to "shadowsocks",
+            "server" to "198.51.100.6",
+            "server_port" to 8388,
+            "method" to "2022-blake3-aes-256-gcm",
+            "password" to "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+        )
+
+        val root = org.json.JSONObject(
+            impl.buildConfigJson(
+                outbound = validVless,
+                isBlock = false,
+                candidates = listOf(validVless, badLength, badBase64, badChachaEih, valid128Eih, valid256),
+            ),
+        )
+
+        val outbounds = root.getJSONArray("outbounds")
+        val servers = (0 until outbounds.length())
+            .map { outbounds.getJSONObject(it) }
+            .filter { it.optString("tag").startsWith("proxy-") }
+            .map { it.getString("server") }
+        assertEquals(listOf("198.51.100.1", "198.51.100.5", "198.51.100.6"), servers)
+    }
+
+    @Test
+    fun `start promotes valid backup candidate when primary is invalid Shadowsocks-2022`() = runTest(testDispatcher) {
+        val impl = PigeonVpnApiImpl(
+            appContext = dummyContext,
+            coordinator = coordinator,
+            prepareChecker = { null },
+            startServiceLauncher = {},
+        )
+        val brokenPrimary = mapOf(
+            "type" to "shadowsocks",
+            "server" to "198.51.100.8",
+            "server_port" to 8388,
+            "method" to "2022-blake3-aes-256-gcm",
+            "password" to "invalid_url-safe_or_short",
+        )
+        val healthyBackup = mapOf(
+            "type" to "vless",
+            "server" to "198.51.100.9",
+            "server_port" to 443,
+        )
+
+        val deferredOutcome = async {
+            impl.start(
+                mapOf(
+                    "id" to "sg-pool",
+                    "outbound" to brokenPrimary,
+                    "candidates" to listOf(brokenPrimary, healthyBackup),
+                ),
+            )
+        }
+        runCurrent()
+        val storedJson = PendingConfigHolder.take()
+        assertNotNull(storedJson)
+        val parsed = org.json.JSONObject(storedJson!!)
+        val outbounds = parsed.getJSONArray("outbounds")
+        assertEquals("198.51.100.9", outbounds.getJSONObject(0).getString("server"))
+        assertFalse(
+            (0 until outbounds.length()).any { outbounds.getJSONObject(it).optString("server") == "198.51.100.8" },
+        )
+
+        hubListener?.invoke(CommandKind.START, VpnCommandResult.Accepted)
+        runCurrent()
+        assertEquals(VpnCommandOutcome.ACCEPTED, deferredOutcome.await())
     }
 }

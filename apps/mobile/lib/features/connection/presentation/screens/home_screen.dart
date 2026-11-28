@@ -15,6 +15,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mobile/core/presentation/utils/app_feedback.dart';
 import 'package:mobile/core/presentation/utils/error_mapper.dart';
+import 'package:mobile/features/connection/domain/entities/connection_location_target.dart';
 import 'package:mobile/features/connection/domain/entities/saved_server.dart';
 import 'package:mobile/features/connection/presentation/providers/active_server_provider.dart';
 import 'package:mobile/features/connection/presentation/providers/auto_reconnect_provider.dart';
@@ -84,10 +85,33 @@ class HomeScreen extends ConsumerWidget {
       );
     });
 
+    final locationTarget = ref.watch(resolvedLocationTargetProvider);
     final serversStatus = ref.watch(
-      savedServersProvider.select(
-        (servers) => (isLoading: servers.isLoading, hasError: servers.hasError),
-      ),
+      savedServersProvider.select((servers) {
+        final list = servers.asData?.value;
+        final int serverCount;
+        if (list == null) {
+          serverCount = 0;
+        } else {
+          serverCount = switch (locationTarget) {
+            SmartAutoTarget() => list.whereType<SavedServerProfile>().length,
+            CountryTarget(:final countryCode) =>
+              list
+                  .whereType<SavedServerProfile>()
+                  .where(
+                    (server) =>
+                        ServerLocationParser.parse(server.name).countryCode ==
+                        countryCode,
+                  )
+                  .length,
+          };
+        }
+        return (
+          isLoading: servers.isLoading,
+          hasError: servers.hasError,
+          serverCount: serverCount,
+        );
+      }),
     );
     final activeServer = ref.watch(activeServerProvider);
     final connStateAsync = ref.watch(connectionStateProvider);
@@ -122,8 +146,8 @@ class HomeScreen extends ConsumerWidget {
       orbOnTap = null;
     } else if (killSwitch is KillSwitchBlocking || isConnectedOrConnecting) {
       orbOnTap = () => unawaited(_disconnect(context, ref));
-    } else if (activeServer case final server?) {
-      orbOnTap = () => unawaited(_connect(context, ref, server));
+    } else if (activeServer != null) {
+      orbOnTap = () => unawaited(_connect(context, ref, locationTarget));
     } else {
       orbOnTap = () => context.go('/servers');
     }
@@ -220,6 +244,7 @@ class HomeScreen extends ConsumerWidget {
                               context,
                               status: serversStatus,
                               activeServer: activeServer,
+                              locationTarget: locationTarget,
                               isConnected: isConnected,
                             ),
                             const SizedBox(height: BrickSpacing.sm),
@@ -281,20 +306,21 @@ class HomeScreen extends ConsumerWidget {
     );
   }
 
-  /// Thumb-zone server selector: loading, error, active server, or the guided
-  /// empty-state card that routes to the Servers tab.
+  /// Thumb-zone location selector: loading, error, active location
+  /// (`Smart Auto` or selected country), or empty state routing to Servers.
   Widget _buildServerCard(
     BuildContext context, {
-    required ({bool isLoading, bool hasError}) status,
+    required ({bool isLoading, bool hasError, int serverCount}) status,
     required SavedServerProfile? activeServer,
+    required ConnectionLocationTarget locationTarget,
     required bool isConnected,
   }) {
     final theme = Theme.of(context);
     final colors = context.brickColors;
 
     if (status.isLoading && activeServer == null) {
-      // Skeleton mirrors the active-server card's exact footprint (42dp flag
-      // tile + title/endpoint bars) so nothing shifts when data lands.
+      // Skeleton mirrors the active-location card's exact footprint (42dp
+      // icon tile + title/subtitle bars) so nothing shifts when data lands.
       return const BrickGlassCard(
         key: ValueKey<String>('home_server_loading_skeleton'),
         elevated: true,
@@ -332,7 +358,26 @@ class HomeScreen extends ConsumerWidget {
 
     final server = activeServer;
     if (server != null) {
-      final parsed = ServerLocationParser.parse(server.name);
+      final String leadingGlyph;
+      final String title;
+      final String subtitle;
+      switch (locationTarget) {
+        case SmartAutoTarget():
+          leadingGlyph = '⚡';
+          title = 'servers.smart_auto_title'.tr();
+          subtitle = 'home.location_best_available'.tr();
+        case CountryTarget(:final countryCode):
+          leadingGlyph = ServerLocationParser.emojiForCountryCode(countryCode);
+          title = countryCode == ServerLocationParser.unknownCountryCode
+              ? 'servers.other_locations'.tr()
+              : ServerLocationParser.countryNameForCode(countryCode);
+          subtitle = status.serverCount == 1
+              ? 'home.location_auto_selected_one'.tr()
+              : 'home.location_auto_selected'.tr(
+                  namedArgs: {'count': '${status.serverCount}'},
+                );
+      }
+
       return BrickGlassCard(
         key: const ValueKey<String>('home_active_server_card'),
         isSelected: isConnected,
@@ -350,10 +395,7 @@ class HomeScreen extends ConsumerWidget {
                 border: Border.all(color: colors.glassBorder),
               ),
               child: Center(
-                child: Text(
-                  parsed.flagEmoji,
-                  style: const TextStyle(fontSize: 20),
-                ),
+                child: Text(leadingGlyph, style: const TextStyle(fontSize: 20)),
               ),
             ),
             const SizedBox(width: BrickSpacing.sm),
@@ -362,46 +404,29 @@ class HomeScreen extends ConsumerWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          'home.active_server_prefix'.tr(
-                            namedArgs: {'name': server.name},
-                          ),
-                          key: const ValueKey<String>(
-                            'home_active_server_name',
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontFamily: BrickTypography.primaryFontFamily,
-                            fontSize: BrickTypography.sizeBody,
-                            fontWeight: FontWeight.w700,
-                            color: colors.textPrimary,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: BrickSpacing.xs),
-                      BrickProtocolPill(
-                        label: server.protocolLabel,
-                        compact: true,
-                      ),
-                    ],
+                  Text(
+                    title,
+                    key: const ValueKey<String>('home_active_server_name'),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontFamily: BrickTypography.primaryFontFamily,
+                      fontSize: BrickTypography.sizeBody,
+                      fontWeight: FontWeight.w700,
+                      color: colors.textPrimary,
+                    ),
                   ),
                   const SizedBox(height: 4),
-                  // `protocol · host:port` is technical data: LTR island so
-                  // Persian RTL never reorders the endpoint.
-                  Directionality(
-                    textDirection: TextDirection.ltr,
-                    child: Text(
-                      '${server.protocolLabel} · ${server.endpoint}',
-                      key: const ValueKey<String>(
-                        'home_active_server_endpoint',
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: BrickTypography.monoLog(color: colors.textMuted),
+                  Text(
+                    subtitle,
+                    key: const ValueKey<String>('home_active_server_subtitle'),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontFamily: BrickTypography.primaryFontFamily,
+                      fontSize: BrickTypography.sizeLabel,
+                      fontWeight: FontWeight.w400,
+                      color: colors.textMuted,
                     ),
                   ),
                 ],
@@ -579,11 +604,11 @@ _OrbViewModel _resolveOrbViewModel({
 Future<void> _connect(
   BuildContext context,
   WidgetRef ref,
-  SavedServerProfile server,
+  ConnectionLocationTarget locationTarget,
 ) async {
   final result = await ref
       .read(connectionControllerProvider.notifier)
-      .connect(server.profile);
+      .connectForTarget(locationTarget);
   if (context.mounted && result is! VpnCommandAccepted) {
     AppFeedback.showError(context, ErrorMapper.mapToUserMessage(result));
   }

@@ -70,7 +70,7 @@ void main() {
       expect(find.text('Brick VPN'), findsOneWidget);
       expect(find.text('No saved servers yet'), findsOneWidget);
       expect(find.text('Browse Servers'), findsOneWidget);
-      expect(find.text('Choose server'), findsOneWidget);
+      expect(find.text('Select'), findsOneWidget);
       expect(
         find.text(
           'Pick a location from the Servers tab to start a secure '
@@ -282,7 +282,7 @@ void main() {
       expect(find.text('Brick VPN'), findsOneWidget);
       expect(find.text('هنوز سروری ذخیره نشده است'), findsOneWidget);
       expect(find.text('مرور سرورها'), findsOneWidget);
-      expect(find.text('انتخاب سرور'), findsOneWidget);
+      expect(find.text('انتخاب'), findsOneWidget);
       // `home.label` is translated but HomeScreen never renders it, so the
       // Persian value must be absent — this pins the assertion to the keys the
       // screen actually uses.

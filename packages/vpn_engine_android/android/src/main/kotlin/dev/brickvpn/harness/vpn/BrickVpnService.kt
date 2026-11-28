@@ -452,7 +452,9 @@ class BrickVpnService : VpnService() {
         if (isRealConfig) {
             Builder()
                 .setSession("Brick VPN")
+                .setMtu(TUN_MTU)
                 .addAddress(TUN_ADDRESS, TUN_PREFIX)
+                .addAddress(TUN_ADDRESS_V6, TUN_PREFIX_V6)
                 .addRoute("0.0.0.0", 0)
                 .addRoute("::", 0)
                 .addDnsServer("1.1.1.1")
@@ -489,7 +491,9 @@ class BrickVpnService : VpnService() {
         try {
             val builder = Builder()
                 .setSession("Brick VPN Lockdown")
+                .setMtu(TUN_MTU)
                 .addAddress(TUN_ADDRESS, TUN_PREFIX)
+                .addAddress(TUN_ADDRESS_V6, TUN_PREFIX_V6)
                 .addRoute("0.0.0.0", 0)
                 .addRoute("::", 0)
                 .addDnsServer(TUN_DNS)
@@ -584,9 +588,12 @@ class BrickVpnService : VpnService() {
         private const val TEARDOWN_POLL_MS = 10L
 
         private const val TUN_ADDRESS = "10.111.222.1"
+        private const val TUN_ADDRESS_V6 = "fdfe:dcba:9876::1"
         private const val TUN_SUBNET = "10.111.222.0"
         private const val TUN_DNS = "10.111.222.2"
         private const val TUN_PREFIX = 24
+        private const val TUN_PREFIX_V6 = 126
+        private const val TUN_MTU = 1500
 
         const val ACTION_START = "dev.brickvpn.harness.action.START"
         const val ACTION_STOP = "dev.brickvpn.harness.action.STOP"

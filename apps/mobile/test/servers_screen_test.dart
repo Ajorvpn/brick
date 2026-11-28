@@ -7,12 +7,14 @@ import 'dart:io';
 import 'package:config_parser/config_parser.dart';
 import 'package:core_domain/core_domain.dart' show ServerProfile;
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mobile/core/data/repositories/app_preferences_repository.dart';
 import 'package:mobile/features/connection/presentation/screens/add_server_screen.dart';
 import 'package:mobile/features/connection/presentation/screens/add_subscription_screen.dart';
 import 'package:mobile/features/connection/presentation/screens/home_screen.dart';
+import 'package:mobile/features/servers/presentation/providers/server_management_controller.dart';
 import 'package:mobile/features/servers/presentation/screens/servers_screen.dart';
 import 'package:mobile/main.dart';
 
@@ -45,6 +47,14 @@ class _FailingServerProfileRepository extends FakeServerProfileRepository {
 
   @override
   Future<void> save(ServerProfile profile) async {
+    throw const FileSystemException(
+      'Disk write error',
+      '/secret-storage-path/profiles.json',
+    );
+  }
+
+  @override
+  Future<void> delete(String id) async {
     throw const FileSystemException(
       'Disk write error',
       '/secret-storage-path/profiles.json',
@@ -241,36 +251,26 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        // Popped back to ServersScreen — must reactively display the new server
+        // Popped back to ServersScreen — reactively shows Smart Auto + country
         expect(find.byType(ServersScreen), findsOneWidget);
         expect(find.text('No servers added yet'), findsNothing);
+        expect(
+          find.byKey(const ValueKey<String>('server_location_auto')),
+          findsOneWidget,
+        );
         expect(
           find.byKey(const ValueKey<String>('country_group_ZZ')),
           findsOneWidget,
         );
-        final addedTile = find.byKey(
-          ValueKey<String>('server_tile_${dataSource.records.first.id}'),
-        );
-        expect(addedTile, findsOneWidget);
+        expect(find.text('Other Locations'), findsOneWidget);
+        expect(find.text('1 server'), findsAtLeast(1));
         expect(
-          find.descendant(of: addedTile, matching: find.text('Standalone1')),
-          findsOneWidget,
-        );
-        expect(
-          find.descendant(of: addedTile, matching: find.text('VLESS')),
-          findsOneWidget,
-        );
-        expect(
-          find.descendant(
-            of: addedTile,
-            matching: find.text('standalone.example.com:443'),
+          find.byKey(
+            ValueKey<String>('server_tile_${dataSource.records.first.id}'),
           ),
-          findsOneWidget,
+          findsNothing,
         );
-        expect(
-          find.descendant(of: addedTile, matching: find.text('Standalone')),
-          findsOneWidget,
-        );
+        expect(find.textContaining('standalone.example.com:443'), findsNothing);
       },
     );
 
@@ -341,33 +341,22 @@ void main() {
 
         expect(find.byType(ServersScreen), findsOneWidget);
 
-        // 1. Standalone tile verification inside the country group
+        // 1. Country card aggregates standalone + subscription nodes without
+        // exposing individual tiles or raw endpoints
         final zzGroup = find.byKey(const ValueKey<String>('country_group_ZZ'));
         expect(zzGroup, findsOneWidget);
         expect(
-          find.descendant(of: zzGroup, matching: find.text('Standalone1')),
+          find.descendant(of: zzGroup, matching: find.text('Other Locations')),
           findsOneWidget,
         );
         expect(
-          find.descendant(of: zzGroup, matching: find.text('Standalone')),
+          find.descendant(of: zzGroup, matching: find.text('3 servers')),
           findsOneWidget,
         );
+        expect(find.text('Standalone1'), findsNothing);
+        expect(find.textContaining('sub1.example.com:443'), findsNothing);
 
-        // 2. Subscription tiles plus the linked feed strip
-        expect(
-          find.descendant(
-            of: zzGroup,
-            matching: find.text('Pro Nodes Plan - sub1.example.com:443'),
-          ),
-          findsOneWidget,
-        );
-        expect(
-          find.descendant(
-            of: zzGroup,
-            matching: find.text('Pro Nodes Plan - sub2.example.com:443'),
-          ),
-          findsOneWidget,
-        );
+        // 2. Linked user subscription strip remains visible
         expect(find.text('Pro Nodes Plan'), findsAtLeast(1));
 
         // 3. Zero-secret leak guarantee: secret token and URL never rendered
@@ -406,35 +395,26 @@ void main() {
       await tester.tap(find.byKey(const ValueKey<String>('nav_tab_servers')));
       await tester.pumpAndSettle();
       expect(
-        find.descendant(
-          of: find.byKey(
-            ValueKey<String>('server_tile_${dataSource.records.first.id}'),
-          ),
-          matching: find.text('Standalone1'),
-        ),
+        find.byKey(const ValueKey<String>('country_group_ZZ')),
         findsOneWidget,
       );
 
-      // Find and tap the remove button on the server tile
+      // Delete the saved server via controller -> UI reacts cleanly
       final serverId = dataSource.records.first.id;
-      final deleteKey = ValueKey<String>('server_delete_$serverId');
-      expect(find.byKey(deleteKey), findsOneWidget);
-
-      await tester.tap(find.byKey(deleteKey));
-      await tester.pumpAndSettle();
-
-      expect(
-        find.byKey(const ValueKey<String>('confirm_delete_dialog')),
-        findsOneWidget,
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(ServersScreen)),
       );
-      await tester.tap(
-        find.byKey(const ValueKey<String>('confirm_delete_confirm')),
-      );
+      await container
+          .read(serverManagementControllerProvider.notifier)
+          .deleteServer(serverId);
       await tester.pumpAndSettle();
 
       // Reactively transitions to Empty State
       expect(find.text('No servers added yet'), findsOneWidget);
-      expect(find.text('Standalone1'), findsNothing);
+      expect(
+        find.byKey(const ValueKey<String>('country_group_ZZ')),
+        findsNothing,
+      );
     });
 
     testWidgets(
@@ -509,11 +489,19 @@ void main() {
     );
 
     testWidgets(
-      'delete confirmation dialog: cancel keeps server, confirm deletes it',
+      'delete confirmation dialog: cancel keeps entry, confirm deletes it',
       (tester) async {
         final engine = FakeVpnEngine();
         final dataSource = FakeServerProfileDataSource();
         addTearDown(engine.dispose);
+
+        dataSource.records.add(
+          SavedServerRecord(
+            id: 'broken_entry_dialog_1',
+            sourceUri: 'unsupported://bad@host:1234',
+            addedAt: DateTime.utc(2026, 11, 2),
+          ),
+        );
 
         await pumpConnectionApp(
           tester,
@@ -522,32 +510,16 @@ void main() {
           dataSource: dataSource,
         );
 
-        // Add 1 standalone server
-        unawaited(tester.element(find.byType(HomeScreen)).push('/add-server'));
-        await tester.pumpAndSettle();
-        await tester.enterText(
-          find.byKey(const ValueKey<String>('add_server_uri_field')),
-          _standaloneVless,
-        );
-        await tester.tap(
-          find.byKey(const ValueKey<String>('add_server_save_button')),
-        );
-        await tester.pumpAndSettle();
-
         await tester.tap(find.byKey(const ValueKey<String>('nav_tab_servers')));
         await tester.pumpAndSettle();
-        expect(
-          find.descendant(
-            of: find.byKey(
-              ValueKey<String>('server_tile_${dataSource.records.first.id}'),
-            ),
-            matching: find.text('Standalone1'),
-          ),
-          findsOneWidget,
-        );
 
-        final serverId = dataSource.records.first.id;
-        final deleteKey = ValueKey<String>('server_delete_$serverId');
+        const tileKey = ValueKey<String>(
+          'server_broken_tile_broken_entry_dialog_1',
+        );
+        const deleteKey = ValueKey<String>(
+          'server_delete_broken_entry_dialog_1',
+        );
+        expect(find.byKey(tileKey), findsOneWidget);
 
         // 1. Tap delete button -> dialog appears
         await tester.tap(find.byKey(deleteKey));
@@ -558,7 +530,7 @@ void main() {
         );
         expect(find.text('Delete Server'), findsOneWidget);
 
-        // 2. Tap cancel -> dialog disappears, server still exists
+        // 2. Tap cancel -> dialog disappears, broken entry still exists
         await tester.tap(
           find.byKey(const ValueKey<String>('confirm_delete_cancel')),
         );
@@ -567,293 +539,116 @@ void main() {
           find.byKey(const ValueKey<String>('confirm_delete_dialog')),
           findsNothing,
         );
-        expect(
-          find.descendant(
-            of: find.byKey(
-              ValueKey<String>('server_tile_${dataSource.records.first.id}'),
-            ),
-            matching: find.text('Standalone1'),
-          ),
-          findsOneWidget,
-        );
+        expect(find.byKey(tileKey), findsOneWidget);
 
         // 3. Tap delete again -> dialog appears
         await tester.tap(find.byKey(deleteKey));
         await tester.pumpAndSettle();
 
-        // 4. Tap confirm -> server deleted -> empty state
+        // 4. Tap confirm -> deleted -> empty state
         await tester.tap(
           find.byKey(const ValueKey<String>('confirm_delete_confirm')),
         );
         await tester.pumpAndSettle();
         expect(find.text('No servers added yet'), findsOneWidget);
-        expect(find.text('Standalone1'), findsNothing);
+        expect(find.byKey(tileKey), findsNothing);
       },
     );
 
-    testWidgets(
-      'edit standalone server: updates name & URI reactively; validates URI '
-      'error without closing; subscription servers lack edit button',
-      (tester) async {
-        final engine = FakeVpnEngine();
-        final dataSource = FakeServerProfileDataSource();
-        addTearDown(engine.dispose);
+    testWidgets('country-only cards omit per-node edit/duplicate clutter while controller '
+        'mutations update counts reactively', (tester) async {
+      final engine = FakeVpnEngine();
+      final dataSource = FakeServerProfileDataSource();
+      addTearDown(engine.dispose);
 
-        final fetcher = SubscriptionFetcher(
-          transport: _FakeSubscriptionTransport(
-            handler: (uri, headers) async {
-              return TransportResponse(
-                statusCode: HttpStatus.ok,
-                headers: const {},
-                body: Stream.value(utf8.encode(_subVless1)),
-              );
-            },
-          ),
-        );
+      final fetcher = SubscriptionFetcher(
+        transport: _FakeSubscriptionTransport(
+          handler: (uri, headers) async {
+            return TransportResponse(
+              statusCode: HttpStatus.ok,
+              headers: const {},
+              body: Stream.value(utf8.encode(_subVless1)),
+            );
+          },
+        ),
+      );
 
-        await pumpConnectionApp(
-          tester,
-          const MyApp(),
-          engine: engine,
-          dataSource: dataSource,
-          subscriptionFetcher: fetcher,
-        );
+      await pumpConnectionApp(
+        tester,
+        const MyApp(),
+        engine: engine,
+        dataSource: dataSource,
+        subscriptionFetcher: fetcher,
+      );
 
-        // Add 1 standalone server
-        unawaited(tester.element(find.byType(HomeScreen)).push('/add-server'));
-        await tester.pumpAndSettle();
-        await tester.enterText(
-          find.byKey(const ValueKey<String>('add_server_uri_field')),
-          _standaloneVless,
-        );
-        await tester.tap(
-          find.byKey(const ValueKey<String>('add_server_save_button')),
-        );
-        await tester.pumpAndSettle();
+      // Add 1 standalone server
+      unawaited(tester.element(find.byType(HomeScreen)).push('/add-server'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('add_server_uri_field')),
+        _standaloneVless,
+      );
+      await tester.tap(
+        find.byKey(const ValueKey<String>('add_server_save_button')),
+      );
+      await tester.pumpAndSettle();
 
-        // Add 1 subscription
-        unawaited(
-          tester.element(find.byType(HomeScreen)).push('/add-subscription'),
-        );
-        await tester.pumpAndSettle();
-        await tester.enterText(
-          find.byKey(const ValueKey<String>('add_subscription_url_field')),
-          'https://sub.example.com/feed',
-        );
-        await tester.enterText(
-          find.byKey(const ValueKey<String>('add_subscription_name_field')),
-          'SubGroup',
-        );
-        await tester.tap(
-          find.byKey(const ValueKey<String>('add_subscription_import_button')),
-        );
-        await tester.pumpAndSettle();
+      // Add 1 subscription
+      unawaited(
+        tester.element(find.byType(HomeScreen)).push('/add-subscription'),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('add_subscription_url_field')),
+        'https://sub.example.com/feed',
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('add_subscription_name_field')),
+        'SubGroup',
+      );
+      await tester.tap(
+        find.byKey(const ValueKey<String>('add_subscription_import_button')),
+      );
+      await tester.pumpAndSettle();
 
-        // Go to Servers screen
-        await tester.tap(find.byKey(const ValueKey<String>('nav_tab_servers')));
-        await tester.pumpAndSettle();
-        // Let the import success snackbar expire before tapping tile actions
-        await tester.pump(const Duration(seconds: 5));
-        await tester.pumpAndSettle();
+      // Go to Servers screen
+      await tester.tap(find.byKey(const ValueKey<String>('nav_tab_servers')));
+      await tester.pumpAndSettle();
+      // Let the import success snackbar expire
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
 
-        final standaloneId = dataSource.records.first.id;
-        final subServerId = dataSource.savedProfiles.first.id;
+      final standaloneId = dataSource.records.first.id;
+      final subServerId = dataSource.savedProfiles.first.id;
 
-        // 1. Verify subscription server does NOT have an edit button
-        expect(
-          find.byKey(ValueKey<String>('server_edit_$subServerId')),
-          findsNothing,
-        );
+      // Per-node Edit/Duplicate buttons stay absent on Country-Only UI.
+      expect(
+        find.byKey(ValueKey<String>('server_edit_$subServerId')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(ValueKey<String>('server_edit_$standaloneId')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(ValueKey<String>('server_duplicate_$subServerId')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('country_group_ZZ')),
+        findsOneWidget,
+      );
+      expect(find.text('2 servers'), findsOneWidget);
 
-        // 2. Standalone server DOES have an edit button
-        final editButton = find.byKey(
-          ValueKey<String>('server_edit_$standaloneId'),
-        );
-        expect(editButton, findsOneWidget);
-
-        // 3. Tap Edit button -> Edit dialog opens
-        await tester.tap(editButton);
-        await tester.pumpAndSettle();
-
-        expect(
-          find.byKey(const ValueKey<String>('edit_server_dialog')),
-          findsOneWidget,
-        );
-        expect(find.text('Edit Server'), findsOneWidget);
-
-        // 4. Test validation: enter empty name -> error, dialog remains open
-        await tester.enterText(
-          find.byKey(const ValueKey<String>('edit_server_name_field')),
-          '   ',
-        );
-        await tester.tap(
-          find.byKey(const ValueKey<String>('edit_server_save')),
-        );
-        await tester.pumpAndSettle();
-        expect(
-          find.byKey(const ValueKey<String>('edit_server_dialog')),
-          findsOneWidget,
-        );
-        expect(
-          find.descendant(
-            of: find.byKey(const ValueKey<String>('edit_server_dialog')),
-            matching: find.text('Server name cannot be empty'),
-          ),
-          findsOneWidget,
-        );
-
-        // 5. Test validation: enter invalid replacement URI -> error shown
-        await tester.enterText(
-          find.byKey(const ValueKey<String>('edit_server_name_field')),
-          'Renamed Standalone',
-        );
-        await tester.enterText(
-          find.byKey(const ValueKey<String>('edit_server_uri_field')),
-          'badprotocol://invalid-uri',
-        );
-        await tester.tap(
-          find.byKey(const ValueKey<String>('edit_server_save')),
-        );
-        await tester.pumpAndSettle();
-        expect(
-          find.byKey(const ValueKey<String>('edit_server_dialog')),
-          findsOneWidget,
-        );
-        expect(find.byType(SnackBar), findsOneWidget);
-
-        // Dismiss SnackBar
-        tester.binding.scheduleFrame();
-        await tester.pump(const Duration(seconds: 5));
-
-        // 6. Test success: enter valid replacement URI (Trojan) & valid name
-        const replacementTrojan =
-            'trojan://newpassword@newtrojan.example.com:443#Renamed Standalone';
-        await tester.enterText(
-          find.byKey(const ValueKey<String>('edit_server_uri_field')),
-          replacementTrojan,
-        );
-        await tester.tap(
-          find.byKey(const ValueKey<String>('edit_server_save')),
-        );
-        await tester.pumpAndSettle();
-
-        // Dialog should be dismissed
-        expect(
-          find.byKey(const ValueKey<String>('edit_server_dialog')),
-          findsNothing,
-        );
-
-        // Tile reactively reflects updated name and new protocol
-        final editedTile = find.byKey(
-          ValueKey<String>('server_tile_$standaloneId'),
-        );
-        expect(
-          find.descendant(
-            of: editedTile,
-            matching: find.text('Renamed Standalone'),
-          ),
-          findsOneWidget,
-        );
-        expect(
-          find.descendant(of: editedTile, matching: find.text('TROJAN')),
-          findsOneWidget,
-        );
-        expect(
-          find.descendant(
-            of: editedTile,
-            matching: find.text('newtrojan.example.com:443'),
-          ),
-          findsOneWidget,
-        );
-      },
-    );
-
-    testWidgets(
-      'duplicate server: creates independent standalone copy for both '
-      'standalone and subscription servers',
-      (tester) async {
-        final engine = FakeVpnEngine();
-        final dataSource = FakeServerProfileDataSource();
-        addTearDown(engine.dispose);
-
-        final fetcher = SubscriptionFetcher(
-          transport: _FakeSubscriptionTransport(
-            handler: (uri, headers) async {
-              return TransportResponse(
-                statusCode: HttpStatus.ok,
-                headers: const {},
-                body: Stream.value(utf8.encode(_subVless1)),
-              );
-            },
-          ),
-        );
-
-        await pumpConnectionApp(
-          tester,
-          const MyApp(),
-          engine: engine,
-          dataSource: dataSource,
-          subscriptionFetcher: fetcher,
-        );
-
-        // Import 1 subscription
-        unawaited(
-          tester.element(find.byType(HomeScreen)).push('/add-subscription'),
-        );
-        await tester.pumpAndSettle();
-        await tester.enterText(
-          find.byKey(const ValueKey<String>('add_subscription_url_field')),
-          'https://sub.example.com/feed',
-        );
-        await tester.enterText(
-          find.byKey(const ValueKey<String>('add_subscription_name_field')),
-          'SubGroup',
-        );
-        await tester.tap(
-          find.byKey(const ValueKey<String>('add_subscription_import_button')),
-        );
-        await tester.pumpAndSettle();
-
-        // Switch to Servers screen
-        await tester.tap(find.byKey(const ValueKey<String>('nav_tab_servers')));
-        await tester.pumpAndSettle();
-        // Let the import success snackbar expire before tapping tile actions
-        await tester.pump(const Duration(seconds: 5));
-        await tester.pumpAndSettle();
-
-        expect(find.text('Standalone'), findsNothing);
-        expect(find.text('SubGroup'), findsAtLeast(1));
-
-        final subServerId = dataSource.savedProfiles.first.id;
-
-        // Duplicate subscription server
-        final duplicateButton = find.byKey(
-          ValueKey<String>('server_duplicate_$subServerId'),
-        );
-        expect(duplicateButton, findsOneWidget);
-        await tester.tap(duplicateButton);
-        await tester.pumpAndSettle();
-
-        // The duplicated standalone server now appears alongside the feed one
-        expect(find.text('Standalone'), findsOneWidget);
-        expect(
-          find.byKey(const ValueKey<String>('country_group_ZZ')),
-          findsOneWidget,
-        );
-        expect(
-          find.text('SubGroup - sub1.example.com:443 (Copy)'),
-          findsOneWidget,
-        );
-        // Original subscription server still exists in its group
-        expect(
-          find.descendant(
-            of: find.byKey(ValueKey<String>('server_tile_$subServerId')),
-            matching: find.text('SubGroup - sub1.example.com:443'),
-          ),
-          findsOneWidget,
-        );
-      },
-    );
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(ServersScreen)),
+      );
+      await container
+          .read(serverManagementControllerProvider.notifier)
+          .duplicateServer(dataSource.savedProfiles.first);
+      await tester.pumpAndSettle();
+      expect(find.text('3 servers'), findsOneWidget);
+    });
 
     testWidgets(
       'subscription refresh: updates servers on success; preserves existing '
@@ -913,14 +708,10 @@ void main() {
         final subId = dataSource.subscriptions.first.id;
         final refreshKey = ValueKey<String>('subscription_refresh_$subId');
         expect(find.byKey(refreshKey), findsOneWidget);
-        final planAlphaTile = find.byKey(
-          ValueKey<String>('server_tile_${dataSource.savedProfiles.first.id}'),
-        );
+        final zzGroup = find.byKey(const ValueKey<String>('country_group_ZZ'));
+        expect(zzGroup, findsOneWidget);
         expect(
-          find.descendant(
-            of: planAlphaTile,
-            matching: find.text('Plan Alpha - sub1.example.com:443'),
-          ),
+          find.descendant(of: zzGroup, matching: find.text('1 server')),
           findsOneWidget,
         );
 
@@ -929,13 +720,10 @@ void main() {
         await tester.tap(find.byKey(refreshKey));
         await tester.pumpAndSettle();
 
-        // Error feedback displayed and existing server preserved untouched!
+        // Error feedback displayed and existing server count preserved!
         expect(find.byType(SnackBar), findsOneWidget);
         expect(
-          find.descendant(
-            of: planAlphaTile,
-            matching: find.text('Plan Alpha - sub1.example.com:443'),
-          ),
+          find.descendant(of: zzGroup, matching: find.text('1 server')),
           findsOneWidget,
         );
 
@@ -943,28 +731,18 @@ void main() {
         tester.binding.scheduleFrame();
         await tester.pump(const Duration(seconds: 5));
 
-        // 2. Simulate successful refresh with new server list (_subVless2)
+        // 2. Simulate successful refresh with new server list
         simulateNetworkError = false;
-        fetchedPayload = _subVless2;
+        fetchedPayload = '$_subVless1\n$_subVless2';
 
         await tester.tap(find.byKey(refreshKey));
         await tester.pumpAndSettle();
 
-        // Success SnackBar displayed
+        // Success SnackBar displayed and country count updated cleanly
         expect(find.byType(SnackBar), findsOneWidget);
-        expect(find.text('Successfully imported 1 servers'), findsOneWidget);
-
-        // Old server sub1 replaced by new server sub2!
-        expect(find.text('Plan Alpha - sub1.example.com:443'), findsNothing);
+        expect(find.text('Successfully imported 2 servers'), findsOneWidget);
         expect(
-          find.descendant(
-            of: find.byKey(
-              ValueKey<String>(
-                'server_tile_${dataSource.savedProfiles.first.id}',
-              ),
-            ),
-            matching: find.text('Plan Alpha - sub2.example.com:443'),
-          ),
+          find.descendant(of: zzGroup, matching: find.text('2 servers')),
           findsOneWidget,
         );
       },
@@ -1020,25 +798,11 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(find.text('Cascade Plan'), findsAtLeast(1));
-        final cascadeSub1Tile = find.byKey(
-          ValueKey<String>('server_tile_${dataSource.savedProfiles[0].id}'),
-        );
         expect(
-          find.descendant(
-            of: cascadeSub1Tile,
-            matching: find.text('Cascade Plan - sub1.example.com:443'),
-          ),
+          find.byKey(const ValueKey<String>('country_group_ZZ')),
           findsOneWidget,
         );
-        expect(
-          find.descendant(
-            of: find.byKey(
-              ValueKey<String>('server_tile_${dataSource.savedProfiles[1].id}'),
-            ),
-            matching: find.text('Cascade Plan - sub2.example.com:443'),
-          ),
-          findsOneWidget,
-        );
+        expect(find.text('2 servers'), findsOneWidget);
 
         final subId = dataSource.subscriptions.first.id;
         final deleteSubKey = ValueKey<String>('subscription_delete_$subId');
@@ -1062,8 +826,10 @@ void main() {
         // Subscription and all associated servers removed -> empty state
         expect(find.text('No servers added yet'), findsOneWidget);
         expect(find.text('Cascade Plan'), findsNothing);
-        expect(find.text('Cascade Plan - sub1.example.com:443'), findsNothing);
-        expect(find.text('Cascade Plan - sub2.example.com:443'), findsNothing);
+        expect(
+          find.byKey(const ValueKey<String>('country_group_ZZ')),
+          findsNothing,
+        );
       },
     );
 
@@ -1099,15 +865,18 @@ void main() {
         await tester.pumpAndSettle();
 
         final originalId = dataSource.records.first.id;
-        final duplicateButton = find.byKey(
-          ValueKey<String>('server_duplicate_$originalId'),
+        final repo = buildRepository(dataSource);
+        final originalProfile = (await repo.getAll()).single;
+        final container = ProviderScope.containerOf(
+          tester.element(find.byType(ServersScreen)),
         );
-        expect(duplicateButton, findsOneWidget);
+        final mgmt = container.read(
+          serverManagementControllerProvider.notifier,
+        );
 
-        // Duplicate twice rapidly
-        await tester.tap(duplicateButton);
-        await tester.pumpAndSettle();
-        await tester.tap(duplicateButton);
+        // Duplicate twice rapidly via controller
+        await mgmt.duplicateServer(originalProfile);
+        await mgmt.duplicateServer(originalProfile);
         await tester.pumpAndSettle();
 
         // Expect 2 saved duplicated profiles in dataSource.savedProfiles
@@ -1122,7 +891,7 @@ void main() {
           dataSource.savedProfiles[0].id,
           isNot(equals(dataSource.savedProfiles[1].id)),
         );
-        expect(find.text('Standalone1 (Copy)'), findsNWidgets(2));
+        expect(find.text('3 servers'), findsOneWidget);
       },
     );
 
@@ -1135,6 +904,14 @@ void main() {
         final failingRepo = _FailingServerProfileRepository(dataSource);
         addTearDown(engine.dispose);
 
+        dataSource.records.add(
+          SavedServerRecord(
+            id: 'broken_redaction_1',
+            sourceUri: 'unsupported://bad@host:1234',
+            addedAt: DateTime.utc(2026, 11, 2),
+          ),
+        );
+
         await pumpConnectionApp(
           tester,
           const MyApp(),
@@ -1143,35 +920,19 @@ void main() {
           repository: failingRepo,
         );
 
-        // Add 1 standalone server
-        unawaited(tester.element(find.byType(HomeScreen)).push('/add-server'));
-        await tester.pumpAndSettle();
-        await tester.enterText(
-          find.byKey(const ValueKey<String>('add_server_uri_field')),
-          _standaloneVless,
-        );
-        await tester.tap(
-          find.byKey(const ValueKey<String>('add_server_save_button')),
-        );
-        await tester.pumpAndSettle();
-
         // Switch to Servers screen
         await tester.tap(find.byKey(const ValueKey<String>('nav_tab_servers')));
         await tester.pumpAndSettle();
 
-        final serverId = dataSource.records.first.id;
-
-        // Open Edit Dialog
-        await tester.tap(find.byKey(ValueKey<String>('server_edit_$serverId')));
-        await tester.pumpAndSettle();
-
-        // Change name and attempt to save (triggers repo.save which throws)
-        await tester.enterText(
-          find.byKey(const ValueKey<String>('edit_server_name_field')),
-          'RenamedServer',
-        );
+        // Trigger repository FileSystemException via broken tile delete action
         await tester.tap(
-          find.byKey(const ValueKey<String>('edit_server_save')),
+          find.byKey(
+            const ValueKey<String>('server_delete_broken_redaction_1'),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.byKey(const ValueKey<String>('confirm_delete_confirm')),
         );
         await tester.pumpAndSettle();
 
@@ -1189,7 +950,7 @@ void main() {
     );
 
     testWidgets(
-      'default auto-fallback selection: marks first valid server as selected',
+      'default auto-fallback selection: marks Smart Auto active by default',
       (tester) async {
         final engine = FakeVpnEngine();
         final dataSource = FakeServerProfileDataSource();
@@ -1202,46 +963,34 @@ void main() {
           dataSource: dataSource,
         );
 
-        // Add server 1
         unawaited(tester.element(find.byType(HomeScreen)).push('/add-server'));
         await tester.pumpAndSettle();
         await tester.enterText(
           find.byKey(const ValueKey<String>('add_server_uri_field')),
-          _standaloneVless,
+          'vless://$_uuid@uk.example.com:443?security=none#United%20Kingdom%2001',
         );
         await tester.tap(
           find.byKey(const ValueKey<String>('add_server_save_button')),
         );
         await tester.pumpAndSettle();
 
-        // Switch to Servers screen
         await tester.tap(find.byKey(const ValueKey<String>('nav_tab_servers')));
         await tester.pumpAndSettle();
 
-        final srv1Id = dataSource.records.first.id;
-
-        // Duplicate srv1 to create srv2
-        await tester.tap(
-          find.byKey(ValueKey<String>('server_duplicate_$srv1Id')),
-        );
-        await tester.pumpAndSettle();
-
-        final srv2Id = dataSource.savedProfiles.first.id;
-
-        // Without explicit selection, first server is auto-selected
+        // Without explicit selection, Smart Auto is active by default.
         expect(
-          find.byKey(ValueKey<String>('server_selected_$srv1Id')),
+          find.byKey(const ValueKey<String>('server_location_auto_selected')),
           findsOneWidget,
         );
         expect(
-          find.byKey(ValueKey<String>('server_selected_$srv2Id')),
+          find.byKey(const ValueKey<String>('country_selected_GB')),
           findsNothing,
         );
       },
     );
 
     testWidgets(
-      'tapping a server tile changes active selection and persists to prefs',
+      'tapping a country card changes active selection and persists to prefs',
       (tester) async {
         final engine = FakeVpnEngine();
         final dataSource = FakeServerProfileDataSource();
@@ -1256,52 +1005,39 @@ void main() {
           preferencesRepository: fakePrefs,
         );
 
-        // Add server 1
         unawaited(tester.element(find.byType(HomeScreen)).push('/add-server'));
         await tester.pumpAndSettle();
         await tester.enterText(
           find.byKey(const ValueKey<String>('add_server_uri_field')),
-          _standaloneVless,
+          'vless://$_uuid@uk.example.com:443?security=none#United%20Kingdom%2001',
         );
         await tester.tap(
           find.byKey(const ValueKey<String>('add_server_save_button')),
         );
         await tester.pumpAndSettle();
 
-        // Switch to Servers screen
         await tester.tap(find.byKey(const ValueKey<String>('nav_tab_servers')));
         await tester.pumpAndSettle();
 
-        final srv1Id = dataSource.records.first.id;
-
-        // Duplicate to create server 2
         await tester.tap(
-          find.byKey(ValueKey<String>('server_duplicate_$srv1Id')),
+          find.byKey(const ValueKey<String>('country_header_GB')),
         );
         await tester.pumpAndSettle();
 
-        final srv2Id = dataSource.savedProfiles.first.id;
-
-        // Tap server 2 tile to select it
-        await tester.tap(find.byKey(ValueKey<String>('server_tile_$srv2Id')));
-        await tester.pumpAndSettle();
-
-        // Selection moves to server 2
         expect(
-          find.byKey(ValueKey<String>('server_selected_$srv2Id')),
+          find.byKey(const ValueKey<String>('country_selected_GB')),
           findsOneWidget,
         );
         expect(
-          find.byKey(ValueKey<String>('server_selected_$srv1Id')),
+          find.byKey(const ValueKey<String>('server_location_auto_selected')),
           findsNothing,
         );
-        // Persisted in preferences
-        expect(fakePrefs.getActiveServerId(), equals(srv2Id));
+        expect(fakePrefs.getSelectedLocation(), equals('country:GB'));
       },
     );
 
     testWidgets(
-      'deleting active server falls back to remaining valid server cleanly',
+      'deleting all servers cleanly restores empty state without crash',
       (tester) async {
         final engine = FakeVpnEngine();
         final dataSource = FakeServerProfileDataSource();
@@ -1316,7 +1052,6 @@ void main() {
           preferencesRepository: fakePrefs,
         );
 
-        // Add server 1
         unawaited(tester.element(find.byType(HomeScreen)).push('/add-server'));
         await tester.pumpAndSettle();
         await tester.enterText(
@@ -1328,63 +1063,33 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        // Switch to Servers screen
         await tester.tap(find.byKey(const ValueKey<String>('nav_tab_servers')));
         await tester.pumpAndSettle();
 
-        final srv1Id = dataSource.records.first.id;
-
-        // Duplicate to create server 2
         await tester.tap(
-          find.byKey(ValueKey<String>('server_duplicate_$srv1Id')),
+          find.byKey(const ValueKey<String>('country_header_ZZ')),
         );
         await tester.pumpAndSettle();
-
-        final srv2Id = dataSource.savedProfiles.first.id;
-
-        // Select server 2
-        await tester.tap(find.byKey(ValueKey<String>('server_tile_$srv2Id')));
-        await tester.pumpAndSettle();
         expect(
-          find.byKey(ValueKey<String>('server_selected_$srv2Id')),
+          find.byKey(const ValueKey<String>('country_selected_ZZ')),
           findsOneWidget,
         );
 
-        // Delete active server 2
-        await tester.tap(find.byKey(ValueKey<String>('server_delete_$srv2Id')));
-        await tester.pumpAndSettle();
-        await tester.tap(
-          find.byKey(const ValueKey<String>('confirm_delete_confirm')),
+        final container = ProviderScope.containerOf(
+          tester.element(find.byType(ServersScreen)),
         );
-        await tester.pumpAndSettle();
-
-        // Server 2 removed; auto-falls back to server 1
-        expect(
-          find.byKey(ValueKey<String>('server_tile_$srv2Id')),
-          findsNothing,
-        );
-        expect(
-          find.byKey(ValueKey<String>('server_selected_$srv1Id')),
-          findsOneWidget,
-        );
-
-        // Delete server 1 as well
-        await tester.tap(find.byKey(ValueKey<String>('server_delete_$srv1Id')));
-        await tester.pumpAndSettle();
-        await tester.tap(
-          find.byKey(const ValueKey<String>('confirm_delete_confirm')),
-        );
+        await container
+            .read(serverManagementControllerProvider.notifier)
+            .deleteServer(dataSource.records.first.id);
         await tester.pumpAndSettle();
 
-        // Clean empty state with zero active selection and no crash
         expect(find.text('No servers added yet'), findsOneWidget);
         expect(find.byIcon(Icons.check_circle), findsNothing);
       },
     );
 
     testWidgets(
-      'end-to-end: selecting server in ServersScreen and connecting on Home '
-      'starts engine with that exact profile',
+      'end-to-end: selecting country in ServersScreen connects that country',
       (tester) async {
         final engine = FakeVpnEngine();
         final dataSource = FakeServerProfileDataSource();
@@ -1397,42 +1102,43 @@ void main() {
           dataSource: dataSource,
         );
 
-        // Add server 1
+        // Add Germany + United Kingdom standalone servers
         unawaited(tester.element(find.byType(HomeScreen)).push('/add-server'));
         await tester.pumpAndSettle();
         await tester.enterText(
           find.byKey(const ValueKey<String>('add_server_uri_field')),
-          _standaloneVless,
+          'vless://$_uuid@de.example.com:443?security=none#Germany%2001',
         );
         await tester.tap(
           find.byKey(const ValueKey<String>('add_server_save_button')),
         );
         await tester.pumpAndSettle();
 
-        // Switch to Servers screen
-        await tester.tap(find.byKey(const ValueKey<String>('nav_tab_servers')));
+        unawaited(tester.element(find.byType(HomeScreen)).push('/add-server'));
         await tester.pumpAndSettle();
-
-        final srv1Id = dataSource.records.first.id;
-
-        // Duplicate to create server 2
+        await tester.enterText(
+          find.byKey(const ValueKey<String>('add_server_uri_field')),
+          'vless://$_uuid@uk.example.com:443?security=none#United%20Kingdom%2001',
+        );
         await tester.tap(
-          find.byKey(ValueKey<String>('server_duplicate_$srv1Id')),
+          find.byKey(const ValueKey<String>('add_server_save_button')),
         );
         await tester.pumpAndSettle();
 
-        final srv2Id = dataSource.savedProfiles.first.id;
-
-        // Select server 2 ('Standalone1 (Copy)')
-        await tester.tap(find.byKey(ValueKey<String>('server_tile_$srv2Id')));
+        // Switch to Servers screen and select United Kingdom
+        await tester.tap(find.byKey(const ValueKey<String>('nav_tab_servers')));
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.byKey(const ValueKey<String>('country_header_GB')),
+        );
         await tester.pumpAndSettle();
 
         // Switch to Home screen
         await tester.tap(find.byKey(const ValueKey<String>('nav_tab_home')));
         await tester.pumpAndSettle();
 
-        // Active server card shows server 2
-        expect(find.text('Active: Standalone1 (Copy)'), findsOneWidget);
+        expect(find.text('United Kingdom'), findsOneWidget);
+        expect(find.text('Auto-selected · 1 server'), findsOneWidget);
 
         // Tap the dashboard orb
         await tester.tap(
@@ -1441,9 +1147,9 @@ void main() {
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 400));
 
-        // Engine starts with server 2's profile
+        // Engine starts with the United Kingdom profile
         expect(engine.startCalls, hasLength(1));
-        expect(engine.startCalls.single.name, equals('Standalone1 (Copy)'));
+        expect(engine.startCalls.single.name, equals('United Kingdom 01'));
       },
     );
   });

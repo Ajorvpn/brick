@@ -226,8 +226,8 @@ void main() {
         await tester.tap(find.byType(BackButton));
         await tester.pumpAndSettle();
         expect(find.byType(HomeScreen), findsOneWidget);
-        // The dashboard names the active server in its selector card.
-        expect(find.textContaining('VLESSRealityNode'), findsWidgets);
+        // The dashboard displays the active location cleanly.
+        expect(find.textContaining('Smart Auto'), findsWidgets);
 
         // =====================================================================
         // STAGE B: P8-T1 Field-Level Encrypted Storage at Rest & Sanitization

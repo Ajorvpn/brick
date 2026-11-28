@@ -2,8 +2,7 @@
 
 import 'dart:async';
 
-import 'package:core_domain/core_domain.dart'
-    show Connected, Connecting, ServerProfile;
+import 'package:core_domain/core_domain.dart' show Connected, Connecting;
 import 'package:core_vpn_engine/core_vpn_engine.dart' show VpnCommandAccepted;
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
@@ -12,6 +11,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobile/core/presentation/utils/app_feedback.dart';
 import 'package:mobile/core/presentation/utils/error_mapper.dart';
 import 'package:mobile/core/providers/app_preferences_provider.dart';
+import 'package:mobile/features/connection/domain/entities/connection_location_target.dart';
 import 'package:mobile/features/connection/domain/entities/saved_server.dart';
 import 'package:mobile/features/connection/presentation/providers/active_server_provider.dart';
 import 'package:mobile/features/connection/presentation/providers/auto_reconnect_provider.dart';
@@ -24,24 +24,25 @@ import 'package:mobile/features/servers/domain/models/server_location_group.dart
 import 'package:mobile/features/servers/presentation/providers/built_in_directory_sync_provider.dart';
 import 'package:mobile/features/servers/presentation/providers/server_list_provider.dart';
 import 'package:mobile/features/servers/presentation/providers/server_management_controller.dart';
-import 'package:mobile/features/servers/presentation/widgets/server_profile_tile.dart';
+import 'package:mobile/features/servers/presentation/widgets/server_profile_tile.dart'
+    show BrokenServerTile;
 import 'package:mobile/features/servers/presentation/widgets/update_servers_disclosure_sheet.dart';
 import 'package:shared_utils/shared_utils.dart' show Err, Ok;
 import 'package:ui_theme/ui_theme.dart';
 
-/// Screen displaying the user's saved and subscription-sourced servers.
+/// Screen showing high-level VPN location selection (`Smart Auto` + countries).
 ///
-/// Obsidian Glass hierarchical browser:
-/// 1. Reactive Riverpod integration via [groupedServerListProvider].
+/// Obsidian Glass consumer selector:
+/// 1. Reactive Riverpod integration via [groupedServerListProvider] and
+///    [resolvedLocationTargetProvider].
 /// 2. Custom obsidian header bar with a play-compliant `Update Servers`
 ///    action (disclosure sheet when no subscription feed exists).
-/// 3. Instant search across country, city, protocol, and endpoint.
-/// 4. Active server spotlight card.
+/// 3. Instant search across `Smart Auto` and country names/codes.
+/// 4. Active location spotlight card.
 /// 5. Linked subscription feed strip with refresh and cascade-delete actions.
-/// 6. `Country -> City/State -> Servers` accordion with smart expansion.
+/// 6. Top hero `Smart Auto` card + flat country-only cards (each backed by a
+///    scoped `sing-box` `urltest` pool).
 /// 7. Safe broken-server recovery section without credential leakage.
-/// 8. Server actions: Edit (standalone only), Duplicate, and Delete with
-///    confirmation dialog.
 class ServersScreen extends ConsumerStatefulWidget {
   /// Creates the servers screen.
   const ServersScreen({super.key});
@@ -53,8 +54,6 @@ class ServersScreen extends ConsumerStatefulWidget {
 class _ServersScreenState extends ConsumerState<ServersScreen> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
-  final Set<String> _expandedCountryCodes = <String>{};
-  bool _initializedExpansion = false;
 
   @override
   void dispose() {
@@ -504,7 +503,7 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
   // ---------------------------------------------------------------------------
 
   Widget _buildPopulatedBrowser(BuildContext context, GroupedServerList data) {
-    final activeServer = ref.watch(activeServerProvider);
+    final locationTarget = ref.watch(resolvedLocationTargetProvider);
     final connectionState = ref.watch(connectionStateProvider).value;
     final isConnected = connectionState is Connected;
 
@@ -513,13 +512,6 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
       for (final servers in data.subscriptionGroups.values) ...servers,
     ];
 
-    final sourceLabels = <String, String>{
-      for (final server in data.standalone)
-        server.id: 'servers.standalone_badge'.tr(),
-      for (final entry in data.subscriptionGroups.entries)
-        for (final server in entry.value) server.id: entry.key.name,
-    };
-
     // The official directory has its own sync path (mirror failover, throttle
     // and acceptance disclosure) and must never be presented as a user-owned
     // feed with its own refresh and delete actions.
@@ -527,18 +519,29 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
         .where((entry) => entry.key.id != kBuiltInDirectorySubscriptionId)
         .toList(growable: false);
 
-    final standaloneIds = <String>{
-      for (final server in data.standalone) server.id,
-    };
+    final allCountryGroups = ServerLocationGrouper.group(allValidServers);
+    final query = _searchQuery.trim().toLowerCase();
+    final isSearching = query.isNotEmpty;
 
-    final countryGroups = ServerLocationGrouper.group(
-      allValidServers,
-      searchQuery: _searchQuery,
-    );
+    final filteredCountryGroups = isSearching
+        ? allCountryGroups
+              .where((group) {
+                final displayName =
+                    group.countryCode == ServerLocationParser.unknownCountryCode
+                    ? 'servers.other_locations'.tr().toLowerCase()
+                    : group.countryName.toLowerCase();
+                final codeMatch =
+                    group.countryCode !=
+                        ServerLocationParser.unknownCountryCode &&
+                    group.countryCode.toLowerCase().contains(query);
+                return displayName.contains(query) || codeMatch;
+              })
+              .toList(growable: false)
+        : allCountryGroups;
 
-    _initializeExpansion(activeServer, countryGroups);
-
-    final isSearching = _searchQuery.trim().isNotEmpty;
+    final showSmartAuto =
+        allValidServers.isNotEmpty &&
+        (!isSearching || _matchesSmartAutoQuery(query));
 
     return Center(
       child: ConstrainedBox(
@@ -556,29 +559,44 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
           ),
           children: [
             _buildSearchField(context),
-            if (activeServer != null && !isSearching) ...[
+            if (allValidServers.isNotEmpty && !isSearching) ...[
               const SizedBox(height: BrickSpacing.sm),
-              _buildActiveSpotlight(context, activeServer, isConnected),
+              _buildActiveSpotlight(
+                context,
+                locationTarget,
+                allCountryGroups,
+                isConnected,
+              ),
             ],
             if (userSubscriptions.isNotEmpty) ...[
               const SizedBox(height: BrickSpacing.sm),
               _buildSubscriptionFeeds(context, userSubscriptions),
             ],
             const SizedBox(height: BrickSpacing.sm),
-            if (isSearching && countryGroups.isEmpty)
+            if (isSearching && !showSmartAuto && filteredCountryGroups.isEmpty)
               _buildNoMatchesState(context)
-            else
-              for (final group in countryGroups) ...[
-                _buildCountryGroupCard(
+            else ...[
+              if (showSmartAuto) ...[
+                _buildSmartAutoCard(
                   context,
-                  group,
-                  activeServer: activeServer,
-                  forcedExpanded: isSearching,
-                  sourceLabels: sourceLabels,
-                  standaloneIds: standaloneIds,
+                  countryCount: allCountryGroups.length,
+                  isSelected: locationTarget is SmartAutoTarget,
+                  isConnected: isConnected,
                 ),
                 const SizedBox(height: BrickSpacing.xs),
               ],
+              for (final group in filteredCountryGroups) ...[
+                _buildCountryGroupCard(
+                  context,
+                  group,
+                  isSelected:
+                      locationTarget is CountryTarget &&
+                      locationTarget.countryCode == group.countryCode,
+                  isConnected: isConnected,
+                ),
+                const SizedBox(height: BrickSpacing.xs),
+              ],
+            ],
             if (data.broken.isNotEmpty && !isSearching) ...[
               const SizedBox(height: BrickSpacing.md),
               BrickSectionHeader(
@@ -604,26 +622,14 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
     );
   }
 
-  void _initializeExpansion(
-    SavedServerProfile? activeServer,
-    List<CountryLocationGroup> countryGroups,
-  ) {
-    if (_initializedExpansion || countryGroups.isEmpty) return;
-
-    _initializedExpansion = true;
-    _expandedCountryCodes.clear();
-
-    final expandAll = countryGroups.length <= 3;
-    for (final group in countryGroups) {
-      final containsActive =
-          activeServer != null &&
-          group.cities.any(
-            (city) => city.servers.any((s) => s.id == activeServer.id),
-          );
-      if (expandAll || containsActive) {
-        _expandedCountryCodes.add(group.countryCode);
-      }
-    }
+  static bool _matchesSmartAutoQuery(String normalizedQuery) {
+    final localizedTitle = 'servers.smart_auto_title'.tr().toLowerCase();
+    return localizedTitle.contains(normalizedQuery) ||
+        'smart auto'.contains(normalizedQuery) ||
+        'automatic'.contains(normalizedQuery) ||
+        'fastest'.contains(normalizedQuery) ||
+        'هوشمند'.contains(normalizedQuery) ||
+        'خودکار'.contains(normalizedQuery);
   }
 
   Widget _buildSearchField(BuildContext context) {
@@ -668,19 +674,40 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
 
   Widget _buildActiveSpotlight(
     BuildContext context,
-    SavedServerProfile activeServer,
+    ConnectionLocationTarget target,
+    List<CountryLocationGroup> countryGroups,
     bool isConnected,
   ) {
     final theme = Theme.of(context);
     final colors = context.brickColors;
-    final parsedActive = ServerLocationParser.parse(activeServer.name);
-    final countryLabel = parsedActive.countryCode == 'ZZ'
-        ? 'servers.other_locations'.tr()
-        : parsedActive.countryName;
-    final subtitle = parsedActive.cityOrState != null
-        ? '$countryLabel · ${parsedActive.cityOrState}'
-        : countryLabel;
     final accentColor = isConnected ? colors.stateConnected : colors.brandBrick;
+
+    final String leadingGlyph;
+    final String title;
+    final String subtitle;
+    switch (target) {
+      case SmartAutoTarget():
+        leadingGlyph = '⚡';
+        title = 'servers.smart_auto_title'.tr();
+        subtitle = 'servers.smart_auto_subtitle'.tr();
+      case CountryTarget(:final countryCode):
+        var serverCount = 0;
+        for (final group in countryGroups) {
+          if (group.countryCode == countryCode) {
+            serverCount = group.totalServerCount;
+            break;
+          }
+        }
+        leadingGlyph = ServerLocationParser.emojiForCountryCode(countryCode);
+        title = countryCode == ServerLocationParser.unknownCountryCode
+            ? 'servers.other_locations'.tr()
+            : ServerLocationParser.countryNameForCode(countryCode);
+        subtitle = serverCount == 1
+            ? 'servers.server_count_one'.tr()
+            : 'servers.country_auto_subtitle'.tr(
+                namedArgs: {'count': '$serverCount'},
+              );
+    }
 
     return BrickGlassCard(
       key: const ValueKey<String>('servers_active_spotlight'),
@@ -709,20 +736,12 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              const SizedBox(width: BrickSpacing.xs),
-              BrickProtocolPill(
-                label: activeServer.protocolLabel,
-                compact: true,
-              ),
             ],
           ),
           const SizedBox(height: BrickSpacing.xs),
           Row(
             children: [
-              Text(
-                parsedActive.flagEmoji,
-                style: const TextStyle(fontSize: 20),
-              ),
+              Text(leadingGlyph, style: const TextStyle(fontSize: 20)),
               const SizedBox(width: BrickSpacing.xs),
               Expanded(
                 child: Column(
@@ -730,7 +749,7 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      activeServer.name,
+                      title,
                       style: theme.textTheme.bodyLarge?.copyWith(
                         fontWeight: FontWeight.w700,
                         color: colors.textPrimary,
@@ -907,288 +926,224 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
     );
   }
 
-  Widget _buildCountryGroupCard(
-    BuildContext context,
-    CountryLocationGroup group, {
-    required SavedServerProfile? activeServer,
-    required bool forcedExpanded,
-    required Map<String, String> sourceLabels,
-    required Set<String> standaloneIds,
+  Widget _buildSmartAutoCard(
+    BuildContext context, {
+    required int countryCount,
+    required bool isSelected,
+    required bool isConnected,
   }) {
     final theme = Theme.of(context);
     final colors = context.brickColors;
-    final containsActive =
-        activeServer != null &&
-        group.cities.any(
-          (city) => city.servers.any((s) => s.id == activeServer.id),
-        );
-    final isExpanded =
-        forcedExpanded || _expandedCountryCodes.contains(group.countryCode);
-    final reduceMotion = MediaQuery.disableAnimationsOf(context);
-    final accordionDuration = reduceMotion
-        ? Duration.zero
-        : BrickMotion.standard;
+    final accentColor = isSelected && isConnected
+        ? colors.stateConnected
+        : colors.brandBrick;
 
-    final namedCitiesCount = group.cities
-        .where((city) => city.cityOrState != null)
-        .length;
+    return BrickGlassCard(
+      key: const ValueKey<String>('server_location_auto'),
+      padding: EdgeInsets.zero,
+      isSelected: isSelected,
+      elevated: isSelected,
+      accentColor: accentColor,
+      child: Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          key: const ValueKey<String>('server_location_auto_tap'),
+          borderRadius: BorderRadius.circular(BrickRadius.card),
+          onTap: () {
+            unawaited(HapticFeedback.selectionClick());
+            unawaited(_handleSelectLocation(context, const SmartAutoTarget()));
+          },
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 60),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: colors.surfaceElevated,
+                      borderRadius: BorderRadius.circular(BrickRadius.md),
+                      border: Border.all(color: colors.glassBorder),
+                    ),
+                    child: const Center(
+                      child: Text('⚡', style: TextStyle(fontSize: 20)),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'servers.smart_auto_title'.tr(),
+                          style: theme.textTheme.bodyLarge?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            color: colors.textPrimary,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'servers.smart_auto_country_count'.tr(
+                            namedArgs: {'count': '$countryCount'},
+                          ),
+                          style: TextStyle(
+                            fontFamily: BrickTypography.primaryFontFamily,
+                            fontSize: BrickTypography.sizeLabel,
+                            fontWeight: FontWeight.w400,
+                            color: colors.textMuted,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (isSelected) ...[
+                    const SizedBox(width: BrickSpacing.xs),
+                    BrickStatusDot(
+                      key: const ValueKey<String>(
+                        'server_location_auto_selected',
+                      ),
+                      color: accentColor,
+                      size: 7,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 
-    final String subtitle;
-    if (namedCitiesCount > 0) {
-      subtitle = 'servers.cities_and_servers'.tr(
-        namedArgs: {
-          'cities': '$namedCitiesCount',
-          'servers': '${group.totalServerCount}',
-        },
-      );
-    } else if (group.totalServerCount == 1) {
-      subtitle = 'servers.server_count_one'.tr();
-    } else {
-      subtitle = 'servers.server_count'.tr(
-        namedArgs: {'count': '${group.totalServerCount}'},
-      );
-    }
+  Widget _buildCountryGroupCard(
+    BuildContext context,
+    CountryLocationGroup group, {
+    required bool isSelected,
+    required bool isConnected,
+  }) {
+    final theme = Theme.of(context);
+    final colors = context.brickColors;
+    final accentColor = isSelected && isConnected
+        ? colors.stateConnected
+        : colors.brandBrick;
+
+    final subtitle = group.totalServerCount == 1
+        ? 'servers.server_count_one'.tr()
+        : 'servers.server_count'.tr(
+            namedArgs: {'count': '${group.totalServerCount}'},
+          );
 
     return BrickGlassCard(
       key: ValueKey<String>('country_group_${group.countryCode}'),
       padding: EdgeInsets.zero,
-      isSelected: containsActive,
-      accentColor: colors.brandBrick,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Material(
-            type: MaterialType.transparency,
-            child: InkWell(
-              key: ValueKey<String>('country_header_${group.countryCode}'),
-              borderRadius: BorderRadius.circular(BrickRadius.card),
-              onTap: forcedExpanded
-                  ? null
-                  : () {
-                      // Tactile confirmation for the disclosure gesture only.
-                      unawaited(HapticFeedback.selectionClick());
-                      setState(() {
-                        if (_expandedCountryCodes.contains(group.countryCode)) {
-                          _expandedCountryCodes.remove(group.countryCode);
-                        } else {
-                          _expandedCountryCodes.add(group.countryCode);
-                        }
-                      });
-                    },
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(minHeight: 60),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 12,
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          color: colors.surfaceElevated,
-                          borderRadius: BorderRadius.circular(BrickRadius.md),
-                          border: Border.all(color: colors.glassBorder),
-                        ),
-                        child: Center(
-                          child: Text(
-                            group.flagEmoji,
-                            style: const TextStyle(fontSize: 20),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              group.countryCode == 'ZZ'
-                                  ? 'servers.other_locations'.tr()
-                                  : group.countryName,
-                              style: theme.textTheme.bodyLarge?.copyWith(
-                                fontWeight: FontWeight.w700,
-                                color: colors.textPrimary,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              subtitle,
-                              style: TextStyle(
-                                fontFamily: BrickTypography.primaryFontFamily,
-                                fontSize: BrickTypography.sizeLabel,
-                                fontWeight: FontWeight.w400,
-                                color: colors.textMuted,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ),
-                      ),
-                      if (containsActive) ...[
-                        const SizedBox(width: BrickSpacing.xs),
-                        BrickStatusDot(color: colors.brandBrick, size: 7),
-                      ],
-                      const SizedBox(width: BrickSpacing.xs),
-                      AnimatedRotation(
-                        turns: isExpanded ? 0.5 : 0.0,
-                        duration: accordionDuration,
-                        curve: BrickMotion.curveStandard,
-                        child: Icon(
-                          Icons.keyboard_arrow_down_rounded,
-                          color: colors.textMuted,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-          AnimatedSize(
-            duration: accordionDuration,
-            curve: BrickMotion.curveStandard,
-            alignment: Alignment.topCenter,
-            child: isExpanded
-                ? Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                    child: _buildCountryBody(
-                      context,
-                      group,
-                      activeServer: activeServer,
-                      sourceLabels: sourceLabels,
-                      standaloneIds: standaloneIds,
+      isSelected: isSelected,
+      accentColor: accentColor,
+      child: Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          key: ValueKey<String>('country_header_${group.countryCode}'),
+          borderRadius: BorderRadius.circular(BrickRadius.card),
+          onTap: () {
+            unawaited(HapticFeedback.selectionClick());
+            unawaited(
+              _handleSelectLocation(context, CountryTarget(group.countryCode)),
+            );
+          },
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 60),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: colors.surfaceElevated,
+                      borderRadius: BorderRadius.circular(BrickRadius.md),
+                      border: Border.all(color: colors.glassBorder),
                     ),
-                  )
-                : const SizedBox.shrink(),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCountryBody(
-    BuildContext context,
-    CountryLocationGroup group, {
-    required SavedServerProfile? activeServer,
-    required Map<String, String> sourceLabels,
-    required Set<String> standaloneIds,
-  }) {
-    final colors = context.brickColors;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        for (final cityGroup in group.cities) ...[
-          if (cityGroup.cityOrState != null) ...[
-            BrickSectionHeader(
-              title: cityGroup.cityOrState!,
-              icon: Icons.location_on_outlined,
-              countLabel: '${cityGroup.servers.length}',
-            ),
-            const SizedBox(height: BrickSpacing.xxs),
-            Padding(
-              padding: const EdgeInsetsDirectional.only(start: 10),
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  border: BorderDirectional(
-                    start: BorderSide(color: colors.glassBorder, width: 1.5),
+                    child: Center(
+                      child: Text(
+                        group.flagEmoji,
+                        style: const TextStyle(fontSize: 20),
+                      ),
+                    ),
                   ),
-                ),
-                child: Padding(
-                  padding: const EdgeInsetsDirectional.only(start: 10),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      for (final server in cityGroup.servers)
-                        _buildServerTile(
-                          context,
-                          server,
-                          activeServer: activeServer,
-                          sourceLabels: sourceLabels,
-                          standaloneIds: standaloneIds,
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          group.countryCode ==
+                                  ServerLocationParser.unknownCountryCode
+                              ? 'servers.other_locations'.tr()
+                              : group.countryName,
+                          style: theme.textTheme.bodyLarge?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            color: colors.textPrimary,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                    ],
+                        const SizedBox(height: 2),
+                        Text(
+                          subtitle,
+                          style: TextStyle(
+                            fontFamily: BrickTypography.primaryFontFamily,
+                            fontSize: BrickTypography.sizeLabel,
+                            fontWeight: FontWeight.w400,
+                            color: colors.textMuted,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
                   ),
-                ),
+                  if (isSelected) ...[
+                    const SizedBox(width: BrickSpacing.xs),
+                    BrickStatusDot(
+                      key: ValueKey<String>(
+                        'country_selected_${group.countryCode}',
+                      ),
+                      color: accentColor,
+                      size: 7,
+                    ),
+                  ],
+                ],
               ),
             ),
-            const SizedBox(height: BrickSpacing.xs),
-          ] else
-            for (final server in cityGroup.servers)
-              _buildServerTile(
-                context,
-                server,
-                activeServer: activeServer,
-                sourceLabels: sourceLabels,
-                standaloneIds: standaloneIds,
-              ),
-        ],
-      ],
-    );
-  }
-
-  Widget _buildServerTile(
-    BuildContext context,
-    SavedServerProfile server, {
-    required SavedServerProfile? activeServer,
-    required Map<String, String> sourceLabels,
-    required Set<String> standaloneIds,
-  }) {
-    final isStandalone = standaloneIds.contains(server.id);
-
-    return ServerProfileTile(
-      server: server,
-      sourceLabel: sourceLabels[server.id] ?? 'servers.standalone_badge'.tr(),
-      isSelected: server.id == activeServer?.id,
-      onSelect: () {
-        unawaited(HapticFeedback.selectionClick());
-        unawaited(_handleSelectServer(context, server, activeServer));
-      },
-      onEdit: isStandalone
-          ? () => _showEditDialog(context, server.profile)
-          : null,
-      onDuplicate: () => _handleDuplicate(context, server.profile),
-      onDelete: () => _showConfirmDeleteDialog(
-        context,
-        title: 'servers.delete_server_title'.tr(),
-        message: 'servers.delete_server_message'.tr(),
-        onConfirm: () => _handleDeleteServer(context, server.id),
+          ),
+        ),
       ),
     );
   }
 
-  /// Handles a server tap.
+  /// Handles tapping `Smart Auto` or a country card.
   ///
-  /// Selecting a server is a local preference change, not a tunnel transition,
-  /// so it is followed by a live switch ONLY when a session is actually running
-  /// (or reconnecting) and the tapped node is a different one. Otherwise
-  /// HomeScreen would render the new node as "Active" while the old tunnel kept
-  /// carrying traffic.
-  ///
-  /// The preference is written AFTER the switch succeeds. Writing it up front
-  /// left the UI describing a node the tunnel never reached whenever
-  /// `connect()` was rejected (`InvalidConfig`, permission loss, or a
-  /// `RejectedBusy` from a rapid double tap), and the rejection itself was
-  /// silently discarded.
-  Future<void> _handleSelectServer(
+  /// Selecting a location updates the local preference when disconnected or
+  /// re-tapping the already-active target. Only when a live session is active
+  /// (or reconnecting) and the tapped target differs does it hot-switch the
+  /// tunnel via [ConnectionController.connectForTarget], persisting the
+  /// preference only after [VpnCommandAccepted].
+  Future<void> _handleSelectLocation(
     BuildContext context,
-    SavedServerProfile server,
-    SavedServerProfile? activeServer,
+    ConnectionLocationTarget target,
   ) async {
     final controller = ref.read(connectionControllerProvider.notifier);
     if (controller.isBusy) {
       // A command is already dispatching; ignore overlapping taps before they
-      // can race activeServerIdProvider or draw a RejectedBusy error.
+      // can race selectedLocationProvider or draw a RejectedBusy error.
       return;
     }
 
@@ -1198,26 +1153,25 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
     final isReconnecting = ref.read(autoReconnectProvider).isReconnecting;
     final hasLiveSession =
         connState is Connected || connState is Connecting || isReconnecting;
-    final activeConnectingId =
-        controller.activeConnectingServerId ?? activeServer?.id;
-    final isLiveSwitch =
-        hasLiveSession &&
-        activeConnectingId != null &&
-        server.id != activeConnectingId;
+    final activeTargetKey =
+        controller.activeConnectingTargetKey ??
+        ref.read(resolvedLocationTargetProvider).storageKey;
+    final isLiveSwitch = hasLiveSession && target.storageKey != activeTargetKey;
 
     if (!isLiveSwitch) {
-      // Disconnected (or the already-active node): selection only, never an
-      // automatic connect.
-      await ref.read(activeServerIdProvider.notifier).selectServer(server.id);
+      await ref.read(selectedLocationProvider.notifier).selectLocation(target);
       return;
     }
 
     // Capture the notifier before the async switch so persistence still runs
-    // safely if the user leaves this screen before `connect()` resolves.
-    final activeServerNotifier = ref.read(activeServerIdProvider.notifier);
-    final result = await controller.connect(server.profile);
+    // safely if the user leaves this screen before `connectForTarget()`
+    // resolves.
+    final selectedLocationNotifier = ref.read(
+      selectedLocationProvider.notifier,
+    );
+    final result = await controller.connectForTarget(target);
     if (result is VpnCommandAccepted) {
-      await activeServerNotifier.selectServer(server.id);
+      await selectedLocationNotifier.selectLocation(target);
     } else if (context.mounted) {
       AppFeedback.showError(context, ErrorMapper.mapToUserMessage(result));
     }
@@ -1292,21 +1246,6 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
     }
   }
 
-  Future<void> _handleDuplicate(
-    BuildContext context,
-    ServerProfile profile,
-  ) async {
-    final result = await ref
-        .read(serverManagementControllerProvider.notifier)
-        .duplicateServer(profile);
-
-    if (!context.mounted) return;
-
-    if (result case Err(:final error)) {
-      AppFeedback.showError(context, ErrorMapper.mapToUserMessage(error));
-    }
-  }
-
   Future<void> _showConfirmDeleteDialog(
     BuildContext context, {
     required String title,
@@ -1335,139 +1274,6 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
           ),
         ],
       ),
-    );
-  }
-
-  Future<void> _showEditDialog(BuildContext context, ServerProfile profile) {
-    return showDialog<void>(
-      context: context,
-      builder: (dialogContext) => _EditServerDialog(profile: profile),
-    );
-  }
-}
-
-class _EditServerDialog extends ConsumerStatefulWidget {
-  const _EditServerDialog({required this.profile});
-
-  final ServerProfile profile;
-
-  @override
-  ConsumerState<_EditServerDialog> createState() => _EditServerDialogState();
-}
-
-class _EditServerDialogState extends ConsumerState<_EditServerDialog> {
-  late final TextEditingController _nameController;
-  late final TextEditingController _uriController;
-  String? _errorMessage;
-  bool _isLoading = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _nameController = TextEditingController(text: widget.profile.name);
-    _uriController = TextEditingController();
-  }
-
-  @override
-  void dispose() {
-    _nameController.dispose();
-    _uriController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _handleSave() async {
-    final newName = _nameController.text.trim();
-    if (newName.isEmpty) {
-      final msg = 'servers.name_required'.tr();
-      setState(() => _errorMessage = msg);
-      AppFeedback.showError(context, msg);
-      return;
-    }
-
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
-
-    final newUri = _uriController.text.trim();
-    final result = await ref
-        .read(serverManagementControllerProvider.notifier)
-        .editServer(
-          existing: widget.profile,
-          newName: newName,
-          newRawUri: newUri.isNotEmpty ? newUri : null,
-        );
-
-    if (!mounted) return;
-
-    setState(() => _isLoading = false);
-
-    switch (result) {
-      case Ok():
-        Navigator.of(context).pop();
-      case Err(:final error):
-        final msg = ErrorMapper.mapToUserMessage(error);
-        setState(() => _errorMessage = msg);
-        AppFeedback.showError(context, msg);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      key: const ValueKey<String>('edit_server_dialog'),
-      title: Text('servers.edit_server_title'.tr()),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            TextField(
-              key: const ValueKey<String>('edit_server_name_field'),
-              controller: _nameController,
-              decoration: InputDecoration(
-                labelText: 'servers.server_name'.tr(),
-              ),
-              enabled: !_isLoading,
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              key: const ValueKey<String>('edit_server_uri_field'),
-              controller: _uriController,
-              decoration: InputDecoration(
-                labelText: 'servers.replacement_uri'.tr(),
-                hintText: 'servers.replacement_uri_hint'.tr(),
-              ),
-              enabled: !_isLoading,
-            ),
-            if (_errorMessage != null) ...[
-              const SizedBox(height: 12),
-              Text(
-                _errorMessage!,
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
-              ),
-            ],
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          key: const ValueKey<String>('edit_server_cancel'),
-          onPressed: _isLoading ? null : () => Navigator.of(context).pop(),
-          child: Text('servers.cancel'.tr()),
-        ),
-        FilledButton(
-          key: const ValueKey<String>('edit_server_save'),
-          onPressed: _isLoading ? null : _handleSave,
-          child: _isLoading
-              ? const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : Text('servers.save'.tr()),
-        ),
-      ],
     );
   }
 }

@@ -10,5 +10,6 @@
 library core_vpn_engine;
 
 export 'src/mock_vpn_engine.dart';
+export 'src/pool_vpn_engine.dart';
 export 'src/vpn_command_result.dart';
 export 'src/vpn_engine.dart';

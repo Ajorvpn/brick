@@ -205,7 +205,7 @@ void main() {
       // Authoritative connection state is Connected immediately upon settling
       expect(container.read(connectionStateProvider).value, isA<Connected>());
       expect(container.read(activeServerProvider)?.id, equals(profile.id));
-      expect(find.textContaining('Tokyo Node'), findsWidgets);
+      expect(find.textContaining('Smart Auto'), findsWidgets);
 
       // Coordinators re-arm
       expect(container.read(killSwitchProvider), isA<KillSwitchArmed>());
@@ -305,7 +305,7 @@ void main() {
       engine.emit(const Connected());
       await _settleAnimated(tester);
       expect(container.read(activeServerProvider)?.id, equals(profile2.id));
-      expect(find.textContaining('Osaka Node'), findsWidgets);
+      expect(find.textContaining('Smart Auto'), findsWidgets);
 
       // Clean disconnect works in relaunched process
       final discRes = await container
@@ -321,127 +321,122 @@ void main() {
       expect(container.read(killSwitchProvider), isA<KillSwitchInactive>());
     });
 
-    testWidgets(
-      'Test 2: Zero "Disconnected" flash during async getStatus() and '
-      'instant Connected with pre-warm',
-      (tester) async {
-        tester.view.physicalSize = const Size(1200, 2400);
-        tester.view.devicePixelRatio = 1.0;
-        addTearDown(() {
-          tester.view.resetPhysicalSize();
-          tester.view.resetDevicePixelRatio();
-        });
+    testWidgets('Test 2: No Disconnected flash with pre-warmed Connected', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(1200, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
 
-        final delayedEngine = _DelayedStatusVpnEngine();
+      final delayedEngine = _DelayedStatusVpnEngine();
 
-        // Case A: Launch without pre-warm, while getStatus() is in-flight
-        await tester.pumpWidget(
-          localizedApp(
-            overrides: [vpnEngineProvider.overrideWithValue(delayedEngine)],
+      // Case A: Launch without pre-warm, while getStatus() is in-flight
+      await tester.pumpWidget(
+        localizedApp(
+          overrides: [vpnEngineProvider.overrideWithValue(delayedEngine)],
+          child: localizedMaterialApp(home: const HomeScreen()),
+        ),
+      );
+      await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+      await tester.pump();
+
+      // On initial frame before 200ms delay elapses:
+      // ConnectionStateBadge shows "Checking...", NOT "Disconnected"
+      final badgeChip = tester.widget<Chip>(
+        find.byKey(const ValueKey<String>('connection_state_badge')),
+      );
+      expect((badgeChip.label as Text).data, equals('Checking...'));
+      expect(find.text('Disconnected'), findsNothing);
+
+      // Also check SessionInfoPanel renders "Checking..."
+      expect(
+        find.byKey(const ValueKey<String>('session_status_text')),
+        findsOneWidget,
+      );
+      expect(find.text('Tunnel: Checking...'), findsOneWidget);
+      expect(find.textContaining('Disconnected'), findsNothing);
+
+      // Advance past the 200ms delay so getStatus() completes
+      await tester.pump(const Duration(milliseconds: 250));
+      await _settleAnimated(tester);
+
+      // State settles on Connected
+      expect(find.text('Connected'), findsWidgets);
+
+      // Case B: Launch with AppBootstrap.init pre-warming
+      final dataSource = FakeServerProfileDataSource();
+      final profile = await _seedServer(
+        dataSource,
+        'vless://11111111-2222-3333-4444-555555555555@example.com:443#Tokyo%20Node',
+      );
+      final repo = buildRepository(dataSource);
+      final fakePrefs = FakeAppPreferencesRepository(
+        initialActiveServerId: profile.id,
+      );
+
+      final prewarmedContainer = await tester.runAsync(
+        () => AppBootstrap.init(
+          vpnEngineOverride: delayedEngine,
+          serverProfileRepositoryOverride: repo,
+          preferencesRepositoryOverride: fakePrefs,
+          ensureBinding: false,
+          ensureLocalization: false,
+        ),
+      );
+      expect(prewarmedContainer, isNotNull);
+      addTearDown(prewarmedContainer!.dispose);
+
+      await tester.pumpWidget(
+        EasyLocalization(
+          supportedLocales: const <Locale>[Locale('en'), Locale('de')],
+          path: 'assets/translations',
+          startLocale: const Locale('en'),
+          fallbackLocale: const Locale('en'),
+          saveLocale: false,
+          assetLoader: TestAssetLoader(),
+          child: UncontrolledProviderScope(
+            container: prewarmedContainer,
             child: localizedMaterialApp(home: const HomeScreen()),
           ),
-        );
-        await tester.runAsync(() => Future<void>.delayed(Duration.zero));
-        await tester.pump();
+        ),
+      );
+      await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+      await tester.pump();
 
-        // On initial frame before 200ms delay elapses:
-        // ConnectionStateBadge shows "Checking...", NOT "Disconnected"
-        final badgeChip = tester.widget<Chip>(
-          find.byKey(const ValueKey<String>('connection_state_badge')),
-        );
-        expect((badgeChip.label as Text).data, equals('Checking...'));
-        expect(find.text('Disconnected'), findsNothing);
+      // On frame 0, pre-warmed state is already Connected
+      final prewarmedBadge = tester.widget<Chip>(
+        find.byKey(const ValueKey<String>('connection_state_badge')),
+      );
+      expect((prewarmedBadge.label as Text).data, equals('Connected'));
+      expect(find.text('Checking...'), findsNothing);
+      expect(find.text('Disconnected'), findsNothing);
 
-        // Also check SessionInfoPanel renders "Checking..."
-        expect(
-          find.byKey(const ValueKey<String>('session_status_text')),
-          findsOneWidget,
-        );
-        expect(find.text('Tunnel: Checking...'), findsOneWidget);
-        expect(find.textContaining('Disconnected'), findsNothing);
+      // Frame-0 assertions: SessionInfoPanel already displays Tunnel & Location
+      expect(find.text('Tunnel: Connected'), findsOneWidget);
+      expect(find.text('Location: Smart Auto'), findsOneWidget);
 
-        // Advance past the 200ms delay so getStatus() completes
-        await tester.pump(const Duration(milliseconds: 250));
-        await _settleAnimated(tester);
+      // Frame-0 assertion: the orb's connect toggle is already in the
+      // Connected state and offers Disconnect (UX Refinement #3 replaced the
+      // legacy FilledButton with BrickPowerOrb).
+      final toggleFinder = find.byKey(
+        const ValueKey<String>('home_connect_toggle_button'),
+      );
+      expect(toggleFinder, findsOneWidget);
+      expect(
+        tester.widget<BrickPowerOrb>(toggleFinder).state,
+        BrickOrbState.connected,
+      );
+      expect(
+        find.descendant(of: toggleFinder, matching: find.text('Disconnect')),
+        findsOneWidget,
+      );
 
-        // State settles on Connected
-        expect(find.text('Connected'), findsWidgets);
-
-        // Case B: Launch with AppBootstrap.init pre-warming
-        final dataSource = FakeServerProfileDataSource();
-        final profile = await _seedServer(
-          dataSource,
-          'vless://11111111-2222-3333-4444-555555555555@example.com:443#Tokyo%20Node',
-        );
-        final repo = buildRepository(dataSource);
-        final fakePrefs = FakeAppPreferencesRepository(
-          initialActiveServerId: profile.id,
-        );
-
-        final prewarmedContainer = await tester.runAsync(
-          () => AppBootstrap.init(
-            vpnEngineOverride: delayedEngine,
-            serverProfileRepositoryOverride: repo,
-            preferencesRepositoryOverride: fakePrefs,
-            ensureBinding: false,
-            ensureLocalization: false,
-          ),
-        );
-        expect(prewarmedContainer, isNotNull);
-        addTearDown(prewarmedContainer!.dispose);
-
-        await tester.pumpWidget(
-          EasyLocalization(
-            supportedLocales: const <Locale>[Locale('en'), Locale('de')],
-            path: 'assets/translations',
-            startLocale: const Locale('en'),
-            fallbackLocale: const Locale('en'),
-            saveLocale: false,
-            assetLoader: TestAssetLoader(),
-            child: UncontrolledProviderScope(
-              container: prewarmedContainer,
-              child: localizedMaterialApp(home: const HomeScreen()),
-            ),
-          ),
-        );
-        await tester.runAsync(() => Future<void>.delayed(Duration.zero));
-        await tester.pump();
-
-        // On frame 0, pre-warmed state is already Connected
-        final prewarmedBadge = tester.widget<Chip>(
-          find.byKey(const ValueKey<String>('connection_state_badge')),
-        );
-        expect((prewarmedBadge.label as Text).data, equals('Connected'));
-        expect(find.text('Checking...'), findsNothing);
-        expect(find.text('Disconnected'), findsNothing);
-
-        // Frame-0 assertions: SessionInfoPanel already displays Tunnel & Server
-        expect(find.text('Tunnel: Connected'), findsOneWidget);
-        expect(find.text('Server: Tokyo Node (vless)'), findsOneWidget);
-
-        // Frame-0 assertion: the orb's connect toggle is already in the
-        // Connected state and offers Disconnect (UX Refinement #3 replaced the
-        // legacy FilledButton with BrickPowerOrb).
-        final toggleFinder = find.byKey(
-          const ValueKey<String>('home_connect_toggle_button'),
-        );
-        expect(toggleFinder, findsOneWidget);
-        expect(
-          tester.widget<BrickPowerOrb>(toggleFinder).state,
-          BrickOrbState.connected,
-        );
-        expect(
-          find.descendant(
-            of: toggleFinder,
-            matching: find.text('Tap to disconnect'),
-          ),
-          findsOneWidget,
-        );
-
-        await tester.pumpWidget(const SizedBox.shrink());
-        prewarmedContainer.dispose();
-      },
-    );
+      await tester.pumpWidget(const SizedBox.shrink());
+      prewarmedContainer.dispose();
+    });
 
     testWidgets(
       'Test 3: Duplicate session start prevention rejects busy for active '

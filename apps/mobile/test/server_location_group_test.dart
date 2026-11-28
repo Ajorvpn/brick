@@ -350,5 +350,23 @@ void main() {
       expect(g1 == g2, isTrue);
       expect(g1.hashCode == g2.hashCode, isTrue);
     });
+
+    test('8. Ignores BRICKVPN / BRICK brand tokens so brand words are never '
+        'treated as fake cities', () {
+      final numbered = ServerLocationParser.parse('Brick VPN 21 | VMESS');
+      expect(numbered.countryCode, equals('ZZ'));
+      expect(numbered.cityOrState, isNull);
+
+      final singleToken = ServerLocationParser.parse('BrickVPN 03 | VLESS');
+      expect(singleToken.countryCode, equals('ZZ'));
+      expect(singleToken.cityOrState, isNull);
+
+      final withCountry = ServerLocationParser.parse(
+        '🇩🇪 Germany BrickVPN 01 | SS',
+      );
+      expect(withCountry.countryCode, equals('DE'));
+      expect(withCountry.countryName, equals('Germany'));
+      expect(withCountry.cityOrState, isNull);
+    });
   });
 }

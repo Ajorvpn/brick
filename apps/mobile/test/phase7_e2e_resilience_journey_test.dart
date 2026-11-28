@@ -186,7 +186,7 @@ void main() {
         container.read(autoReconnectProvider.notifier).isUserSessionActive,
         isTrue,
       );
-      expect(find.textContaining('Tokyo Node'), findsWidgets);
+      expect(find.textContaining('Smart Auto'), findsWidgets);
 
       // Verify session duration ticking
       await tester.pump(const Duration(seconds: 2));
@@ -334,7 +334,7 @@ void main() {
       // immediately
       expect(find.text('Disconnected'), findsNothing);
       expect(container.read(connectionStateProvider).value, isA<Connected>());
-      expect(find.textContaining('Tokyo Node'), findsWidgets);
+      expect(find.textContaining('Smart Auto'), findsWidgets);
       expect(container.read(killSwitchProvider), isA<KillSwitchArmed>());
       expect(
         container.read(autoReconnectProvider.notifier).isUserSessionActive,
@@ -396,7 +396,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 400));
 
       expect(container.read(activeServerProvider)?.id, equals(osakaProfile.id));
-      expect(find.textContaining('Osaka Node'), findsWidgets);
+      expect(find.textContaining('Smart Auto'), findsWidgets);
 
       // ---------------------------------------------------------------------
       // STAGE E: 5-Attempt Retry Exhaustion on Osaka Node & Clean Unblock

@@ -27,6 +27,7 @@ import 'package:mobile/core/network/network_status_provider.dart';
 import 'package:mobile/core/providers/app_preferences_provider.dart';
 import 'package:mobile/core/providers/server_profile_repository_provider.dart';
 import 'package:mobile/core/providers/vpn_engine_provider.dart';
+import 'package:mobile/features/connection/domain/entities/connection_location_target.dart';
 import 'package:mobile/features/connection/presentation/providers/active_server_provider.dart';
 import 'package:mobile/features/connection/presentation/providers/auto_reconnect_provider.dart';
 import 'package:mobile/features/connection/presentation/providers/connection_controller_provider.dart';
@@ -38,11 +39,11 @@ import 'package:mobile/main.dart';
 import 'localization_test_harness.dart';
 
 const String _uriA =
-    'vless://11111111-2222-3333-4444-555555555555@example.com:443#Node%20A';
+    'vless://11111111-2222-3333-4444-555555555555@example.com:443#Germany%20Node%20A';
 const String _uriB =
-    'vless://22222222-3333-4444-5555-666666666666@example.com:443#Node%20B';
+    'vless://22222222-3333-4444-5555-666666666666@example.com:443#United%20Kingdom%20Node%20B';
 const String _uriC =
-    'vless://33333333-4444-5555-6666-777777777777@example.com:443#Node%20C';
+    'vless://33333333-4444-5555-6666-777777777777@example.com:443#United%20States%20Node%20C';
 
 Future<ServerProfile> _seedOne(FakeServerProfileDataSource ds) async {
   final repo = buildRepository(ds);
@@ -415,19 +416,23 @@ void main() {
         await tester.tap(find.byKey(const ValueKey<String>('nav_tab_servers')));
         await _pumpBounded(tester);
 
-        final tile = find.byKey(ValueKey<String>('server_tile_${serverB.id}'));
-        expect(tile, findsOneWidget);
-        await tester.tap(tile);
+        final ukCard = find.byKey(const ValueKey<String>('country_header_GB'));
+        expect(ukCard, findsOneWidget);
+        await tester.tap(ukCard);
         await _pumpBounded(tester);
 
-        expect(container.read(activeServerIdProvider), equals(serverB.id));
+        expect(
+          container.read(resolvedLocationTargetProvider),
+          equals(CountryTarget('GB')),
+        );
+        expect(container.read(activeServerProvider)?.id, equals(serverB.id));
         expect(engine.stopCalls, equals(1));
         expect(engine.startCalls.last.id, equals(serverB.id));
       },
     );
 
     testWidgets(
-      'T5b: tapping a server while Disconnected only selects it (never '
+      'T5b: tapping a country while Disconnected only selects it (never '
       'auto-connects)',
       (tester) async {
         final engine = FakeVpnEngine();
@@ -436,8 +441,6 @@ void main() {
         final repo = buildRepository(dataSource);
         await repo.addServer(_uriA);
         await repo.addServer(_uriB);
-        final seeded = await repo.getAll();
-        final serverB = seeded[1];
 
         await pumpConnectionApp(
           tester,
@@ -452,12 +455,15 @@ void main() {
         await tester.tap(find.byKey(const ValueKey<String>('nav_tab_servers')));
         await tester.pumpAndSettle();
 
-        final tile = find.byKey(ValueKey<String>('server_tile_${serverB.id}'));
-        expect(tile, findsOneWidget);
-        await tester.tap(tile);
+        final ukCard = find.byKey(const ValueKey<String>('country_header_GB'));
+        expect(ukCard, findsOneWidget);
+        await tester.tap(ukCard);
         await tester.pumpAndSettle();
 
-        expect(container.read(activeServerIdProvider), equals(serverB.id));
+        expect(
+          container.read(resolvedLocationTargetProvider),
+          equals(CountryTarget('GB')),
+        );
         expect(engine.startCalls, isEmpty);
         expect(engine.stopCalls, equals(0));
       },
@@ -542,7 +548,6 @@ void main() {
           await repo.addServer(_uriB);
           final seeded = await repo.getAll();
           final serverA = seeded[0];
-          final serverB = seeded[1];
           final prefs = FakeAppPreferencesRepository(
             initialActiveServerId: serverA.id,
           );
@@ -557,7 +562,10 @@ void main() {
           final container = ProviderScope.containerOf(
             tester.element(find.byType(HomeScreen)),
           );
-          expect(container.read(activeServerIdProvider), equals(serverA.id));
+          expect(
+            container.read(resolvedLocationTargetProvider),
+            equals(const SmartAutoTarget()),
+          );
 
           engine.emit(const Connected());
           await _pumpBounded(tester);
@@ -567,20 +575,21 @@ void main() {
           );
           await _pumpBounded(tester);
 
-          final tileB = find.byKey(
-            ValueKey<String>('server_tile_${serverB.id}'),
+          final ukCard = find.byKey(
+            const ValueKey<String>('country_header_GB'),
           );
-          await tester.ensureVisible(tileB);
+          await tester.ensureVisible(ukCard);
           await _pumpBounded(tester);
 
           engine.startResult = const VpnCommandRejectedInvalidConfig();
-          await tester.tap(tileB);
+          await tester.tap(ukCard);
           await _pumpBounded(tester);
 
           expect(
-            container.read(activeServerIdProvider),
-            equals(serverA.id),
-            reason: 'a rejected switch must not claim the new server is active',
+            container.read(resolvedLocationTargetProvider),
+            equals(const SmartAutoTarget()),
+            reason:
+                'a rejected switch must not claim the new location is active',
           );
           expect(find.byType(SnackBar), findsOneWidget);
           expect(
@@ -592,7 +601,7 @@ void main() {
 
       testWidgets(
         'T7b: a tap that lands while a switch is still in flight is ignored, '
-        'so the selection stays with the server that actually starts',
+        'so the selection stays with the location that actually starts',
         (tester) async {
           final engine = _ScriptedEngine();
           final dataSource = FakeServerProfileDataSource();
@@ -604,7 +613,6 @@ void main() {
           final seeded = await repo.getAll();
           final serverA = seeded[0];
           final serverB = seeded[1];
-          final serverC = seeded[2];
           final prefs = FakeAppPreferencesRepository(
             initialActiveServerId: serverA.id,
           );
@@ -628,23 +636,21 @@ void main() {
           );
           await _pumpBounded(tester);
 
-          // Scroll so both server B and server C sit comfortably above the
-          // floating bottom dock before starting the timed overlap test.
+          // Scroll so both GB and US sit comfortably above the floating dock.
           await tester.drag(find.byType(ListView), const Offset(0, -180));
           await _pumpBounded(tester);
 
-          // First tap: the switch to B stays in flight until the gate opens.
+          // First tap: switch to GB stays in flight until the gate opens.
           engine.startGate = Completer<VpnCommandResult>();
           await tester.tap(
-            find.byKey(ValueKey<String>('server_tile_${serverB.id}')),
+            find.byKey(const ValueKey<String>('country_header_GB')),
           );
           await tester.pump();
           await tester.pump();
 
-          // Second tap lands while `connect()` is still busy: it must be
-          // dropped.
+          // Second tap (US) lands while `connect()` is busy: it must drop.
           await tester.tap(
-            find.byKey(ValueKey<String>('server_tile_${serverC.id}')),
+            find.byKey(const ValueKey<String>('country_header_US')),
           );
           await tester.pump();
 
@@ -653,64 +659,61 @@ void main() {
           await _pumpBounded(tester);
 
           expect(
-            container.read(activeServerIdProvider),
-            equals(serverB.id),
-            reason: 'the dropped overlap must not rewrite the selection to C',
+            container.read(resolvedLocationTargetProvider),
+            equals(CountryTarget('GB')),
+            reason: 'the dropped overlap must not rewrite the selection to US',
           );
           expect(engine.startCalls.single.id, equals(serverB.id));
         },
       );
 
-      testWidgets(
-        'T7c: engine VpnCommandRejectedBusy leaves activeServerIdProvider on '
-        'the old server and surfaces busy feedback',
-        (tester) async {
-          final engine = _ScriptedEngine();
-          final dataSource = FakeServerProfileDataSource();
-          addTearDown(engine.dispose);
-          final repo = buildRepository(dataSource);
-          await repo.addServer(_uriA);
-          await repo.addServer(_uriB);
-          final seeded = await repo.getAll();
-          final serverA = seeded[0];
-          final serverB = seeded[1];
-          final prefs = FakeAppPreferencesRepository(
-            initialActiveServerId: serverA.id,
-          );
+      testWidgets('T7c: engine VpnCommandRejectedBusy leaves location on '
+          'Smart Auto and surfaces busy feedback', (tester) async {
+        final engine = _ScriptedEngine();
+        final dataSource = FakeServerProfileDataSource();
+        addTearDown(engine.dispose);
+        final repo = buildRepository(dataSource);
+        await repo.addServer(_uriA);
+        await repo.addServer(_uriB);
+        final seeded = await repo.getAll();
+        final serverA = seeded[0];
+        final prefs = FakeAppPreferencesRepository(
+          initialActiveServerId: serverA.id,
+        );
 
-          await pumpConnectionApp(
-            tester,
-            const MyApp(),
-            engine: engine,
-            dataSource: dataSource,
-            preferencesRepository: prefs,
-          );
-          final container = ProviderScope.containerOf(
-            tester.element(find.byType(HomeScreen)),
-          );
+        await pumpConnectionApp(
+          tester,
+          const MyApp(),
+          engine: engine,
+          dataSource: dataSource,
+          preferencesRepository: prefs,
+        );
+        final container = ProviderScope.containerOf(
+          tester.element(find.byType(HomeScreen)),
+        );
 
-          engine.emit(const Connected());
-          await _pumpBounded(tester);
+        engine.emit(const Connected());
+        await _pumpBounded(tester);
 
-          await tester.tap(
-            find.byKey(const ValueKey<String>('nav_tab_servers')),
-          );
-          await _pumpBounded(tester);
+        await tester.tap(find.byKey(const ValueKey<String>('nav_tab_servers')));
+        await _pumpBounded(tester);
 
-          engine.startResult = const VpnCommandRejectedBusy();
-          await tester.tap(
-            find.byKey(ValueKey<String>('server_tile_${serverB.id}')),
-          );
-          await _pumpBounded(tester);
+        engine.startResult = const VpnCommandRejectedBusy();
+        await tester.tap(
+          find.byKey(const ValueKey<String>('country_header_GB')),
+        );
+        await _pumpBounded(tester);
 
-          expect(container.read(activeServerIdProvider), equals(serverA.id));
-          expect(find.byType(SnackBar), findsOneWidget);
-          expect(
-            find.text('A VPN operation is already in progress'),
-            findsOneWidget,
-          );
-        },
-      );
+        expect(
+          container.read(resolvedLocationTargetProvider),
+          equals(const SmartAutoTarget()),
+        );
+        expect(find.byType(SnackBar), findsOneWidget);
+        expect(
+          find.text('A VPN operation is already in progress'),
+          findsOneWidget,
+        );
+      });
     },
   );
 }

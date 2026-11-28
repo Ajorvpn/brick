@@ -95,7 +95,7 @@ void main() {
       // STEP 1: Verify Initial Resting State (Disconnected)
       // =====================================================================
       expect(find.byType(HomeScreen), findsOneWidget);
-      expect(find.text('Server: Tokyo Node (vless)'), findsOneWidget);
+      expect(find.text('Location: Smart Auto'), findsOneWidget);
       expect(find.text('Tunnel: Disconnected'), findsOneWidget);
       expect(find.text('Duration: 00:00:00'), findsOneWidget);
       expect(find.text('0 B up / 0 B down'), findsOneWidget);

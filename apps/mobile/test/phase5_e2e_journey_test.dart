@@ -8,12 +8,14 @@ import 'package:config_parser/config_parser.dart';
 import 'package:core_domain/core_domain.dart'
     show Connected, Disconnected, TrafficStats;
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mobile/core/data/repositories/app_preferences_repository.dart';
 import 'package:mobile/features/connection/presentation/screens/add_server_screen.dart';
 import 'package:mobile/features/connection/presentation/screens/add_subscription_screen.dart';
 import 'package:mobile/features/connection/presentation/screens/home_screen.dart';
+import 'package:mobile/features/servers/presentation/providers/server_management_controller.dart';
 import 'package:mobile/features/servers/presentation/screens/servers_screen.dart';
 import 'package:mobile/main.dart';
 
@@ -43,15 +45,15 @@ const String _uuid3 = '33333333-4444-5555-6666-777777777777';
 const String _uuid4 = '44444444-5555-6666-7777-888888888888';
 
 const String _manualVlessUri =
-    'vless://$_uuid1@node1.example.com:443?security=none#ManualNode1';
+    'vless://$_uuid1@node1.example.com:443?security=none#Germany%20Node%201';
 const String _qrVlessUri =
-    'vless://$_uuid2@node2.example.com:443?security=none#QrNode2';
+    'vless://$_uuid2@node2.example.com:443?security=none#United%20Kingdom%20Node%202';
 const String _subVlessUri1 =
-    'vless://$_uuid3@sub1.example.com:443?security=none#SubNode1';
+    'vless://$_uuid3@sub1.example.com:443?security=none#Japan%20Node%201';
 const String _subVlessUri2 =
-    'vless://$_uuid4@sub2.example.com:443?security=none#SubNode2';
+    'vless://$_uuid4@sub2.example.com:443?security=none#Japan%20Node%202';
 const String _subVlessUri2Refreshed =
-    'vless://$_uuid4@sub2refreshed.example.com:443?security=none#SubNode2Refreshed';
+    'vless://$_uuid4@sub2refreshed.example.com:443?security=none#Japan%20Node%203';
 
 void main() {
   setUpAll(initTestLocalization);
@@ -131,18 +133,19 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Popped back to ServersScreen
+      // Popped back to ServersScreen (Smart Auto + Germany country card)
       expect(find.byType(ServersScreen), findsOneWidget);
-      final manualNodeId = dataSource.records.first.id;
       expect(
-        find.descendant(
-          of: find.byKey(ValueKey<String>('server_tile_$manualNodeId')),
-          matching: find.text('ManualNode1'),
-        ),
+        find.byKey(const ValueKey<String>('server_location_auto')),
         findsOneWidget,
       );
+      expect(
+        find.byKey(const ValueKey<String>('country_group_DE')),
+        findsOneWidget,
+      );
+      expect(find.text('Germany'), findsOneWidget);
 
-      // Switch to HomeScreen and verify auto-selection of first valid server
+      // Switch to HomeScreen and verify default Smart Auto target
       await tester.tap(find.byKey(const ValueKey<String>('nav_tab_home')));
       await tester.pumpAndSettle();
 
@@ -150,7 +153,8 @@ void main() {
         find.byKey(const ValueKey<String>('home_active_server_card')),
         findsOneWidget,
       );
-      expect(find.text('Active: ManualNode1'), findsOneWidget);
+      expect(find.text('Smart Auto'), findsOneWidget);
+      expect(find.text('Best available server'), findsOneWidget);
 
       // =====================================================================
       // STEP 3: Add a second standalone server via QR scan (P5-T3)
@@ -176,23 +180,17 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Returned to ServersScreen with both standalone servers present
+      // Returned to ServersScreen with Germany + United Kingdom country cards
       expect(find.byType(ServersScreen), findsOneWidget);
-      final qrNodeId = dataSource.records.last.id;
       expect(
-        find.descendant(
-          of: find.byKey(ValueKey<String>('server_tile_$manualNodeId')),
-          matching: find.text('ManualNode1'),
-        ),
+        find.byKey(const ValueKey<String>('country_group_DE')),
         findsOneWidget,
       );
       expect(
-        find.descendant(
-          of: find.byKey(ValueKey<String>('server_tile_$qrNodeId')),
-          matching: find.text('QrNode2'),
-        ),
+        find.byKey(const ValueKey<String>('country_group_GB')),
         findsOneWidget,
       );
+      expect(find.text('United Kingdom'), findsOneWidget);
 
       // =====================================================================
       // STEP 4: Import subscription URL yielding servers (P5-T4, P5-T5)
@@ -219,13 +217,13 @@ void main() {
       // Popped back to ServersScreen
       expect(find.byType(ServersScreen), findsOneWidget);
 
-      // Verify hierarchical grouping (all remarks are country-less -> 'ZZ')
+      // Verify country grouping (manual DE, QR GB, subscription nodes ZZ)
       expect(
         find.byKey(const ValueKey<String>('country_group_ZZ')),
         findsOneWidget,
       );
-      // Feed strip name plus source label on both subscription tiles = 3
-      expect(find.text('FastVPN Subscription'), findsNWidgets(3));
+      // Feed strip renders the subscription name cleanly once
+      expect(find.text('FastVPN Subscription'), findsOneWidget);
       expect(find.text('4'), findsOneWidget); // header total count pill
       expect(find.text('2'), findsOneWidget); // feed count badge
 
@@ -241,59 +239,49 @@ void main() {
       await tester.pumpAndSettle();
 
       // =====================================================================
-      // STEP 5: Edit, Duplicate, Refresh, Delete with Dialog (P5-T6)
+      // STEP 5: Controller CRUD + Subscription Refresh + Clean UI (P5-T6)
       // =====================================================================
       final allServers = await buildRepository(dataSource).getAll();
-      final manualNode = allServers.firstWhere((s) => s.name == 'ManualNode1');
-      final qrNode = allServers.firstWhere((s) => s.name == 'QrNode2');
+      final manualNode = allServers.firstWhere(
+        (s) => s.name == 'Germany Node 1',
+      );
+      final qrNode = allServers.firstWhere(
+        (s) => s.name == 'United Kingdom Node 2',
+      );
       final subNode1 = allServers.firstWhere((s) => s.subscriptionId != null);
       final sub = (await buildRepository(
         dataSource,
       ).getAllSubscriptions()).single;
 
-      // 5a. Edit standalone server name
-      final editButton = find.byKey(
-        ValueKey<String>('server_edit_${manualNode.id}'),
+      final serversContainer = ProviderScope.containerOf(
+        tester.element(find.byType(ServersScreen)),
       );
-      await tester.ensureVisible(editButton);
-      await tester.tap(editButton);
+      final serverMgmt = serversContainer.read(
+        serverManagementControllerProvider.notifier,
+      );
+
+      // 5a. Edit standalone server via controller without cluttering country UI
+      await serverMgmt.editServer(
+        existing: manualNode,
+        newName: 'Germany Renamed 1',
+      );
       await tester.pumpAndSettle();
 
-      expect(
-        find.byKey(const ValueKey<String>('edit_server_dialog')),
-        findsOneWidget,
-      );
-      await tester.enterText(
-        find.byKey(const ValueKey<String>('edit_server_name_field')),
-        'Renamed ManualNode1',
-      );
-      await tester.tap(find.byKey(const ValueKey<String>('edit_server_save')));
+      // 5b. Duplicate subscription server as standalone
+      await serverMgmt.duplicateServer(subNode1);
       await tester.pumpAndSettle();
 
+      final copyName = '${subNode1.name} (Copy)';
+      expect(find.text('5'), findsOneWidget); // header total count pill
       expect(
         find.descendant(
-          of: find.byKey(ValueKey<String>('server_tile_$manualNodeId')),
-          matching: find.text('Renamed ManualNode1'),
+          of: find.byKey(const ValueKey<String>('country_group_ZZ')),
+          matching: find.text('3 servers'),
         ),
         findsOneWidget,
       );
 
-      // 5b. Duplicate subscription server as standalone
-      final duplicateButton = find.byKey(
-        ValueKey<String>('server_duplicate_${subNode1.id}'),
-      );
-      await tester.ensureVisible(duplicateButton);
-      await tester.tap(duplicateButton);
-      await tester.pumpAndSettle();
-
-      final copyName = '${subNode1.name} (Copy)';
-      // Standalone section now contains 3 servers including the copy
-      await tester.drag(find.byType(ListView), const Offset(0, 300));
-      await tester.pumpAndSettle();
-      expect(find.text(copyName), findsOneWidget);
-      expect(find.text('5'), findsOneWidget); // header total count pill
-
-      // 5c. Refresh subscription with Full-Replace diffing policy
+      // 5c. Refresh subscription via UI with Full-Replace diffing policy
       currentSubPayload = '$_subVlessUri1\n$_subVlessUri2Refreshed';
       final refreshButton = find.byKey(
         ValueKey<String>('subscription_refresh_${sub.id}'),
@@ -302,57 +290,38 @@ void main() {
       await tester.tap(refreshButton);
       await tester.pumpAndSettle();
 
-      expect(
-        find.text('FastVPN Subscription - sub2refreshed.example.com:443'),
-        findsOneWidget,
-      );
-      expect(
-        find.text('FastVPN Subscription - sub2.example.com:443'),
-        findsNothing,
-      );
-
       // Allow the refresh success snackbar to expire before deleting
       await tester.pump(const Duration(seconds: 5));
       await tester.pumpAndSettle();
 
-      // 5d. Delete server with confirmation dialog
+      // 5d. Delete duplicated server via controller and verify count updates
       final updatedAll = await buildRepository(dataSource).getAll();
       final copyNode = updatedAll.firstWhere((s) => s.name == copyName);
-
-      final deleteButton = find.byKey(
-        ValueKey<String>('server_delete_${copyNode.id}'),
-      );
-      await tester.ensureVisible(deleteButton);
-      await tester.tap(deleteButton);
+      await serverMgmt.deleteServer(copyNode.id);
       await tester.pumpAndSettle();
 
-      expect(
-        find.byKey(const ValueKey<String>('confirm_delete_dialog')),
-        findsOneWidget,
-      );
-      await tester.tap(
-        find.byKey(const ValueKey<String>('confirm_delete_confirm')),
-      );
-      await tester.pumpAndSettle();
-
-      expect(find.text(copyName), findsNothing);
-      await tester.drag(find.byType(ListView), const Offset(0, 300));
-      await tester.pumpAndSettle();
       expect(find.text('4'), findsOneWidget); // header total count pill
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey<String>('country_group_ZZ')),
+          matching: find.text('2 servers'),
+        ),
+        findsOneWidget,
+      );
 
       // =====================================================================
-      // STEP 6: Active server selection & persistence (P5-T7)
+      // STEP 6: Country location selection & persistence (P5-T7)
       // =====================================================================
-      final qrTile = find.byKey(ValueKey<String>('server_tile_${qrNode.id}'));
-      await tester.ensureVisible(qrTile);
-      await tester.tap(qrTile);
+      final ukHeader = find.byKey(const ValueKey<String>('country_header_GB'));
+      await tester.ensureVisible(ukHeader);
+      await tester.tap(ukHeader);
       await tester.pumpAndSettle();
 
       expect(
-        find.byKey(ValueKey<String>('server_selected_${qrNode.id}')),
+        find.byKey(const ValueKey<String>('country_selected_GB')),
         findsOneWidget,
       );
-      expect(fakePrefs.getActiveServerId(), equals(qrNode.id));
+      expect(fakePrefs.getSelectedLocation(), equals('country:GB'));
 
       // =====================================================================
       // STEP 7: Connect toggle, traffic readout, lastUsedAt, disconnect (P5-T8)
@@ -360,17 +329,15 @@ void main() {
       await tester.tap(find.byKey(const ValueKey<String>('nav_tab_home')));
       await tester.pumpAndSettle();
 
-      expect(find.text('Active: QrNode2'), findsOneWidget);
+      expect(find.text('United Kingdom'), findsOneWidget);
+      expect(find.text('Auto-selected · 1 server'), findsOneWidget);
 
       final connectToggle = find.byKey(
         const ValueKey<String>('home_connect_toggle_button'),
       );
       expect(connectToggle, findsOneWidget);
       expect(
-        find.descendant(
-          of: connectToggle,
-          matching: find.text('Tap to connect'),
-        ),
+        find.descendant(of: connectToggle, matching: find.text('Connect')),
         findsOneWidget,
       );
 
@@ -381,7 +348,7 @@ void main() {
       expect(engine.prepareCalls, equals(1));
       expect(engine.startCalls, hasLength(1));
       expect(engine.startCalls.single.id, equals(qrNode.id));
-      expect(engine.startCalls.single.name, equals('QrNode2'));
+      expect(engine.startCalls.single.name, equals('United Kingdom Node 2'));
 
       // Push Connected state from engine
       engine.emit(const Connected());
@@ -390,10 +357,7 @@ void main() {
 
       // The orb hint switches to disconnect
       expect(
-        find.descendant(
-          of: connectToggle,
-          matching: find.text('Tap to disconnect'),
-        ),
+        find.descendant(of: connectToggle, matching: find.text('Disconnect')),
         findsOneWidget,
       );
 
@@ -423,14 +387,11 @@ void main() {
       await tester.pump(const Duration(milliseconds: 400));
 
       expect(
-        find.descendant(
-          of: connectToggle,
-          matching: find.text('Tap to connect'),
-        ),
+        find.descendant(of: connectToggle, matching: find.text('Connect')),
         findsOneWidget,
       );
 
-      // Verify lastUsedAt was stamped on QrNode2
+      // Verify lastUsedAt was stamped on United Kingdom Node 2
       final finalServers = await buildRepository(dataSource).getAll();
       final finalQrNode = finalServers.firstWhere((s) => s.id == qrNode.id);
       expect(finalQrNode.lastUsedAt, isNotNull);

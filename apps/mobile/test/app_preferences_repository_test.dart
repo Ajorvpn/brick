@@ -80,6 +80,20 @@ void main() {
       expect(repo.getActiveServerId(), isNull);
     });
 
+    test('defaults selectedLocation to auto and round-trips updates', () async {
+      final repo = FakeAppPreferencesRepository();
+      expect(repo.getSelectedLocation(), equals('auto'));
+
+      await repo.setSelectedLocation('country:GB');
+      expect(repo.getSelectedLocation(), equals('country:GB'));
+
+      await repo.setSelectedLocation('auto');
+      expect(repo.getSelectedLocation(), equals('auto'));
+
+      await repo.setSelectedLocation('');
+      expect(repo.getSelectedLocation(), equals('auto'));
+    });
+
     test(
       'defaults autoReconnectEnabled to true and round-trips updates',
       () async {
@@ -224,6 +238,52 @@ void main() {
         ),
         isFalse,
       );
+    });
+
+    test('persists selectedLocation and survives repository restart', () async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      final prefs = await SharedPreferences.getInstance();
+      final repo1 = SharedPreferencesAppPreferencesRepository(prefs);
+
+      expect(repo1.getSelectedLocation(), equals('auto'));
+
+      await repo1.setSelectedLocation('country:GB');
+      expect(repo1.getSelectedLocation(), equals('country:GB'));
+      expect(
+        prefs.getString(
+          SharedPreferencesAppPreferencesRepository.keySelectedLocation,
+        ),
+        equals('country:GB'),
+      );
+
+      final repo2 = SharedPreferencesAppPreferencesRepository(prefs);
+      expect(repo2.getSelectedLocation(), equals('country:GB'));
+
+      await repo2.setSelectedLocation('auto');
+      expect(repo2.getSelectedLocation(), equals('auto'));
+    });
+
+    test('persists selectedLocation and survives repository restart', () async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      final prefs = await SharedPreferences.getInstance();
+      final repo1 = SharedPreferencesAppPreferencesRepository(prefs);
+
+      expect(repo1.getSelectedLocation(), equals('auto'));
+
+      await repo1.setSelectedLocation('country:GB');
+      expect(repo1.getSelectedLocation(), equals('country:GB'));
+      expect(
+        prefs.getString(
+          SharedPreferencesAppPreferencesRepository.keySelectedLocation,
+        ),
+        equals('country:GB'),
+      );
+
+      final repo2 = SharedPreferencesAppPreferencesRepository(prefs);
+      expect(repo2.getSelectedLocation(), equals('country:GB'));
+
+      await repo2.setSelectedLocation('auto');
+      expect(repo2.getSelectedLocation(), equals('auto'));
     });
 
     test(

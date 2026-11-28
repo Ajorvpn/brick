@@ -16,9 +16,11 @@ import 'package:core_domain/core_domain.dart'
         ServerProfile;
 import 'package:core_vpn_engine/core_vpn_engine.dart'
     show
+        PoolVpnEngine,
         VpnCommandAccepted,
         VpnCommandRejectedInvalidConfig,
         VpnCommandRejectedPermissionDenied,
+        VpnCommandResult,
         VpnEngine;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -216,6 +218,7 @@ final autoReconnectPolicyProvider = Provider<AutoReconnectPolicy>((ref) {
 class AutoReconnectNotifier extends Notifier<AutoReconnectState> {
   bool _userSessionActive = false;
   ServerProfile? _activeProfile;
+  List<ServerProfile>? _activeCandidates;
   int _currentAttempt = 0;
   Timer? _backoffTimer;
   Timer? _debounceTimer;
@@ -492,9 +495,15 @@ class AutoReconnectNotifier extends Notifier<AutoReconnectState> {
   }
 
   /// Called when the user explicitly initiates a connection from the UI.
-  void onUserInitiatedConnect(ServerProfile profile) {
+  void onUserInitiatedConnect(
+    ServerProfile profile, {
+    List<ServerProfile>? candidates,
+  }) {
     _userSessionActive = true;
     _activeProfile = profile;
+    _activeCandidates = candidates == null || candidates.length < 2
+        ? null
+        : List<ServerProfile>.unmodifiable(candidates);
     _currentAttempt = 0;
     _cancelTimers();
     state = const AutoReconnectIdle();
@@ -511,6 +520,7 @@ class AutoReconnectNotifier extends Notifier<AutoReconnectState> {
     final wasReconnecting = state.isReconnecting;
     _userSessionActive = false;
     _activeProfile = null;
+    _activeCandidates = null;
     _lastPhysicalTransports = const <ConnectivityResult>{};
     _currentAttempt = 0;
     _cancelTimers();
@@ -629,6 +639,7 @@ class AutoReconnectNotifier extends Notifier<AutoReconnectState> {
             prepareResult is VpnCommandRejectedInvalidConfig) {
           _userSessionActive = false;
           _activeProfile = null;
+          _activeCandidates = null;
           _cancelTimers();
           state = const AutoReconnectIdle();
           _logDiagnostic(
@@ -647,12 +658,21 @@ class AutoReconnectNotifier extends Notifier<AutoReconnectState> {
         return;
       }
 
-      final startResult = await engine.start(profile);
+      final activeCandidates = _activeCandidates;
+      final VpnCommandResult startResult;
+      if (engine is PoolVpnEngine &&
+          activeCandidates != null &&
+          activeCandidates.length >= 2) {
+        startResult = await engine.startPool(profile, activeCandidates);
+      } else {
+        startResult = await engine.start(profile);
+      }
       if (startResult is! VpnCommandAccepted) {
         if (startResult is VpnCommandRejectedPermissionDenied ||
             startResult is VpnCommandRejectedInvalidConfig) {
           _userSessionActive = false;
           _activeProfile = null;
+          _activeCandidates = null;
           _cancelTimers();
           state = const AutoReconnectIdle();
           _logDiagnostic(

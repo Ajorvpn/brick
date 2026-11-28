@@ -59,11 +59,21 @@ abstract class AppPreferencesRepository {
   /// Persists [locale], or clears it when `null` to follow system default.
   Future<void> setLocale(Locale? locale);
 
+  /// Default value for persisted location selection when unset or empty.
+  static const String defaultSelectedLocation = 'auto';
+
   /// Reads the persisted active server ID, or `null` if none was selected.
   String? getActiveServerId();
 
   /// Persists [serverId], or clears it when `null` or empty.
   Future<void> setActiveServerId(String? serverId);
+
+  /// Reads the persisted location target (`'auto'` or `'country:<CODE>'`).
+  /// Defaults to [defaultSelectedLocation] (`'auto'`).
+  String getSelectedLocation();
+
+  /// Persists the selected location target (`'auto'` or `'country:<CODE>'`).
+  Future<void> setSelectedLocation(String value);
 
   /// Reads whether auto-reconnect on network change is enabled.
   /// Defaults to `true`.
@@ -137,6 +147,10 @@ class SharedPreferencesAppPreferencesRepository
 
   /// Preference key for the selected active server ID.
   static const String keyActiveServerId = 'brick.preferences.active_server_id';
+
+  /// Preference key for the selected connection location target.
+  static const String keySelectedLocation =
+      'brick.preferences.selected_location';
 
   /// Preference key for whether auto-reconnect on network change is enabled.
   static const String keyAutoReconnectEnabled =
@@ -225,6 +239,24 @@ class SharedPreferencesAppPreferencesRepository
     } else {
       await _prefs.setString(keyActiveServerId, serverId);
     }
+  }
+
+  @override
+  String getSelectedLocation() {
+    final value = _prefs.getString(keySelectedLocation)?.trim();
+    if (value == null || value.isEmpty) {
+      return AppPreferencesRepository.defaultSelectedLocation;
+    }
+    return value;
+  }
+
+  @override
+  Future<void> setSelectedLocation(String value) async {
+    final trimmed = value.trim();
+    final normalized = trimmed.isEmpty
+        ? AppPreferencesRepository.defaultSelectedLocation
+        : trimmed;
+    await _prefs.setString(keySelectedLocation, normalized);
   }
 
   @override
@@ -336,6 +368,8 @@ class FakeAppPreferencesRepository implements AppPreferencesRepository {
     ThemeMode initialThemeMode = ThemeMode.system,
     Locale? initialLocale,
     String? initialActiveServerId,
+    String initialSelectedLocation =
+        AppPreferencesRepository.defaultSelectedLocation,
     bool initialAutoReconnectEnabled = true,
     bool initialKillSwitchEnabled = false,
     DateTime? initialActiveSessionStartedAt,
@@ -346,6 +380,9 @@ class FakeAppPreferencesRepository implements AppPreferencesRepository {
   }) : _themeMode = initialThemeMode,
        _locale = initialLocale,
        _activeServerId = initialActiveServerId,
+       _selectedLocation = initialSelectedLocation.trim().isEmpty
+           ? AppPreferencesRepository.defaultSelectedLocation
+           : initialSelectedLocation.trim(),
        _autoReconnectEnabled = initialAutoReconnectEnabled,
        _killSwitchEnabled = initialKillSwitchEnabled,
        _activeSessionStartedAt = initialActiveSessionStartedAt?.toUtc(),
@@ -357,6 +394,7 @@ class FakeAppPreferencesRepository implements AppPreferencesRepository {
   ThemeMode _themeMode;
   Locale? _locale;
   String? _activeServerId;
+  String _selectedLocation;
   bool _autoReconnectEnabled;
   bool _killSwitchEnabled;
   DateTime? _activeSessionStartedAt;
@@ -389,6 +427,17 @@ class FakeAppPreferencesRepository implements AppPreferencesRepository {
     _activeServerId = (serverId != null && serverId.isNotEmpty)
         ? serverId
         : null;
+  }
+
+  @override
+  String getSelectedLocation() => _selectedLocation;
+
+  @override
+  Future<void> setSelectedLocation(String value) async {
+    final trimmed = value.trim();
+    _selectedLocation = trimmed.isEmpty
+        ? AppPreferencesRepository.defaultSelectedLocation
+        : trimmed;
   }
 
   @override

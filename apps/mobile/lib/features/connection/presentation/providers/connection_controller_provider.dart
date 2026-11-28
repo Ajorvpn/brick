@@ -4,6 +4,7 @@ import 'dart:async';
 
 import 'package:core_domain/core_domain.dart'
     show
+        AmneziaWgOutbound,
         Connected,
         Connecting,
         ConnectionState,
@@ -14,13 +15,16 @@ import 'package:core_domain/core_domain.dart'
 import 'package:core_vpn_engine/core_vpn_engine.dart';
 import 'package:mobile/core/providers/server_profile_repository_provider.dart';
 import 'package:mobile/core/providers/vpn_engine_provider.dart';
+import 'package:mobile/features/connection/domain/entities/connection_location_target.dart';
 import 'package:mobile/features/connection/domain/entities/saved_server.dart'
-    show SavedServerProfile;
+    show SavedServer, SavedServerProfile;
+import 'package:mobile/features/connection/domain/services/connection_candidate_pool_builder.dart';
 import 'package:mobile/features/connection/presentation/providers/active_server_provider.dart';
 import 'package:mobile/features/connection/presentation/providers/auto_reconnect_provider.dart';
 import 'package:mobile/features/connection/presentation/providers/connection_state_provider.dart';
 import 'package:mobile/features/connection/presentation/providers/kill_switch_provider.dart';
 import 'package:mobile/features/connection/presentation/providers/saved_servers_provider.dart';
+import 'package:mobile/features/servers/domain/models/server_location_group.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'connection_controller_provider.g.dart';
@@ -47,6 +51,10 @@ class ConnectionController extends _$ConnectionController {
   /// Tracks the ID of the server currently connecting or connected.
   String? _activeConnectingServerId;
 
+  /// Tracks the storage key of the location target (`auto` or `country:<ISO2>`)
+  /// currently connecting or connected.
+  String? _activeConnectingTargetKey;
+
   /// No initial state: this notifier exists only to dispatch commands.
   ///
   /// The exposed state is a never-awaited `AsyncValue<void>` placeholder. It
@@ -63,8 +71,12 @@ class ConnectionController extends _$ConnectionController {
       final state = next.value;
       if (state is Disconnected || state is Error) {
         _activeConnectingServerId = null;
+        _activeConnectingTargetKey = null;
       } else if (state is Connected || state is Connecting) {
         _activeConnectingServerId ??= ref.read(activeServerProvider)?.id;
+        _activeConnectingTargetKey ??= ref
+            .read(resolvedLocationTargetProvider)
+            .storageKey;
       }
     });
 
@@ -82,6 +94,9 @@ class ConnectionController extends _$ConnectionController {
         ref.read(initialConnectionStateProvider);
     if (initialConn is Connected || initialConn is Connecting) {
       _activeConnectingServerId ??= ref.read(activeServerProvider)?.id;
+      _activeConnectingTargetKey ??= ref
+          .read(resolvedLocationTargetProvider)
+          .storageKey;
     }
   }
 
@@ -91,15 +106,80 @@ class ConnectionController extends _$ConnectionController {
   /// The ID of the server currently connecting or connected, if any.
   String? get activeConnectingServerId => _activeConnectingServerId;
 
+  /// The storage key of the location target currently connecting or connected.
+  String? get activeConnectingTargetKey => _activeConnectingTargetKey;
+
+  /// Requests a tunnel start for a high-level [target] (`Smart Auto` or
+  /// a specific country's scoped `urltest` pool).
+  Future<VpnCommandResult> connectForTarget(
+    ConnectionLocationTarget target,
+  ) async {
+    final savedList =
+        ref.read(savedServersProvider).asData?.value ??
+        await ref
+            .read(savedServersProvider.future)
+            .catchError((Object _) => const <SavedServer>[]);
+    final eligibleProfiles = savedList
+        .whereType<SavedServerProfile>()
+        .map((entry) => entry.profile)
+        .where((profile) => profile.config is! AmneziaWgOutbound)
+        .toList(growable: false);
+    switch (target) {
+      case SmartAutoTarget():
+        final fallbackActive = ref.read(activeServerProvider)?.profile;
+        final primary =
+            (fallbackActive != null &&
+                fallbackActive.config is! AmneziaWgOutbound)
+            ? fallbackActive
+            : (eligibleProfiles.isNotEmpty
+                  ? eligibleProfiles.first
+                  : fallbackActive);
+        return await connect(
+          primary,
+          candidateProfiles: eligibleProfiles.isNotEmpty
+              ? eligibleProfiles
+              : null,
+          targetStorageKey: target.storageKey,
+        );
+      case CountryTarget(:final countryCode):
+        final normalizedCode = countryCode.trim().toUpperCase();
+        final countryProfiles = eligibleProfiles
+            .where(
+              (profile) =>
+                  ServerLocationParser.parse(profile.name).countryCode ==
+                  normalizedCode,
+            )
+            .toList(growable: false);
+        if (countryProfiles.isEmpty) {
+          return const VpnCommandFailed();
+        }
+        return await connect(
+          countryProfiles.first,
+          candidateProfiles: countryProfiles,
+          targetStorageKey: target.storageKey,
+          restrictToCountryCode: normalizedCode,
+        );
+    }
+  }
+
   /// Requests a tunnel start for [profile].
   ///
   /// The returned `Future` completes with the [VpnCommandResult] from the
   /// engine (or a rejection if busy / no profile). Callers must not treat its
   /// completion as a connection; watch `connectionStateProvider` instead.
   ///
-  /// If another server is currently connected or connecting, cleanly stops it
-  /// first before preparing and starting [profile].
-  Future<VpnCommandResult> connect(ServerProfile? profile) async {
+  /// When the active engine implements [PoolVpnEngine] and at least two valid
+  /// profiles are available (from [candidateProfiles] or loaded saved servers),
+  /// starts a native `urltest` failover pool with [profile] prioritized first.
+  ///
+  /// If another server or location target is currently connected or connecting,
+  /// cleanly stops it first before preparing and starting [profile].
+  Future<VpnCommandResult> connect(
+    ServerProfile? profile, {
+    List<ServerProfile>? candidateProfiles,
+    String? targetStorageKey,
+    String? restrictToCountryCode,
+  }) async {
     if (profile == null) {
       return const VpnCommandFailed();
     }
@@ -123,9 +203,16 @@ class ConnectionController extends _$ConnectionController {
       if (hasActiveOrReconnectingSession) {
         final currentActiveId =
             _activeConnectingServerId ?? ref.read(activeServerProvider)?.id;
+        final currentTargetKey =
+            _activeConnectingTargetKey ??
+            ref.read(resolvedLocationTargetProvider).storageKey;
         final isDifferentServer =
             currentActiveId != null && currentActiveId != profile.id;
-        if (isDifferentServer || autoReconnectState.isReconnecting) {
+        final isDifferentTarget =
+            targetStorageKey != null && currentTargetKey != targetStorageKey;
+        if (isDifferentServer ||
+            isDifferentTarget ||
+            autoReconnectState.isReconnecting) {
           ref.read(autoReconnectProvider.notifier).onUserInitiatedDisconnect();
           ref.read(killSwitchProvider.notifier).onUserInitiatedDisconnect();
           await engine.stop();
@@ -140,21 +227,42 @@ class ConnectionController extends _$ConnectionController {
       final prepareResult = await engine.prepare();
       if (prepareResult is! VpnCommandAccepted) {
         _activeConnectingServerId = null;
+        _activeConnectingTargetKey = null;
         ref.read(autoReconnectProvider.notifier).onUserInitiatedDisconnect();
         ref.read(killSwitchProvider.notifier).onUserInitiatedDisconnect();
         return prepareResult;
       }
 
-      final startResult = await engine.start(profile);
+      final pool = _resolveCandidatePool(
+        primary: profile,
+        candidateProfiles: candidateProfiles,
+        engine: engine,
+        restrictToCountryCode: restrictToCountryCode,
+      );
+      final VpnCommandResult startResult;
+      if (engine is PoolVpnEngine && pool.length >= 2) {
+        startResult = await engine.startPool(profile, pool);
+      } else {
+        startResult = await engine.start(profile);
+      }
       if (startResult is! VpnCommandAccepted) {
         _activeConnectingServerId = null;
+        _activeConnectingTargetKey = null;
         ref.read(autoReconnectProvider.notifier).onUserInitiatedDisconnect();
         ref.read(killSwitchProvider.notifier).onUserInitiatedDisconnect();
         return startResult;
       }
 
       _activeConnectingServerId = profile.id;
-      ref.read(autoReconnectProvider.notifier).onUserInitiatedConnect(profile);
+      _activeConnectingTargetKey =
+          targetStorageKey ??
+          ref.read(resolvedLocationTargetProvider).storageKey;
+      ref
+          .read(autoReconnectProvider.notifier)
+          .onUserInitiatedConnect(
+            profile,
+            candidates: pool.length >= 2 ? pool : null,
+          );
       ref.read(killSwitchProvider.notifier).onUserInitiatedConnect(profile);
 
       try {
@@ -170,12 +278,45 @@ class ConnectionController extends _$ConnectionController {
       return startResult;
     } on Object {
       _activeConnectingServerId = null;
+      _activeConnectingTargetKey = null;
       ref.read(autoReconnectProvider.notifier).onUserInitiatedDisconnect();
       ref.read(killSwitchProvider.notifier).onUserInitiatedDisconnect();
       return const VpnCommandFailed();
     } finally {
       _busy = false;
     }
+  }
+
+  /// Resolves the failover candidate pool for [PoolVpnEngine] instances.
+  ///
+  /// Returns an empty list for plain [VpnEngine] implementations or when fewer
+  /// than two valid candidates are available (so callers use single `start()`).
+  List<ServerProfile> _resolveCandidatePool({
+    required ServerProfile primary,
+    required List<ServerProfile>? candidateProfiles,
+    required VpnEngine engine,
+    String? restrictToCountryCode,
+  }) {
+    if (engine is! PoolVpnEngine) {
+      return const <ServerProfile>[];
+    }
+    final List<ServerProfile> sourceServers;
+    if (candidateProfiles != null) {
+      sourceServers = candidateProfiles;
+    } else {
+      final saved = ref.read(savedServersProvider).asData?.value;
+      sourceServers = saved == null
+          ? const <ServerProfile>[]
+          : saved
+                .whereType<SavedServerProfile>()
+                .map((entry) => entry.profile)
+                .toList(growable: false);
+    }
+    return ConnectionCandidatePoolBuilder.buildCandidatePool(
+      primary: primary,
+      allServers: sourceServers,
+      restrictToCountryCode: restrictToCountryCode,
+    );
   }
 
   /// Awaits the engine's terminal stopped state, bounded.
@@ -226,9 +367,11 @@ class ConnectionController extends _$ConnectionController {
       final engine = ref.read(vpnEngineProvider);
       final result = await engine.stop();
       _activeConnectingServerId = null;
+      _activeConnectingTargetKey = null;
       return result;
     } on Object {
       _activeConnectingServerId = null;
+      _activeConnectingTargetKey = null;
       return const VpnCommandFailed();
     } finally {
       _busy = false;

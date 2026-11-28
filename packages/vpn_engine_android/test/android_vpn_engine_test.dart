@@ -454,4 +454,315 @@ void main() {
       await logController.close();
     });
   });
+
+  group('startPool()', () {
+    ServerProfile makeProfile(
+      String id, {
+      String server = 'vpn.example.com',
+      int port = 443,
+      OutboundConfig? config,
+    }) {
+      return ServerProfile(
+        id: id,
+        name: 'Server $id',
+        addedAt: DateTime.utc(2026, 1, 1),
+        config: config ??
+            VlessOutbound(
+              server: server,
+              serverPort: port,
+              uuid: 'a6f9c46d-318a-40a2-9bc8-592fdb28882a',
+            ),
+      );
+    }
+
+    test('implements PoolVpnEngine', () {
+      expect(engine, isA<PoolVpnEngine>());
+    });
+
+    test('rejects AmneziaWgOutbound primary immediately', () async {
+      final awgPrimary = makeProfile(
+        'awg-1',
+        config: AmneziaWgOutbound(
+          server: 'vpn.example.com',
+          serverPort: 51820,
+          privateKey: 'PLACEHOLDER-PRIVATE-KEY',
+          peerPublicKey: 'PLACEHOLDER-PUBLIC-KEY',
+          localAddresses: const ['10.0.0.2/32'],
+          jc: 4,
+          h1: 100,
+        ),
+      );
+
+      final result =
+          await engine.startPool(awgPrimary, [awgPrimary, testProfile]);
+      expect(result, const VpnCommandRejectedInvalidConfig());
+      expect(fakeHostApi.lastStartPayload, isNull);
+    });
+
+    test(
+      'caps at 10 candidates, puts primary first, deduplicates by id, and skips AmneziaWG',
+      () async {
+        final awgCandidate = makeProfile(
+          'awg-cand',
+          config: AmneziaWgOutbound(
+            server: 'vpn.example.com',
+            serverPort: 51820,
+            privateKey: 'PLACEHOLDER-PRIVATE-KEY',
+            peerPublicKey: 'PLACEHOLDER-PUBLIC-KEY',
+            localAddresses: const ['10.0.0.2/32'],
+            jc: 4,
+            h1: 100,
+          ),
+        );
+        final ssBackup = makeProfile(
+          'ss-1',
+          config: const ShadowsocksOutbound(
+            server: 'ss.example.com',
+            serverPort: 8388,
+            method: '2022-blake3-aes-128-gcm',
+            password: 'AAAAAAAAAAAAAAAAAAAAAA==',
+          ),
+        );
+        final allCandidates = <ServerProfile>[
+          awgCandidate,
+          ssBackup,
+          testProfile, // duplicate of primary should be deduplicated
+          for (var i = 2; i <= 15; i++) makeProfile('node-$i', port: 4430 + i),
+        ];
+
+        final result = await engine.startPool(testProfile, allCandidates);
+        expect(result, const VpnCommandAccepted());
+
+        final payload = fakeHostApi.lastStartPayload!;
+        expect(payload['id'], testProfile.id);
+        expect(payload['name'], testProfile.name);
+        expect(payload['outbound'], isA<Map<String, Object?>>());
+
+        final candidates = payload['candidates'] as List<Map<String, Object?>>;
+        expect(candidates, hasLength(AndroidVpnEngine.kMaxUrlTestCandidates));
+        expect(candidates.first['server'], 'vpn.example.com');
+        expect(candidates[1]['type'], 'shadowsocks');
+        expect(candidates[1]['server'], 'ss.example.com');
+      },
+    );
+
+    test(
+      'drops individual failing candidate serializers without failing healthy pool',
+      () async {
+        final selectiveEngine = AndroidVpnEngine(
+          hostApi: fakeHostApi,
+          stateEventsStream: stateController.stream,
+          trafficStatsEventsStream: statsController.stream,
+          outboundSerializer: (config) {
+            if (config.server == 'bad.example.com') {
+              throw UnsupportedError('broken candidate');
+            }
+            return {'type': config.protocol.scheme, 'server': config.server};
+          },
+        );
+        final broken = makeProfile('broken', server: 'bad.example.com');
+        final healthy = makeProfile('healthy', server: 'good.example.com');
+
+        final result = await selectiveEngine.startPool(
+          testProfile,
+          [testProfile, broken, healthy],
+        );
+        expect(result, const VpnCommandAccepted());
+        final candidates = fakeHostApi.lastStartPayload!['candidates']
+            as List<Map<String, Object?>>;
+        expect(candidates, hasLength(2));
+        expect(candidates[0]['server'], 'vpn.example.com');
+        expect(candidates[1]['server'], 'good.example.com');
+      },
+    );
+
+    test(
+      'falls back cleanly to single-outbound payload when fewer than 2 valid candidates remain',
+      () async {
+        final awgOnly = makeProfile(
+          'awg-only',
+          config: AmneziaWgOutbound(
+            server: 'vpn.example.com',
+            serverPort: 51820,
+            privateKey: 'PLACEHOLDER-PRIVATE-KEY',
+            peerPublicKey: 'PLACEHOLDER-PUBLIC-KEY',
+            localAddresses: const ['10.0.0.2/32'],
+            jc: 4,
+            h1: 100,
+          ),
+        );
+
+        final result =
+            await engine.startPool(testProfile, [testProfile, awgOnly]);
+        expect(result, const VpnCommandAccepted());
+        final payload = fakeHostApi.lastStartPayload!;
+        expect(payload.containsKey('candidates'), isFalse);
+        expect(payload['outbound'], isNotNull);
+      },
+    );
+
+    test('returns VpnCommandFailed when hostApi throws', () async {
+      fakeHostApi.startError = PlatformException(
+        code: 'POOL_ERR',
+        message: 'Failed',
+      );
+      final result = await engine.startPool(
+        testProfile,
+        [testProfile, makeProfile('n2')],
+      );
+      expect(result, const VpnCommandFailed());
+    });
+  });
+
+  group('Shadowsocks-2022 key guard', () {
+    ServerProfile makeSsProfile(
+      String id, {
+      required String method,
+      required String password,
+      String server = 'ss.example.com',
+    }) {
+      return ServerProfile(
+        id: id,
+        name: 'Server $id',
+        addedAt: DateTime.utc(2026, 1, 1),
+        config: ShadowsocksOutbound(
+          server: server,
+          serverPort: 8388,
+          method: method,
+          password: password,
+        ),
+      );
+    }
+
+    test('start() rejects invalid Shadowsocks-2022 keys immediately', () async {
+      final invalidCases = <ServerProfile>[
+        makeSsProfile(
+          'bad-43',
+          method: '2022-blake3-aes-256-gcm',
+          password: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+        ),
+        makeSsProfile(
+          'bad-len',
+          method: '2022-blake3-aes-256-gcm',
+          password: 'AAAAAAAAAAAAAAAAAAAAAA==',
+        ),
+        makeSsProfile(
+          'bad-urlsafe',
+          method: '2022-blake3-aes-128-gcm',
+          password: 'AAAAAAAAAAAAAAAAAAAAA-_=',
+        ),
+        makeSsProfile(
+          'bad-chacha-eih',
+          method: '2022-blake3-chacha20-poly1305',
+          password:
+              'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=:AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI=',
+        ),
+        makeSsProfile(
+          'bad-empty',
+          method: '2022-blake3-aes-128-gcm',
+          password: '',
+        ),
+      ];
+
+      for (final profile in invalidCases) {
+        final result = await engine.start(profile);
+        expect(
+          result,
+          const VpnCommandRejectedInvalidConfig(),
+          reason: 'Expected rejection for ${profile.id}',
+        );
+        expect(fakeHostApi.lastStartPayload, isNull);
+      }
+    });
+
+    test('start() allows valid SS-2022 keys and legacy Shadowsocks methods',
+        () async {
+      final validCases = <ServerProfile>[
+        makeSsProfile(
+          'valid-128',
+          method: '2022-blake3-aes-128-gcm',
+          password: 'AAAAAAAAAAAAAAAAAAAAAA==',
+        ),
+        makeSsProfile(
+          'valid-128-eih',
+          method: '2022-blake3-aes-128-gcm',
+          password: 'AAAAAAAAAAAAAAAAAAAAAA==:AQEBAQEBAQEBAQEBAQEBAQ==',
+        ),
+        makeSsProfile(
+          'valid-256',
+          method: '2022-blake3-aes-256-gcm',
+          password: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
+        ),
+        makeSsProfile(
+          'valid-chacha',
+          method: '2022-blake3-chacha20-poly1305',
+          password: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
+        ),
+        makeSsProfile(
+          'valid-legacy',
+          method: 'aes-256-gcm',
+          password: 'legacy-non-base64-password',
+        ),
+      ];
+
+      for (final profile in validCases) {
+        final result = await engine.start(profile);
+        expect(
+          result,
+          const VpnCommandAccepted(),
+          reason: 'Expected acceptance for ${profile.id}',
+        );
+      }
+    });
+
+    test(
+      'startPool() drops invalid SS-2022 candidate and promotes valid backup if primary is invalid',
+      () async {
+        final brokenSs08 = makeSsProfile(
+          'sg-08',
+          method: '2022-blake3-aes-256-gcm',
+          password: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+          server: 'bad-sg08.example.com',
+        );
+        final healthySg01 = makeSsProfile(
+          'sg-01',
+          method: '2022-blake3-aes-256-gcm',
+          password: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
+          server: 'good-sg01.example.com',
+        );
+
+        final result = await engine.startPool(
+          brokenSs08,
+          [brokenSs08, healthySg01, testProfile],
+        );
+        expect(result, const VpnCommandAccepted());
+        final payload = fakeHostApi.lastStartPayload!;
+        expect(payload['id'], 'sg-01');
+        final candidates = payload['candidates'] as List<Map<String, Object?>>;
+        expect(candidates, hasLength(2));
+        expect(candidates[0]['server'], 'good-sg01.example.com');
+        expect(candidates[1]['server'], 'vpn.example.com');
+      },
+    );
+
+    test(
+      'startPool() rejects when all SS-2022 candidates are invalid',
+      () async {
+        final bad1 = makeSsProfile(
+          'bad-1',
+          method: '2022-blake3-aes-256-gcm',
+          password: 'not-base64',
+        );
+        final bad2 = makeSsProfile(
+          'bad-2',
+          method: '2022-blake3-aes-128-gcm',
+          password: 'short',
+        );
+
+        final result = await engine.startPool(bad1, [bad1, bad2]);
+        expect(result, const VpnCommandRejectedInvalidConfig());
+        expect(fakeHostApi.lastStartPayload, isNull);
+      },
+    );
+  });
 }
